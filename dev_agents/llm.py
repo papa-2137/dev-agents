@@ -64,7 +64,7 @@ def _read_env(
 # --- Tworzenie modeli ---
 
 
-def _create_chat_model(
+def create_chat_model(
     profile: _config.LLMProfile,
 ) -> BaseChatModel:
     """Tworzy ChatOpenAI dla profilu: model z profilu, klucz i adres endpointu ze wskazanych zmiennych środowiskowych, tylko parametry z params.
@@ -103,7 +103,7 @@ def get_model_for_agent(
         )
         raise ValueError(komunikat_bledu)
     profile = app_config.llm.profiles[app_config.llm.agents[agent_name]]
-    model = _create_chat_model(profile)
+    model = create_chat_model(profile)
     return model
 
 
@@ -376,7 +376,7 @@ if __name__ == "__main__":
             update={"api_key_env": "DEV_AGENTS_BRAK_TAKIEJ_ZMIENNEJ"}
         )
         try:
-            _create_chat_model(zepsuty_profil)
+            create_chat_model(zepsuty_profil)
             linie_wyniku = ["BŁĄD TESTU: model powstał mimo braku zmiennej"]
         except RuntimeError as blad:
             linie_wyniku = [f"RuntimeError: {blad}"]
