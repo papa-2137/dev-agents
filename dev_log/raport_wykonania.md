@@ -7,7 +7,7 @@
 
 | Faza | Status |
 |---|---|
-| A - Fundament (kroki 1-5) | ⬜ |
+| A - Fundament (kroki 1-5) | 🟡 w toku |
 | B - Dostęp do modelu (6-8) | ⬜ |
 | C - Mapa projektu bez modelu (9-29) | ⬜ |
 | D - Szablon przewodnika i HTML bez modelu (30-39) | ⬜ |
@@ -30,6 +30,21 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.htm
 - Odstępstwa od planu i powód.
 - Test użytkownika: wynik.
 -->
+
+### Krok 1. `.gitignore`, README i dziennik prac - ✅
+- `.gitignore`: standardowy szablon Pythona z GitHuba (odtworzony bez pobierania z sieci) + sekcja `# --- dev-agents ---`: `venv/`, wzorce sekretów (`*.pfx`, `*.p12`, `*.pem`, `*.key`, `*.crt`, `.env*`), pliki systemowe (`Thumbs.db`, `desktop.ini`, `~$*`).
+- `README.md`: tytuł i jedno zdanie, pisane grypsem (rozbudowa w kroku 63).
+- `dev_log/` i `AGENTS.md` na miejscu; w `dev_log/` dodatkowo `wiadomosc_startowa.md` (wiadomość startowa architekta, zostaje dla potomnych).
+- Przed krokiem, na prośbę użytkownika: gryps „towar” / „Kwadrat” / „miasto” wprowadzony do plików repo, lekcje z uruchomienia doc-agents na mieście dopisane do kroków 4, 7, 8, 13, poprawki nazw w planie (tabela decyzji). Uwaga użytkownika: gryps obowiązuje także, a nawet zwłaszcza, w README.
+- Test użytkownika: `git status` tylko z zamierzonymi plikami, `venv` i `*.pfx` ignorowane - OK.
+
+### Krok 2. venv - ✅
+- Weryfikacja istniejącego `venv` (utworzony z Pythona 3.14.10, `pythoncore-3.14-64`), aktualizacja `pip`. Bez zmian w plikach repo.
+- Test użytkownika: `python --version` → 3.14.10, `sys.executable` → `...\dev-agents\venv\Scripts\python.exe` - OK.
+
+### Krok 3. Pierwsze biblioteki - ✅
+- `requirements.txt`: `pyyaml`, `pydantic` (bez wersji, tylko zależności bezpośrednie). Instalacja przez `pip install -r requirements.txt` - od razu sprawdza plik.
+- Test użytkownika: `yaml 6.0.4`, `pydantic 2.14.4` - OK.
 
 ---
 
