@@ -66,7 +66,7 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 11. Przenieś z doc-agents: `schemas.py` - mapa projektu**
 - **Funkcja:** wspólny opis danych o projekcie, przekazywany między skanerem, agentami i rendererem.
-- **Robimy:** `FileEntry` (ścieżka, rola, rozmiar, `framework_name`), `CodeUnit`, `ProjectMap` (nazwa, katalog, technologia, punkty wejścia, pliki, jednostki kodu, frameworki wykryte po importach, pliki zależności, pliki konfiguracyjne - dwa ostatnie wypełniane w krokach 23-24).
+- **Robimy:** `FileEntry` (ścieżka, rola, rozmiar, `framework_name`), `CodeUnit`, `ProjectMap` (nazwa, katalog, technologia, punkty wejścia, pliki, jednostki kodu, frameworki wykryte po importach). Pola plików zależności i plików konfiguracyjnych dochodzą razem ze swoimi klasami w krokach 23-24.
 - **Sprawdzamy:** test składa mapę ręcznie, wypisuje JSON i sprawdza zgodność po odczycie z JSON.
 
 **Krok 12. Przenieś z doc-agents: `technologies/base.py`**
