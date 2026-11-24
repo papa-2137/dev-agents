@@ -61,8 +61,8 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 10. Odczyt obcych plików: `files.py`**
 - **Funkcja:** jedna wspólna funkcja do czytania plików analizowanego projektu, odporna na kodowania - problem UTF-16 nie wraca w każdym module z osobna.
-- **Robimy:** `read_text_safe(path)`: rozpoznanie BOM (UTF-8, UTF-16 LE/BE), domyślnie UTF-8, zawsze `errors="replace"`.
-- **Sprawdzamy:** odczyt `requirements.txt` robota testowego (UTF-16) daje czytelny tekst; zwykły plik `.py` bez zmian.
+- **Robimy:** `read_text_safe(path)`: rozpoznanie BOM (UTF-8, UTF-16 LE/BE); bez BOM najpierw ścisły UTF-8, potem cp1250 (starsze pliki z polskiego Windows, zwłaszcza `.bat` i `.ini`), na końcu UTF-8 z `errors="replace"` - zły bajt nigdy nie przerywa odczytu; końce linii ujednolicone do `\n`.
+- **Sprawdzamy:** odczyt `requirements.txt` robota testowego (UTF-16) daje czytelny tekst; zwykły plik `.py` bez zmian; pliki tymczasowe w cp1250, UTF-16 BE i UTF-8 z BOM i bez - czytelne polskie znaki.
 
 **Krok 11. Przenieś z doc-agents: `schemas.py` - mapa projektu**
 - **Funkcja:** wspólny opis danych o projekcie, przekazywany między skanerem, agentami i rendererem.

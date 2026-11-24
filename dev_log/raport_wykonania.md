@@ -86,6 +86,12 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.htm
 - Wybór użytkownika: A - obie paczki naprawdę używane (instalacja w domyślnym Pythonie).
 - Test użytkownika: domyślny Python z PATH to 3.12 (inny niż venv towaru - dobrze, robot nie zależy od towaru); `run.bat` → `KONIEC: plikow przetworzonych 2, odrzuconych 3, zamowien 10, blednych wierszy 7, duplikatow 1`, raport `.xlsx`; katalogi `archiwum`, `odrzucone`, `wyjscie` zgodne z oczekiwanymi, `wejscie` puste; `run()` = 371 linii - OK.
 
+### Krok 10. Odczyt obcych plików: `files.py` - ✅
+- `dev_agents/files.py`: publiczne `read_text_safe(path)`; pomocnicze `_decode_bytes` (BOM UTF-8 / UTF-16 LE / UTF-16 BE; bez BOM ścisły UTF-8, potem cp1250, na końcu UTF-8 z zamianą złych bajtów - nigdy nie rzuca błędu dekodowania), `_normalize_newlines` (`\r\n` i `\r` → `\n`, numery linii bez zmian), `_read_text_with_encoding` (zwraca też użyte kodowanie - dla testu). Błędy systemu plików (brak pliku, uprawnienia) nie są łapane - wołający dostaje `OSError`; limity rozmiaru sprawdza wołający.
+- Odstępstwo od planu (wybór użytkownika B): fallback cp1250 przed zamianą błędów (tabela decyzji, `plan_kroki.md` krok 10).
+- Test w bloku `__main__`: pliki tymczasowe UTF-8 bez BOM i z BOM, UTF-16 BE z BOM, cp1250 (tworzone i usuwane w teście), `requirements.txt` robota 01 (tylko ten plik - bez `certs`), `przetwarzanie.py` robota 02.
+- Test użytkownika: wszystkie przypadki z czytelnymi polskimi znakami, robot 01 `utf-16-le (BOM)` z czytelnymi nazwami paczek, robot 02 `utf-8` - OK.
+
 ---
 
 ## Odstępstwa i decyzje poza planem
@@ -101,3 +107,4 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.htm
 | 2026-11-24 | Plan: zakładka nazywana w W5 i W8 „Przegląd i uruchomienie” (jak w W2); w kroku 30 usunięta zdublowana „Błędy i naprawa”; w kroku 9 robot 02 uruchamiany domyślnym Pythonem z PATH | Ujednolicenie nazw i decyzja użytkownika |
 | 2026-11-24 | Krok 4: `structured_output_method` wymagane w każdym profilu (doc-agents: domyślnie `function_calling`) i sprawdzane przy wczytaniu configu | Metoda zależy od endpointu i decydowała na mieście o działaniu - ma być widoczna w configu, a literówka wychodzić przy starcie; wybór użytkownika |
 | 2026-11-24 | Nowa reguła stylu (AGENTS.md, Styl kodu pkt 9): każdy parametr definicji funkcji w osobnej linii, także pojedynczy (`self`/`cls` też), przecinek po ostatnim; funkcja bez parametrów w jednej linii. Przeformatowane wszystkie definicje w `main.py`, `dev_agents/config.py`, `dev_agents/llm.py` (bez zmian zachowania). Reguła dopisana też do `dev_log/zasady_pracy.md`, `architecture/02_dev-agents/reguly-kodu.md` (pkt 7) i `development/doc-agents/AGENTS.md` (reguły z 2026-11-24, pkt 6) | Decyzja użytkownika: czytelność sygnatur i czytelne diffy |
+| 2026-11-24 | Krok 10: `read_text_safe` bez BOM czyta najpierw ścisłym UTF-8, potem cp1250, a dopiero na końcu UTF-8 z zamianą błędów (plan: od razu UTF-8 z `errors="replace"`); `plan_kroki.md` krok 10 zaktualizowany | Na mieście będą pliki z polskiego Windows w cp1250 (`.bat`, `.ini`) - bez tego polskie znaki trafiałyby do modelu jako `�`; wybór użytkownika (B) |
