@@ -8,7 +8,7 @@
 | Faza | Status |
 |---|---|
 | A - Fundament (kroki 1-5) | ✅ zakończona (M1) |
-| B - Dostęp do modelu (6-8) | ⬜ |
+| B - Dostęp do modelu (6-8) | 🟡 w toku |
 | C - Mapa projektu bez modelu (9-29) | ⬜ |
 | D - Szablon przewodnika i HTML bez modelu (30-39) | ⬜ |
 | E - Prompty i baza wiedzy (40-42) | ⬜ |
@@ -56,6 +56,11 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.htm
 - `main.py`: `_parse_args` (`--config` domyślnie obok `main.py`; `--project` opcjonalny, a podany - sprawdzany, czy istnieje), `_print_summary` (config, agent → profil → model i metoda, katalogi, projekt), `main()` jako spis treści; config importowany jako moduł z aliasem `_config`.
 - Wybór użytkownika: `--project` opcjonalny, ale sprawdzany (A) - w kroku 29 zmieni się tylko na wymagany.
 - Test użytkownika: podsumowanie z 5 agentami, błąd dla nieistniejącego katalogu, uruchomienie spoza katalogu repo (`python .\dev-agents\main.py --project .\dev-agents`) z tym samym wynikiem - OK. **M1 osiągnięty: szkielet uruchamia się.**
+
+### Krok 6. Biblioteki LLM - ✅
+- `requirements.txt`: dopisane `langchain-core` (importowany bezpośrednio: wiadomości, structured output) i `langchain-openai` (`ChatOpenAI`; ciągnie pakiet `openai`).
+- Test użytkownika: `langchain_core 1.8.4`, `openai 3.58.0`, import `langchain_openai` bez błędu - OK.
+- Uwaga: commit `eb86a41` powstał, zanim dwie linie trafiły do `requirements.txt` (biblioteki były już zainstalowane w venv) - plik uzupełniony po commicie, do osobnego commita.
 
 ---
 
