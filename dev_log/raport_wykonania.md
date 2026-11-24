@@ -9,7 +9,7 @@
 |---|---|
 | A - Fundament (kroki 1-5) | ✅ zakończona (M1) |
 | B - Dostęp do modelu (6-8) | ✅ zakończona (M2) |
-| C - Mapa projektu bez modelu (9-29) | ⬜ |
+| C - Mapa projektu bez modelu (9-29) | 🟡 w toku |
 | D - Szablon przewodnika i HTML bez modelu (30-39) | ⬜ |
 | E - Prompty i baza wiedzy (40-42) | ⬜ |
 | F - Graf i agenci (43-59) | ⬜ |
@@ -76,6 +76,15 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.htm
 - Wybory użytkownika: 1A - `_create_chat_model` w `dev_agents/llm.py` przemianowane na `create_chat_model` (świadoma zmiana interfejsu, reguła 13), skrypt testuje profil; 2A - structured output przez `invoke_structured`.
 - Test użytkownika: `--help` i literówka w profilu - OK; `small` (`claude-haiku-5-5`): `json_schema` i `function_calling` OK na obu schematach, `json_mode` FAIL (400: endpoint przyjmuje tylko `response_format.type` = `json_schema`), `bind_tools` OK, rekomendacja `json_schema` = config; `medium` (`claude-sonnet-5-5`): tylko `json_schema` OK, `function_calling` FAIL (400: wymuszony `tool_choice` nieobsługiwany przez model), `json_mode` FAIL jak wyżej, rekomendacja `json_schema` = config; `python -m dev_agents.llm` po zmianie nazwy - bez zmian - OK. **M2 osiągnięty: model gotowy.**
 - Wniosek: na Kwadracie `json_schema` to jedyna metoda działająca na obu profilach - potwierdza domyślną metodę z configu; różnica `function_calling` między Haiku a Sonnetem pokazuje, że skrypt trzeba uruchamiać dla każdego profilu osobno.
+
+### Krok 9. Drugi robot testowy: bez frameworku, „spaghetti” - ✅
+- `C:\Users\jankiwoj_box\Documents\projects\claude\tests\02_robot_bez_frameworku` (poza repo, jak robot 01): przetwarzanie zamówień z plików CSV - sprawdzanie wierszy, rabaty, duplikaty, odrzuty, archiwum, wyniki JSON/CSV, raport `.xlsx`.
+- `run.bat` (`python przetwarzanie.py`, potem `python raport.py`, domyślny Python z PATH; przy błędzie przetwarzania bez raportu), `przygotuj_dane.bat` (kopiuje `dane\przyklady\` do `dane\wejscie\` - powtarzalne uruchomienia; drugi plik uruchamiający dla kroku 20).
+- `przetwarzanie.py`: 17 stałych na górze (m.in. `URL`, `INPUT_DIR`, `OUTPUT_DIR`, `ENV_PASSWORD = "ROBOT02_PASS"`, przełącznik `WYSYLKA_DO_API = False`), funkcja pomocnicza `log()` i **`run()` na 371 linii** (zagnieżdżenie do 8 poziomów, pętla po plikach, kilkanaście `try/except`, wysyłka przez `requests` z ponawianiem tylko po włączeniu przełącznika). `raport.py`: `openpyxl`, 4 arkusze, zdublowana stała `OUTPUT_DIR`. Bez pliku konfiguracyjnego, docstringów i README; `requirements.txt`: `openpyxl`, `requests` (UTF-8 - UTF-16 sprawdza robot 01).
+- Przykłady: plik poprawny, plik z 6 błędnymi wierszami i duplikatem, pusty plik, zły nagłówek, `notatka.txt` (złe rozszerzenie).
+- Celowo zostawione „ryzykowne miejsca” do sprawdzenia przewodnika: ścieżki względne (robot działa tylko uruchomiony z własnego katalogu - pilnuje tego `cd /d %~dp0` w `run.bat`); `0.10 + 0.02` daje `0.12000000000000001`, więc dla VIP z produktem PROMO robot loguje „przekracza limit” i obcina do 0.12 (wynik poprawny, komunikat mylący); mieszane separatory ścieżek w logu (`dane/odrzucone\...`).
+- Wybór użytkownika: A - obie paczki naprawdę używane (instalacja w domyślnym Pythonie).
+- Test użytkownika: domyślny Python z PATH to 3.12 (inny niż venv towaru - dobrze, robot nie zależy od towaru); `run.bat` → `KONIEC: plikow przetworzonych 2, odrzuconych 3, zamowien 10, blednych wierszy 7, duplikatow 1`, raport `.xlsx`; katalogi `archiwum`, `odrzucone`, `wyjscie` zgodne z oczekiwanymi, `wejscie` puste; `run()` = 371 linii - OK.
 
 ---
 
