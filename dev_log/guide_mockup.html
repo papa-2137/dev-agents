@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>[Nazwa robota] - przewodnik dla dewelopera (makieta)</title>
+<style>
+/* MAKIETA szablonu przewodnika dev-agents. Styl wzorca doc-agents: biały papier, czarne linie, czerwony tylko dla pętli, decyzji i ostrzeżeń.
+   Plik samowystarczalny: bez zasobów z internetu. Font Archivo użyty, jeśli jest zainstalowany; inaczej Segoe UI / Arial.
+   Tekst w [nawiasach kwadratowych] to miejsca wypełniane przez narzędzie. Diagramy pokazują DANE PRZYKŁADOWE. */
+:root{color-scheme:light;--bg:#fff;--ink:#111;--mute:#6f6f6f;--hair:#d6d6d6;--red:#e4002b;--soft:#f3f3f3;--mono:Consolas,"Cascadia Mono","Courier New",monospace;--sans:Archivo,"Segoe UI",Arial,sans-serif}
+*{box-sizing:border-box;min-width:0}
+html{scroll-padding-top:24px}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 var(--sans);display:grid;grid-template-columns:260px minmax(0,1fr);min-height:100vh;overflow-x:clip}
+aside{position:sticky;top:0;height:100vh;overflow-y:auto;border-right:1px solid var(--hair);padding:28px 20px}
+aside .brand{font-weight:800;font-size:22px;letter-spacing:-.02em;line-height:1.1}
+aside .sub{font-size:14px;color:var(--mute);margin:4px 0 24px}
+nav a{display:flex;align-items:center;gap:10px;min-height:44px;padding:6px 10px;color:var(--ink);text-decoration:none;border-radius:3px;font-weight:600;font-size:15px}
+nav a i{flex:none;width:12px;height:12px;border:1.5px solid var(--ink);border-radius:50%}
+nav a:hover{background:var(--soft)}
+nav a[aria-current=page]{background:var(--ink);color:var(--bg)}
+nav a[aria-current=page] i{border-color:var(--bg);background:var(--bg)}
+aside .meta{margin-top:28px;font-size:13px;color:var(--mute)}
+aside .meta p{margin:0 0 8px}
+main{padding:clamp(24px,4vw,56px) max(4vw,16px) 80px}
+.tab{max-width:1120px}
+h1,h2,h3{font-weight:800;line-height:1.08;letter-spacing:-.02em;margin:0;text-wrap:balance}
+h1{font-size:clamp(32px,4vw,48px);max-width:24ch}
+h2{font-size:clamp(24px,2.6vw,32px);margin:56px 0 14px;max-width:30ch}
+h3{font-size:18px;margin:0 0 6px;letter-spacing:-.01em}
+p{margin:0 0 12px;max-width:72ch}
+.lead{font-size:clamp(17px,1.6vw,20px);color:var(--mute);margin:12px 0 28px;max-width:64ch}
+.note{font-size:14px;color:var(--mute)}
+code,.mono{font-family:var(--mono);font-size:.92em;overflow-wrap:anywhere}
+a{color:var(--ink)}
+.ph{color:var(--mute);font-style:italic}
+.unc{display:inline-block;font:600 12px var(--sans);color:var(--mute);border:1.5px dashed var(--mute);border-radius:2px;padding:0 6px;margin-left:6px;vertical-align:2px;font-style:normal}
+.mustbar{border:1.5px solid var(--red);padding:10px 14px;font-size:14px;margin:0 0 28px;max-width:72ch}
+.mustbar b{color:var(--red)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:14px;color:var(--mute);margin:14px 0}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+.mk{flex:none;display:inline-block;width:12px;height:12px;border:1.5px solid var(--ink);border-radius:2px;background:var(--bg)}
+.mk.fill{background:var(--ink)}
+.mk.rnd{border-radius:7px;width:18px}
+.mk.dia{transform:rotate(45deg);width:10px;height:10px;border-radius:0;border-color:var(--red)}
+.mk.cfg{transform:rotate(45deg);width:10px;height:10px;border-radius:0}
+.mk.sec{border-color:var(--red)}
+.mk.loop{width:20px;height:0;border:0;border-top:1.5px dashed var(--red);border-radius:0}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:20px}
+.box{border:1.5px solid var(--ink);padding:18px 20px}
+.box p:last-child{margin:0}
+table{border-collapse:collapse;width:100%;font-size:15px}
+th{text-align:left;font-size:14px;color:var(--mute);font-weight:600;padding:8px 10px;border-bottom:1.5px solid var(--ink);vertical-align:bottom}
+td{padding:10px;border-bottom:1px solid var(--hair);vertical-align:top}
+td:first-child,th:first-child{padding-left:0}
+.scroll{overflow-x:auto}
+.warn{color:var(--red);font-weight:600}
+.cb{position:relative;margin:10px 0 14px}
+pre{margin:0;border:1.5px solid var(--ink);padding:14px 16px;font:13.5px/1.5 var(--mono);overflow-x:auto;background:var(--bg)}
+.cp{position:absolute;top:6px;right:6px;font:600 13px var(--sans);min-height:32px;padding:0 10px;border:1.5px solid var(--ink);background:var(--bg);border-radius:3px;cursor:pointer}
+.cp:hover{background:var(--ink);color:var(--bg)}
+.cp:focus-visible,.it:focus-visible,nav a:focus-visible,.cards a:focus-visible{outline:3px solid var(--red);outline-offset:2px}
+/* przegląd */
+.io{display:grid;grid-template-columns:minmax(0,1fr) 56px minmax(0,1.3fr) 56px minmax(0,1fr);align-items:center;margin:8px 0}
+.io .ar{border-top:1.5px solid var(--ink);position:relative}
+.io .ar::after{content:"";position:absolute;right:-1px;top:-6px;border:5px solid transparent;border-left:8px solid var(--ink)}
+.io .core{background:var(--ink);color:var(--bg);padding:20px;border-radius:3px}
+.io .core b{font-size:20px;display:block}
+.io .core span{font-size:14px;opacity:.85}
+.gl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:0 24px;font-size:15px}
+.gl dt{font-weight:600;padding:9px 0;border-bottom:1px solid var(--hair)}
+.gl dd{margin:0;padding:9px 0;border-bottom:1px solid var(--hair)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:14px}
+.cards a{display:block;border:1.5px solid var(--ink);padding:16px 18px;text-decoration:none;min-height:44px}
+.cards a:hover{background:var(--ink);color:var(--bg)}
+.cards a b{display:block;font-size:17px;margin-bottom:4px}
+.cards a span{font-size:14px}
+.cards a em{display:block;font-style:normal;font-size:12.5px;color:var(--mute);margin-bottom:6px;letter-spacing:.02em}
+.cards a:hover em{color:#cfcfcf}
+.road{list-style:none;margin:10px 0 0;padding:0;counter-reset:s}
+.road>li{position:relative;padding:0 0 22px 52px;counter-increment:s}
+.road>li::before{content:counter(s);position:absolute;left:0;top:-2px;width:34px;height:34px;border:1.5px solid var(--ink);border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:14px;background:var(--bg)}
+.road>li::after{content:"";position:absolute;left:17px;top:32px;bottom:0;border-left:1.5px solid var(--ink)}
+.road>li:last-child::after{display:none}
+.road>li>b{display:block;font-size:16px;margin-bottom:4px}
+/* diagram przepływu */
+.fig{position:relative;margin:10px 0}
+.fig>svg{display:block;width:100%}
+svg text{font-family:var(--sans);dominant-baseline:central;text-anchor:middle}
+.n-step{fill:var(--bg);stroke:var(--ink);stroke-width:1.5}
+.n-sys{fill:var(--ink);stroke:var(--ink);stroke-width:1.5}
+.n-term{fill:var(--bg);stroke:var(--ink);stroke-width:2.5}
+.n-dec{fill:var(--bg);stroke:var(--red);stroke-width:1.8}
+.t-step{fill:var(--ink);font-weight:600}
+.t-sys{fill:var(--bg);font-weight:600}
+.t-dec{fill:var(--red);font-weight:600}
+.t-num{fill:var(--mute);font-size:11px;font-weight:600}
+.t-numw{fill:#bdbdbd;font-size:11px;font-weight:600}
+.edge{fill:none;stroke:var(--ink);stroke-width:1.5}
+.lp{fill:none;stroke:var(--red);stroke-width:1.5;stroke-dasharray:5 4}
+.lbl{fill:var(--mute);font-size:13px;paint-order:stroke;stroke:var(--bg);stroke-width:4px}
+.lblr{fill:var(--red);font-size:13px;font-weight:600;paint-order:stroke;stroke:var(--bg);stroke-width:4px}
+g[data-go]{cursor:pointer}
+g[data-go]:hover rect,g[data-go]:hover polygon{stroke-width:3}
+g[data-go]:focus{outline:none}
+g[data-go]:focus-visible rect,g[data-go]:focus-visible polygon{stroke:var(--red);stroke-width:3}
+/* tooltip */
+#tip{position:fixed;z-index:20;max-width:min(400px,calc(100vw - 24px));background:var(--bg);border:1.5px solid var(--ink);padding:14px 16px;font-size:14px;line-height:1.45;pointer-events:none}
+#tip b{display:block;font:700 15px var(--sans);margin-bottom:6px}
+#tip p{margin:0 0 8px}
+#tip p:last-child{margin:0}
+#tip p span{display:block;font-size:13px;color:var(--mute)}
+#tip .tk{font-size:13px;color:var(--mute);margin-top:-4px}
+#tip code{font-size:13px}
+#tip.pin{pointer-events:auto;outline:3px solid var(--red);outline-offset:-1px}
+/* przepływ krok po kroku */
+.fhead{display:grid;grid-template-columns:minmax(0,1fr) 40px minmax(0,1.7fr) 40px minmax(0,1fr);font-size:13px;color:var(--mute);border-bottom:1.5px solid var(--ink);padding-bottom:6px;margin-top:28px;position:sticky;top:0;background:var(--bg);z-index:5}
+.fhead span:nth-child(2){grid-column:3}
+.fhead span:nth-child(3){grid-column:5}
+.row{display:grid;grid-template-columns:minmax(0,1fr) 40px minmax(0,1.7fr) 40px minmax(0,1fr);align-items:center;padding-top:6px}
+.row.hl .node{outline:3px solid var(--red);outline-offset:2px}
+.ins,.outs{display:flex;flex-direction:column;gap:6px}
+.ar{height:0;border-top:1.5px solid var(--ink);position:relative;margin:0 4px}
+.ar::after{content:"";position:absolute;right:-2px;top:-6px;border:5px solid transparent;border-left:8px solid var(--ink)}
+.ar.none{border:0}.ar.none::after{display:none}
+.c{font:13px/1.35 var(--mono);border:1.5px solid var(--ink);padding:5px 9px;border-radius:2px;background:var(--bg);overflow-wrap:anywhere}
+.c small{display:block;font:12.5px/1.3 var(--sans);color:var(--mute);margin-top:2px}
+.c.f{background:linear-gradient(225deg,var(--ink) 0 6px,var(--bg) 6px)}
+.c.env{border-style:dashed}
+.c.sys{background:var(--ink);color:var(--bg)}
+.c.sys small{color:#cfcfcf}
+.c.sec{border-color:var(--red)}
+.c.new{border-color:var(--red)}
+.node{border:1.5px solid var(--ink);padding:14px 16px 12px;background:var(--bg)}
+.node.sys{border-width:3px}
+.node.dec{border-color:var(--red)}
+.nh{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.num{flex:none;display:inline-grid;place-items:center;width:28px;height:28px;border:1.5px solid var(--ink);border-radius:50%;font:700 13px var(--sans);align-self:center}
+.node.sys .num{background:var(--ink);color:var(--bg)}
+.node.dec .num{border-color:var(--red);color:var(--red)}
+.nh b{font-size:17px}
+.nh code{font-size:13px;color:var(--mute)}
+.node p{font-size:15px;margin:0 0 6px}
+.calls{margin:6px 0 0;padding-left:20px;font:13px/1.5 var(--mono)}
+.calls li{margin:2px 0}
+.calls li span{font-family:var(--sans);color:var(--mute)}
+.tagr{display:inline-block;font:600 12.5px var(--sans);color:var(--red);border:1.5px solid var(--red);border-radius:2px;padding:0 6px}
+.down{display:grid;grid-template-columns:minmax(0,1fr) 40px minmax(0,1.7fr) 40px minmax(0,1fr)}
+.v{grid-column:3;position:relative;min-height:46px;padding:8px 0 8px calc(50% + 14px);font:13px/1.35 var(--mono);color:var(--mute)}
+.v::before{content:"";position:absolute;left:50%;top:0;bottom:8px;border-left:1.5px solid var(--ink)}
+.v::after{content:"";position:absolute;left:calc(50% - 5px);bottom:0;border:5px solid transparent;border-top:8px solid var(--ink);border-bottom:0}
+.v.loop{color:var(--red)}
+.v.loop::before{border-left:1.5px dashed var(--red)}
+.v.loop::after{border-top-color:var(--red)}
+.dec-out{display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;font-size:13.5px}
+.dec-out span{border:1.5px solid var(--red);color:var(--red);border-radius:2px;padding:1px 8px;font-weight:600}
+/* ścieżki */
+.paths{display:grid;gap:22px}
+.path{border-top:1.5px solid var(--ink);padding-top:12px}
+.path h3{display:flex;gap:10px;align-items:baseline;flex-wrap:wrap}
+.path h3 .tagr{font-size:12px}
+.path .when{font-size:15px;color:var(--mute);margin:0 0 8px}
+.pl{margin:0;padding-left:24px}
+.pl>li{margin:6px 0;padding-left:4px}
+.pl ul{margin:4px 0;padding-left:20px;list-style:disc}
+.pl ul li{margin:2px 0;font-size:15px}
+.ref{display:inline-block;font:600 12px var(--sans);border:1.5px solid var(--ink);border-radius:9px;padding:0 7px;margin-left:6px;text-decoration:none;vertical-align:1px}
+.ref:hover{background:var(--ink);color:var(--bg)}
+/* struktura */
+.map{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:20px;align-items:start}
+.grp{border:1.5px solid var(--ink);padding:14px 16px 10px}
+.tr{list-style:none;margin:6px 0 0 6px;padding:0;border-left:1.5px solid var(--ink)}
+.tr li{position:relative;padding:3px 0 3px 18px}
+.tr li::before{content:"";position:absolute;left:0;top:19px;width:12px;border-top:1.5px solid var(--ink)}
+.tr .tr{margin-left:10px}
+.tr>li:last-child::after{content:"";position:absolute;left:-2px;top:20px;bottom:0;border-left:3px solid var(--bg)}
+.it{display:inline-flex;align-items:center;gap:8px;font:14px/1.3 var(--mono);color:var(--ink);background:var(--bg);border:1.5px solid transparent;border-radius:3px;padding:6px 8px;cursor:help;text-align:left;min-height:32px}
+.it:hover,.it.on{border-color:var(--ink)}
+.it.dir{font-weight:700}
+.it small{font:13px var(--sans);color:var(--mute)}
+.depfig{position:relative;margin:10px 0}
+.depfig svg{display:block;width:100%}
+.n-mod{fill:var(--bg);stroke:var(--ink);stroke-width:1.5}
+.n-entry{fill:var(--ink);stroke:var(--ink);stroke-width:1.5}
+.t-mod{fill:var(--ink);font:13px var(--mono)}
+.t-entry{fill:var(--bg);font:600 13px var(--mono)}
+/* rozszerzenia */
+.files{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 18px}
+.recipe{border-top:1.5px solid var(--ink);margin-top:56px;padding-top:4px}
+.recipe h2{margin-top:18px}
+.when{font-size:15px;color:var(--mute);margin-bottom:6px}
+.layers{display:grid;gap:0}
+.ly{display:grid;grid-template-columns:200px minmax(0,1fr);gap:16px;align-items:center;padding:10px 0;border-bottom:1px solid var(--hair)}
+.ly>b{font-size:15px}
+.ly div{display:flex;flex-wrap:wrap;gap:6px}
+/* metryczka robota */
+.pp{border:1.5px solid var(--ink);margin:8px 0 6px;overflow:hidden}
+.pp-h{display:flex;flex-wrap:wrap;gap:6px 18px;align-items:baseline;justify-content:space-between;background:var(--ink);color:var(--bg);padding:12px 18px}
+.pp-h b{font-size:17px}
+.pp-h span{font-size:13.5px;opacity:.85}
+.pp-h code{color:var(--bg)}
+.pp-g{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));margin:0 -1px -1px 0}
+.pp-g>div{padding:14px 18px;border-top:1px solid var(--hair);border-right:1px solid var(--hair)}
+.pp-g h3{font-size:12.5px;line-height:1.35;font-weight:600;color:var(--mute);margin:0 0 8px;letter-spacing:.02em}
+.pp-g p{margin:3px 0;font-size:14.5px;overflow-wrap:anywhere}
+.pp-g .src{font-size:12.5px;color:var(--mute)}
+.pp-g .warn{font-weight:600}
+.kv{display:inline-block;font:600 12px var(--sans);border:1.5px solid var(--ink);border-radius:2px;padding:0 6px;vertical-align:1px}
+.kv.r{border-color:var(--red);color:var(--red)}
+.kv.m{border-color:var(--mute);color:var(--mute)}
+details.cfg{margin:10px 0 0}
+details.cfg summary{cursor:pointer;font-weight:600;padding:8px 0;min-height:44px;display:flex;align-items:center;gap:8px}
+details.cfg summary::marker{color:var(--red)}
+tr.csec td{padding:20px 0 6px;font:600 13px var(--mono);border-bottom:1.5px solid var(--ink)}
+table.cfgt td:first-child code{white-space:nowrap}
+table.cfgt td.val{overflow-wrap:anywhere}
+td.val code{background:var(--soft);padding:1px 5px}
+.ul{margin:0 0 12px;padding-left:20px}
+.ul li{margin:4px 0}
+@media(max-width:860px){
+ body{display:block}
+ aside{position:sticky;top:0;z-index:10;height:auto;background:var(--bg);border-right:0;border-bottom:1px solid var(--hair);padding:8px 12px}
+ aside .brand,aside .sub,aside .meta{display:none}
+ nav{display:flex;gap:6px;overflow-x:auto}
+ nav a{flex:none;white-space:nowrap}
+ html{scroll-padding-top:72px}
+ .fhead{display:none}
+ .row,.down{grid-template-columns:minmax(0,1fr)}
+ .ins::before{content:"czyta";font-size:13px;color:var(--mute)}
+ .outs::before{content:"zapisuje / zwraca";font-size:13px;color:var(--mute)}
+ .ar{width:0;height:18px;border-top:0;border-left:1.5px solid var(--ink);margin:4px auto}
+ .ar::after{right:auto;left:-6px;top:auto;bottom:-2px;border:5px solid transparent;border-top:8px solid var(--ink);border-bottom:0}
+ .ar.none{display:none}
+ .v{grid-column:1}
+ .ins:empty,.outs:empty{display:none}
+ .io{grid-template-columns:minmax(0,1fr)}
+ .io .ar{width:0;height:24px;border-top:0;border-left:1.5px solid var(--ink);justify-self:center}
+ .io .ar::after{right:auto;left:-6px;top:auto;bottom:-1px;border:5px solid transparent;border-top:8px solid var(--ink)}
+ .ly{grid-template-columns:minmax(0,1fr);gap:6px}
+}
+@media(max-width:600px){
+ table{font-size:13px}
+ th,td{padding:6px 4px}
+ .stack thead{display:none}
+ .stack tr{display:grid;padding:10px 0;border-bottom:1px solid var(--hair)}
+ .stack td{border:0;padding:2px 0}
+ .stack td::before{content:attr(data-l);display:block;font-size:12.5px;color:var(--mute)}
+ .gl{grid-template-columns:minmax(0,1fr)}
+ .gl dt{border:0;padding-bottom:0}
+}
+</style>
+</head>
+<body>
+<aside>
+ <div class="brand">[Nazwa robota]</div>
+ <div class="sub">Przewodnik dla dewelopera</div>
+ <nav id="nav">
+  <a href="#przeglad"><i></i>Przegląd i uruchomienie</a>
+  <a href="#przeplyw"><i></i>Przepływ działania</a>
+  <a href="#sciezki"><i></i>Ścieżki procesu</a>
+  <a href="#struktura"><i></i>Struktura projektu</a>
+  <a href="#zmiany"><i></i>Zmiany i rozszerzenia</a>
+  <a href="#bledy"><i></i>Błędy i naprawa</a>
+  <a href="#deweloper"><i></i>Dla dewelopera</a>
+ </nav>
+ <div class="meta">
+  <p>Wygenerowano: [data i godzina] przez dev-agents.</p>
+  <p>Projekt: <code>[ścieżka projektu]</code></p>
+  <p>Oznaczenie <span class="unc">wywnioskowane</span> = informacja wynika z analizy kodu, ale nie jest w nim zapisana wprost. Sprawdź przed poleganiem na niej.</p>
+ </div>
+</aside>
+
+<main>
+<div id="tip" hidden></div>
+
+<!-- ====================== PRZEGLĄD I URUCHOMIENIE ====================== -->
+<section class="tab" id="przeglad">
+ <div class="mustbar"><b>MAKIETA.</b> Tekst w [nawiasach] wypełnia narzędzie. Diagramy i przykładowe wpisy pokazują dane przykładowe (robot RPA Challenge + ParaBank), żeby dało się ocenić układ.</div>
+ <h1>[Nazwa robota]: [jedno zdanie, co robi robot]</h1>
+ <p class="lead"><span class="ph">[2-4 zdania językiem biznesowym: jaki proces automatyzuje robot, co jest jego wejściem, co efektem i dla kogo.]</span></p>
+
+
+ <h2>Metryczka robota</h2>
+ <p class="note">Zebrane przez narzędzie z pliku konfiguracyjnego robota i z kodu, który go czyta: wartości są przepisane, miejsca użycia wyliczone. Wartości kluczy z hasłami i tokenami są zamaskowane. <span class="ph">[Gdy robot nie ma pliku konfiguracyjnego: „Robot nie ma pliku konfiguracyjnego - ustawienia są zapisane w kodzie, zobacz zakładkę Dla dewelopera.”]</span></p>
+ <div class="pp">
+  <div class="pp-h"><b>[config.yml]</b><span>wczytywany w <code>[main.py:51]</code> przez <code>[get_config(CONFIG_FILE)]</code> · ścieżki względne liczone od <span class="ph">[katalogu projektu]</span></span></div>
+  <div class="pp-g">
+   <div><h3>SYSTEMY ZEWNĘTRZNE</h3><p class="warn">[https://parabank.parasoft.com/parabank/]</p><p class="src"><code>[parabank.url]</code> · <span class="ph">[jedno zdanie: co to za system]</span></p></div>
+   <div><h3>KONTA I ZMIENNE ŚRODOWISKOWE</h3><p>Konto <code>[robot]</code> <span class="src"><code>[parabank.username]</code></span></p><p>Hasło w zmiennej <code>[FAKE_PASSWD]</code> <span class="kv r">ustaw przed uruchomieniem</span></p></div>
+   <div><h3>PLIKI WEJŚCIOWE</h3><p><code>[resources/in/challenge.xlsx]</code></p><p class="src"><code>[input.excel_path]</code></p></div>
+   <div><h3>PLIKI WYJŚCIOWE</h3><p><code>[resources/report.db]</code></p><p><code>[resources/acc_states.txt]</code></p><p class="src"><code>[output.*]</code></p></div>
+   <div><h3>LOGI</h3><p><code>[logs/]</code> <span class="ph">[jeden plik dziennie: log_RRRRMMDD.csv - z komentarza w pliku]</span></p></div>
+   <div><h3>PRZEŁĄCZNIKI</h3><p><code>[logger.debug]</code> = <code>[false]</code> <span class="ph">[true = także komunikaty DEBUG frameworku]</span></p></div>
+  </div>
+ </div>
+ <details class="cfg">
+  <summary>Pełna konfiguracja <span class="kv m">[9] kluczy</span></summary>
+  <div class="scroll"><table class="stack cfgt">
+   <thead><tr><th>Klucz</th><th>Wartość</th><th>Znaczenie</th><th>Używany w</th></tr></thead>
+   <tbody>
+    <tr class="csec"><td colspan="4">[input]</td></tr>
+    <tr><td data-l="Klucz"><code>[excel_path]</code></td><td class="val" data-l="Wartość"><code>[resources/in/challenge.xlsx]</code> <span class="kv m">ścieżka</span></td><td data-l="Znaczenie"><span class="ph">[plik Excel z danymi do wpisania w formularz]</span></td><td data-l="Używany w"><code>[main.py:57]</code></td></tr>
+    <tr class="csec"><td colspan="4">[output]</td></tr>
+    <tr><td data-l="Klucz"><code>[report_db]</code></td><td class="val" data-l="Wartość"><code>[resources/report.db]</code> <span class="kv m">ścieżka</span></td><td data-l="Znaczenie"><span class="ph">[baza raportowa, wiersz po każdym rekordzie]</span></td><td data-l="Używany w"><code>[main.py:58]</code></td></tr>
+    <tr><td data-l="Klucz"><code>[account_states]</code></td><td class="val" data-l="Wartość"><code>[resources/acc_states.txt]</code> <span class="kv m">ścieżka</span></td><td data-l="Znaczenie"><span class="ph">[stany kont odczytane z ParaBank]</span> <span class="unc">wywnioskowane</span></td><td data-l="Używany w"><code>[main.py:59]</code></td></tr>
+    <tr class="csec"><td colspan="4">[parabank]</td></tr>
+    <tr><td data-l="Klucz"><code>[url]</code></td><td class="val" data-l="Wartość"><code>[https://parabank.parasoft.com/parabank/]</code> <span class="kv r">sieć</span></td><td data-l="Znaczenie"><span class="ph">[adres aplikacji bankowej]</span></td><td data-l="Używany w"><code>[main.py:139]</code></td></tr>
+    <tr><td data-l="Klucz"><code>[username]</code></td><td class="val" data-l="Wartość"><code>[robot]</code> <span class="kv m">konto</span></td><td data-l="Znaczenie"><span class="ph">[login robota w ParaBank]</span></td><td data-l="Używany w"><code>[main.py:142]</code></td></tr>
+    <tr><td data-l="Klucz"><code>[password_env]</code></td><td class="val" data-l="Wartość"><code>[FAKE_PASSWD]</code> <span class="kv r">zmienna środowiskowa</span></td><td data-l="Znaczenie"><span class="ph">[nazwa zmiennej z hasłem do ParaBank; brak zmiennej zatrzymuje robota]</span></td><td data-l="Używany w"><code>[main.py:135]</code>, <code>[main.py:137]</code></td></tr>
+    <tr><td data-l="Klucz"><code>[password]</code></td><td class="val" data-l="Wartość"><code>***</code> <span class="kv r">zamaskowane</span></td><td data-l="Znaczenie"><span class="ph">[przykład: hasło wpisane wprost w plik - narzędzie pokazuje tylko, że istnieje]</span></td><td data-l="Używany w"><span class="ph">[-]</span></td></tr>
+    <tr class="csec"><td colspan="4">[logger]</td></tr>
+    <tr><td data-l="Klucz"><code>[logs_dir]</code></td><td class="val" data-l="Wartość"><code>[logs]</code> <span class="kv m">ścieżka</span></td><td data-l="Znaczenie"><span class="ph">[katalog dziennych logów CSV]</span></td><td data-l="Używany w"><code>[main.py:54]</code></td></tr>
+    <tr><td data-l="Klucz"><code>[debug]</code></td><td class="val" data-l="Wartość"><code>[false]</code> <span class="kv m">przełącznik</span></td><td data-l="Znaczenie"><span class="ph">[true = także komunikaty DEBUG frameworku]</span></td><td data-l="Używany w"><code>[main.py:54]</code></td></tr>
+   </tbody>
+  </table></div>
+ </details>
+
+ <h2>Jak czytać ten przewodnik</h2>
+ <p class="note">Zacznij od tej zakładki: po niej uruchomisz robota. Potem diagram przepływu: po nim opowiesz, co robot robi. Resztę czytaj, gdy masz konkretne zadanie.</p>
+ <div class="cards">
+  <a href="#przeglad"><em>1 · instalacja</em><b>Przegląd i uruchomienie</b><span>Metryczka z konfiguracji, wymagania, dostępy, zależności do skopiowania, instalacja krok po kroku.</span></a>
+  <a href="#przeplyw"><em>2 · zrozumienie</em><b>Przepływ działania</b><span>Diagram całego procesu od startu do końca, pod nim każdy krok: co czyta, co robi, co zapisuje.</span></a>
+  <a href="#sciezki"><em>3 · szczegóły</em><b>Ścieżki procesu</b><span>Wszystkie możliwe ścieżki jako listy kroków: główna, alternatywne, błędy.</span></a>
+  <a href="#struktura"><em>4 · orientacja</em><b>Struktura projektu</b><span>Drzewo plików z opisami po najechaniu, zależności między modułami.</span></a>
+  <a href="#zmiany"><em>5 · zadanie</em><b>Zmiany i rozszerzenia</b><span>Przepisy: nowa strona, nowy format pliku wsadowego, zmiana reguły.</span></a>
+  <a href="#bledy"><em>6 · awaria</em><b>Błędy i naprawa</b><span>Objawy, przyczyny, gdzie szukać i jak naprawić.</span></a>
+  <a href="#deweloper"><em>7 · kod</em><b>Dla dewelopera</b><span>Architektura w pięciu zdaniach, kolejność czytania kodu, konwencje.</span></a>
+ </div>
+
+ <h2>Wejście i wyjście</h2>
+ <div class="io">
+  <div class="box"><h3>Wejście</h3><p class="note"><span class="ph">[dane wejściowe, np. plik Excel z lokalizacją]</span></p></div>
+  <div class="ar"></div>
+  <div class="core"><b>[Nazwa robota]</b><span>[technologia i framework, np. Python 3.12 · Roboforge · Selenium]</span></div>
+  <div class="ar"></div>
+  <div class="box"><h3>Wyjście</h3><p class="note"><span class="ph">[efekty, np. wpisy w aplikacji, raport w bazie, plik ze stanem]</span></p></div>
+ </div>
+
+ <h2>Wymagania i dostępy</h2>
+ <p class="note">Wszystko, czego robot potrzebuje poza samym kodem. Wartości haseł i kluczy nigdy nie trafiają do przewodnika, tylko nazwy zmiennych i miejsca, gdzie należy je ustawić.</p>
+ <div class="scroll"><table class="stack">
+  <thead><tr><th>Obszar</th><th>Wymaganie</th><th>Szczegóły</th></tr></thead>
+  <tbody>
+   <tr><td data-l="Obszar"><b>Python</b></td><td data-l="Wymaganie"><span class="ph">[wersja, np. 3.12]</span></td><td data-l="Szczegóły"><span class="ph">[skąd wiadomo: pyvenv.cfg, wymagania pakietów]</span></td></tr>
+   <tr><td data-l="Obszar"><b>System i aplikacje</b></td><td data-l="Wymaganie"><span class="ph">[np. Windows, Google Chrome, Excel]</span></td><td data-l="Szczegóły"><span class="ph">[np. sterownik przeglądarki zgodny z wersją Chrome]</span> <span class="unc">wywnioskowane</span></td></tr>
+   <tr><td data-l="Obszar"><b class="warn">Dostęp sieciowy</b></td><td data-l="Wymaganie"><span class="warn">[np. wymaga otwarcia ruchu HTTPS do rpachallenge.com i parabank.parasoft.com]</span></td><td data-l="Szczegóły"><span class="ph">[adresy, porty, VPN, proxy - z kodu i konfiguracji]</span></td></tr>
+   <tr><td data-l="Obszar"><b>Konta i hasła</b></td><td data-l="Wymaganie"><span class="ph">[np. konto w ParaBank]</span></td><td data-l="Szczegóły">Hasło w zmiennej środowiskowej <code>[NAZWA_ZMIENNEJ]</code> <span class="ph">[skąd: config.yml, klucz password_env]</span></td></tr>
+   <tr><td data-l="Obszar"><b>Pliki i katalogi</b></td><td data-l="Wymaganie"><span class="ph">[np. resources/in/challenge.xlsx]</span></td><td data-l="Szczegóły"><span class="ph">[kto dostarcza plik, kiedy, w jakim formacie]</span></td></tr>
+   <tr><td data-l="Obszar"><b>Pliki z sekretami</b></td><td data-l="Wymaganie"><code>[certs/client.pfx]</code></td><td data-l="Szczegóły">Tylko metadane, treści nie analizowano. <span class="ph">[do czego służy - jeśli wynika z kodu]</span></td></tr>
+  </tbody>
+ </table></div>
+
+ <h2>Zależności do skopiowania</h2>
+ <p class="note">Zawartość <code>[requirements.txt]</code> z projektu, przepisana przez narzędzie bez zmian (także gdy plik jest w UTF-16).</p>
+ <div class="cb"><pre>[pełna zawartość pliku zależności, np.:]
+selenium==4.27.1
+openpyxl==3.1.5
+-e git+https://github.com/[...]/roboforge.git#egg=roboforge</pre></div>
+
+ <h2>Instalacja i uruchomienie</h2>
+ <ol class="road">
+  <li><b>Pobranie kodu</b><span class="ph">[skąd: repozytorium, ścieżka]</span>
+   <div class="cb"><pre>git clone [adres repozytorium]
+cd [katalog projektu]</pre></div></li>
+  <li><b>Środowisko Python</b><span class="ph">[wersja i polecenia]</span>
+   <div class="cb"><pre>py -V:[wersja] -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt</pre></div></li>
+  <li><b>Hasła i zmienne środowiskowe</b><span class="ph">[które zmienne ustawić i gdzie - bez wartości]</span>
+   <div class="cb"><pre>[Environment]::SetEnvironmentVariable("[NAZWA_ZMIENNEJ]", "&lt;wartość&gt;", "User")</pre></div></li>
+  <li><b>Konfiguracja</b><span class="ph">[które klucze w pliku konfiguracji sprawdzić lub zmienić, np. adresy aplikacji, ścieżki plików]</span></li>
+  <li><b>Uruchomienie</b>
+   <div class="cb"><pre>[polecenie uruchomienia, np. python main.py]</pre></div></li>
+ </ol>
+
+ <h2>Jak sprawdzić, że działa</h2>
+ <ul class="ul">
+  <li><span class="ph">[obserwowalny efekt 1, np. w logs/ pojawia się plik z bieżącą datą]</span></li>
+  <li><span class="ph">[obserwowalny efekt 2, np. nowy wiersz w resources/report.db]</span></li>
+ </ul>
+
+ <h2>Pojęcia</h2>
+ <p class="note">Wyróżnione w tekście przewodnika pojęcia mają definicję także po najechaniu myszką.</p>
+ <dl class="gl">
+  <dt>[pojęcie biznesowe]</dt><dd><span class="ph">[definicja w kontekście tego robota]</span></dd>
+  <dt>[pojęcie techniczne]</dt><dd><span class="ph">[definicja, np. element frameworku]</span></dd>
+  <dt>Transakcja</dt><dd>Przykład: jeden wiersz pliku wejściowego przetwarzany w jednym obiegu metody <code>automation_process</code>.</dd>
+ </dl>
+</section>
+
+<!-- ====================== PRZEPŁYW DZIAŁANIA ====================== -->
+<section class="tab" id="przeplyw" hidden>
+ <h1>Przepływ działania</h1>
+ <p class="lead">Cały proces od startu do końca. Każdy klocek to jedna czynność robota opisana językiem biznesowo-technicznym. Najedź na klocek, aby zobaczyć moduł, funkcję, dane wejściowe i wyjściowe; kliknij, aby przejść do szczegółów kroku.</p>
+ <div class="legend">
+  <span><i class="mk rnd"></i>start / koniec</span>
+  <span><i class="mk"></i>czynność robota</span>
+  <span><i class="mk fill"></i>kontakt z systemem zewnętrznym</span>
+  <span><i class="mk dia"></i>decyzja</span>
+  <span><i class="mk loop"></i>powrót pętli</span>
+ </div>
+ <div class="fig" id="flowfig"><svg id="flow" role="img" aria-label="Diagram przepływu procesu robota"></svg></div>
+ <p class="note">Dane przykładowe. Układ (wiersze, kolumny, pętle) wylicza kod z grafu kroków zwróconego przez model i sprawdzonego pod kątem spójności.</p>
+
+ <h2>Krok po kroku</h2>
+ <div class="legend">
+  <span><span class="c f" style="padding:1px 8px">plik</span></span>
+  <span><span class="c env" style="padding:1px 8px">zmienna środ.</span></span>
+  <span><span class="c sys" style="padding:1px 8px">system zewn.</span></span>
+  <span><span class="c" style="padding:1px 8px">dane w pamięci</span></span>
+ </div>
+ <div class="fhead"><span>czyta</span><span>co się dzieje</span><span>zapisuje / zwraca</span></div>
+ <div id="flowrows"></div>
+</section>
+
+<!-- ====================== ŚCIEŻKI PROCESU ====================== -->
+<section class="tab" id="sciezki" hidden>
+ <h1>Ścieżki procesu</h1>
+ <p class="lead">Wszystkie ścieżki, którymi może pójść robot, jako listy kroków. Numery w kółkach odsyłają do klocków diagramu przepływu.</p>
+ <div class="paths">
+  <div class="path">
+   <h3>Ścieżka główna <span class="tagr" style="color:var(--ink);border-color:var(--ink)">sukces</span></h3>
+   <p class="when"><span class="ph">[kiedy: np. plik wejściowy poprawny, aplikacje dostępne]</span></p>
+   <ol class="pl">
+    <li>Wczytanie konfiguracji z <code>config.yml</code>. <a class="ref" href="#przeplyw">2</a></li>
+    <li>Otwarcie strony RPA Challenge i kliknięcie Start. <a class="ref" href="#przeplyw">3</a></li>
+    <li>Odczyt wierszy z pliku Excel. <a class="ref" href="#przeplyw">4</a></li>
+    <li>Dla każdego wiersza: <a class="ref" href="#przeplyw">5</a>
+     <ul><li>wypełnienie 7 pól formularza według etykiet, <a class="ref" href="#przeplyw">6</a></li><li>wysłanie formularza, <a class="ref" href="#przeplyw">7</a></li><li>wysyłka wiersza do bazy raportowej ze statusem OK. <a class="ref" href="#przeplyw">9</a></li></ul></li>
+    <li><span class="ph">[kolejne kroki...]</span></li>
+   </ol>
+  </div>
+  <div class="path">
+   <h3>[Ścieżka alternatywna] <span class="tagr">błąd biznesowy</span></h3>
+   <p class="when"><span class="ph">[kiedy: np. pole w wierszu puste - BusinessRuleException]</span></p>
+   <ol class="pl">
+    <li><span class="ph">[krok]</span> <a class="ref" href="#przeplyw">8</a></li>
+    <li><span class="ph">[krok: bez ponawiania, wiersz z błędem w raporcie]</span> <a class="ref" href="#przeplyw">10</a></li>
+   </ol>
+  </div>
+  <div class="path">
+   <h3>[Ścieżka awaryjna] <span class="tagr">błąd systemu</span></h3>
+   <p class="when"><span class="ph">[kiedy: np. strona nie odpowiada - inny wyjątek, ponawianie]</span></p>
+   <ol class="pl">
+    <li><span class="ph">[krok]</span></li>
+    <li><span class="ph">[krok: ile ponowień, co po ich wyczerpaniu]</span></li>
+   </ol>
+  </div>
+ </div>
+</section>
+
+<!-- ====================== STRUKTURA ====================== -->
+<section class="tab" id="struktura" hidden>
+ <h1>Struktura projektu</h1>
+ <p class="lead">Najedź na element, aby zobaczyć, czym jest i jaką ma rolę. Kliknięcie przypina opis.</p>
+ <div class="legend">
+  <span><i class="mk fill"></i>punkt wejścia</span>
+  <span><i class="mk"></i>kod robota</span>
+  <span><i class="mk cfg"></i>konfiguracja</span>
+  <span><i class="mk sec"></i>sekret: tylko metadane</span>
+ </div>
+ <div class="map">
+  <div class="grp">
+   <button class="it dir" data-w="[Katalog główny projektu]" data-r="[Skąd uruchamiać polecenia]">[nazwa-projektu]/</button>
+   <ul class="tr">
+    <li><button class="it" data-w="[Czym jest: np. punkt wejścia, klasa workera]" data-r="[Rola: np. łączy framework z modułami src/]"><i class="mk fill"></i>main.py</button></li>
+    <li><button class="it" data-w="[Plik konfiguracji]" data-r="[Najważniejsze klucze i ich znaczenie]"><i class="mk cfg"></i>config.yml</button></li>
+    <li><button class="it" data-w="[Lista zależności]" data-r="[Uwagi, np. kodowanie UTF-16, framework instalowany edytowalnie]"><i class="mk cfg"></i>requirements.txt</button></li>
+    <li><button class="it dir" data-w="[Moduły robota]" data-r="[Podział: jeden moduł na aplikację]">src/</button>
+     <ul class="tr">
+      <li><button class="it" data-w="[Page object strony A]" data-r="[Co automatyzuje, najważniejsze metody]"><i class="mk"></i>challange_page.py</button></li>
+      <li><button class="it" data-w="[Page object strony B]" data-r="[Co automatyzuje]"><i class="mk"></i>parabank_page.py</button></li>
+      <li><button class="it" data-w="[Obsługa raportu]" data-r="[Baza, tabela, kiedy zapis]"><i class="mk"></i>report.py</button></li>
+     </ul></li>
+    <li><button class="it dir" data-w="[Zasoby]" data-r="[Pliki wejściowe i wynikowe]">resources/</button></li>
+    <li><button class="it" data-w="Plik z sekretem. Treści nie analizowano." data-r="[Do czego służy - jeśli wynika z kodu]"><i class="mk sec"></i>certs/client.pfx</button></li>
+   </ul>
+  </div>
+  <div>
+   <h3>Zależności między modułami</h3>
+   <p class="note">Wyliczone z importów, bez modelu. Strzałka: moduł importuje moduł.</p>
+   <div class="depfig"><svg id="deps" role="img" aria-label="Graf zależności modułów"></svg></div>
+  </div>
+ </div>
+</section>
+
+<!-- ====================== ZMIANY I ROZSZERZENIA ====================== -->
+<section class="tab" id="zmiany" hidden>
+ <h1>Zmiany i rozszerzenia</h1>
+ <p class="lead">Przepisy na najbardziej prawdopodobne zmiany w tym robocie. Każdy przepis: kiedy go użyć, które pliki zmienić (czerwona ramka = nowy plik) i kroki w kolejności.</p>
+
+ <h2>Gdzie co zmienić</h2>
+ <div class="scroll"><table class="stack">
+  <thead><tr><th>Chcę zmienić…</th><th>Plik i miejsce</th><th>Uwagi</th></tr></thead>
+  <tbody>
+   <tr><td data-l="Chcę zmienić"><span class="ph">[np. adres aplikacji]</span></td><td data-l="Plik"><code>[config.yml: klucz]</code></td><td data-l="Uwagi"><span class="ph">[bez zmian w kodzie]</span></td></tr>
+   <tr><td data-l="Chcę zmienić"><span class="ph">[np. selektor przycisku]</span></td><td data-l="Plik"><code>[src/…py: stała / metoda]</code></td><td data-l="Uwagi"><span class="ph">[pułapka, np. strona zmienia kolejność pól]</span></td></tr>
+  </tbody>
+ </table></div>
+
+ <div class="recipe">
+  <h2>[Dodanie nowej strony lub aplikacji]</h2>
+  <p class="when"><span class="ph">[Kiedy: robot ma dodatkowo obsłużyć kolejny system]</span></p>
+  <div class="files"><span class="c new">[src/nowa_strona.py]</span><span class="c">[main.py]</span><span class="c">[config.yml]</span></div>
+  <ol class="road">
+   <li><b>[Krok 1]</b><span class="ph">[np. nowy page object na wzór istniejącego, z selektorami jako stałymi]</span></li>
+   <li><b>[Krok 2]</b><span class="ph">[np. adres w config.yml]</span></li>
+   <li><b>[Krok 3]</b><span class="ph">[np. wywołanie w automation_process / end_process]</span></li>
+   <li><b>Sprawdzenie</b><span class="ph">[jak przetestować zmianę]</span></li>
+  </ol>
+ </div>
+ <div class="recipe">
+  <h2>[Nowy format pliku wsadowego]</h2>
+  <p class="when"><span class="ph">[Kiedy: np. dane przychodzą w CSV zamiast Excel]</span></p>
+  <div class="files"><span class="c">[src/excel_tools.py]</span><span class="c">[main.py: get_data]</span></div>
+  <ol class="road"><li><b>[Krok]</b><span class="ph">[…]</span></li><li><b>Sprawdzenie</b><span class="ph">[…]</span></li></ol>
+ </div>
+ <div class="recipe">
+  <h2>[Zmiana reguły, np. algorytmu wyszukiwania]</h2>
+  <p class="when"><span class="ph">[Kiedy: …]</span></p>
+  <div class="files"><span class="c">[plik]</span></div>
+  <ol class="road"><li><b>[Krok]</b><span class="ph">[…]</span></li></ol>
+ </div>
+</section>
+
+<!-- ====================== BŁĘDY I NAPRAWA ====================== -->
+<section class="tab" id="bledy" hidden>
+ <h1>Błędy i naprawa</h1>
+ <p class="lead">Najbardziej prawdopodobne awarie wynikające z kodu: jak je rozpoznać, gdzie szukać przyczyny i jak naprawić.</p>
+ <div class="scroll"><table class="stack">
+  <thead><tr><th>Objaw</th><th>Prawdopodobna przyczyna</th><th>Gdzie szukać</th><th>Jak naprawić</th></tr></thead>
+  <tbody>
+   <tr><td data-l="Objaw"><span class="ph">[np. TimeoutException przy logowaniu]</span></td><td data-l="Przyczyna"><span class="ph">[np. strona niedostępna, brak ruchu sieciowego]</span></td><td data-l="Gdzie szukać"><code>[logs/*.csv, src/parabank_page.py: login]</code></td><td data-l="Jak naprawić"><span class="ph">[np. sprawdzić dostęp sieciowy, zwiększyć czas oczekiwania w …]</span></td></tr>
+   <tr><td data-l="Objaw"><span class="ph">[np. SessionNotCreatedException]</span></td><td data-l="Przyczyna"><span class="ph">[np. sterownik niezgodny z wersją przeglądarki]</span> <span class="unc">wywnioskowane</span></td><td data-l="Gdzie szukać"><code>[…]</code></td><td data-l="Jak naprawić"><span class="ph">[…]</span></td></tr>
+   <tr><td data-l="Objaw"><span class="ph">[np. KeyError przy odczycie wiersza]</span></td><td data-l="Przyczyna"><span class="ph">[np. zmienione nagłówki w pliku Excel]</span></td><td data-l="Gdzie szukać"><code>[…]</code></td><td data-l="Jak naprawić"><span class="ph">[…]</span></td></tr>
+  </tbody>
+ </table></div>
+ <h2>Znane ograniczenia i pułapki</h2>
+ <ul class="ul">
+  <li><span class="warn">[pułapka]</span> <span class="ph">[np. wylogowanie poza blokiem finally - po błędzie sesja zostaje otwarta]</span></li>
+  <li><span class="ph">[ograniczenie, np. robot zakłada stałą kolejność kolumn]</span></li>
+ </ul>
+</section>
+
+<!-- ====================== DLA DEWELOPERA ====================== -->
+<section class="tab" id="deweloper" hidden>
+ <h1>Dla dewelopera</h1>
+ <p class="lead">Od ogółu do szczegółów: jak ten kod jest zbudowany i od czego zacząć lekturę.</p>
+ <h2>Całość w pięciu zdaniach</h2>
+ <ol class="ul">
+  <li><span class="ph">[zdanie 1: co uruchamia proces]</span></li>
+  <li><span class="ph">[zdanie 2: skąd dane]</span></li>
+  <li><span class="ph">[zdanie 3: główna pętla]</span></li>
+  <li><span class="ph">[zdanie 4: obsługa błędów]</span></li>
+  <li><span class="ph">[zdanie 5: zakończenie i wyniki]</span></li>
+ </ol>
+ <h2>Warstwy</h2>
+ <div class="layers">
+  <div class="ly"><b>Framework</b><div><span class="c">[roboforge: _Worker, Launcher]</span></div></div>
+  <div class="ly"><b>Proces</b><div><span class="c">[main.py: MinimalWebWorker]</span></div></div>
+  <div class="ly"><b>Aplikacje</b><div><span class="c">[src/challange_page.py]</span><span class="c">[src/parabank_page.py]</span></div></div>
+  <div class="ly"><b>Dane i raport</b><div><span class="c">[src/excel_tools.py]</span><span class="c">[src/report.py]</span></div></div>
+ </div>
+ <h2>Kolejność czytania kodu</h2>
+ <p class="note">Szkic wyliczony z importów (od punktu wejścia w głąb), z uzasadnieniem przy każdym pliku.</p>
+ <ol class="road">
+  <li><b><code>[main.py]</code></b><span class="ph">[dlaczego najpierw: spis treści procesu]</span></li>
+  <li><b><code>[src/…]</code></b><span class="ph">[dlaczego w tej kolejności]</span></li>
+  <li><b><code>[src/…]</code></b><span class="ph">[…]</span></li>
+ </ol>
+ <h2>Konwencje w kodzie</h2>
+ <ul class="ul">
+  <li><span class="ph">[np. selektory jako stałe klasy page objectu]</span></li>
+  <li><span class="ph">[np. błędy biznesowe przez BusinessRuleException]</span></li>
+ </ul>
+ <h2>Zależności zewnętrzne</h2>
+ <div class="scroll"><table class="stack">
+  <thead><tr><th>Pakiet</th><th>Do czego służy w tym robocie</th></tr></thead>
+  <tbody><tr><td data-l="Pakiet"><code>[selenium]</code></td><td data-l="Do czego"><span class="ph">[sterowanie przeglądarką w src/*_page.py]</span></td></tr></tbody>
+ </table></div>
+</section>
+</main>
+
+<!-- DANE PRZYKŁADOWE: w docelowym przewodniku wstawia je renderer z guide_content.json i dependency_graph.json -->
+<script type="application/json" id="flow-data">
+{"nodes":[
+ {"id":"n1","kind":"term","label":"Start","desc":"Uruchomienie python main.py; framework tworzy workera.","module":"main.py","func":"Launcher.run()","reads":["config.yml"],"writes":[]},
+ {"id":"n2","kind":"step","label":"Wczytanie konfiguracji","desc":"Odczyt adresów aplikacji, ścieżek plików i nazwy zmiennej z hasłem.","module":"main.py","func":"MinimalWebWorker.__init__()","reads":["config.yml"],"writes":["konfiguracja w pamięci"]},
+ {"id":"n3","kind":"sys","label":"Otwarcie RPA Challenge","desc":"Start przeglądarki, wejście na stronę i kliknięcie Start.","module":"src/challange_page.py","func":"ChallengePage.start()","reads":["adres z config.yml"],"writes":["sesja przeglądarki"]},
+ {"id":"n4","kind":"step","label":"Pobranie wierszy z Excela","desc":"Odczyt wierszy pliku wejściowego jako listy słowników.","module":"src/excel_tools.py","func":"read_rows()","reads":["resources/in/challenge.xlsx"],"writes":["lista transakcji"]},
+ {"id":"n5","kind":"dec","label":"Jest kolejny wiersz?","desc":"Framework woła automation_process raz na każdy wiersz.","module":"roboforge","func":"_Worker (pętla frameworku)","reads":["lista transakcji"],"writes":[]},
+ {"id":"n6","kind":"sys","label":"Wypełnienie formularza","desc":"7 pól wyszukiwanych po etykietach, bo strona przestawia pola po każdym wysłaniu.","module":"src/challange_page.py","func":"fill_form()","reads":["wiersz"],"writes":["pola formularza"]},
+ {"id":"n7","kind":"dec","label":"Wysłanie się udało?","desc":"Wyjątek w automation_process przekazuje sterowanie do on_error.","module":"main.py","func":"automation_process()","reads":[],"writes":[]},
+ {"id":"n8","kind":"step","label":"Obsługa błędu wiersza","desc":"Błąd biznesowy bez ponawiania, inny wyjątek ponawiany przez framework.","module":"main.py","func":"on_error()","reads":["wyjątek"],"writes":[]},
+ {"id":"n9","kind":"sys","label":"Wysyłka wiersza do bazy raportowej","desc":"Wpis statusu transakcji do tabeli raportu.","module":"src/report.py","func":"Report.add()","reads":["wiersz, status"],"writes":["resources/report.db"]},
+ {"id":"n10","kind":"sys","label":"Odczyt wyniku i zamknięcie strony","desc":"Po ostatnim wierszu: odczyt wyniku RPA Challenge, zamknięcie przeglądarki.","module":"main.py","func":"end_process()","reads":["strona wyniku"],"writes":["log"]},
+ {"id":"n11","kind":"sys","label":"Zapis salda z ParaBank","desc":"Logowanie, odczyt salda, dopisanie do pliku stanu.","module":"src/parabank_page.py","func":"login(), get_total_balance()","reads":["zmienna środowiskowa z hasłem"],"writes":["resources/acc_states.txt"]},
+ {"id":"n12","kind":"term","label":"Koniec","desc":"Framework kończy proces.","module":"roboforge","func":"Launcher","reads":[],"writes":[]}
+],
+"edges":[
+ {"from":"n1","to":"n2"},{"from":"n2","to":"n3"},{"from":"n3","to":"n4"},{"from":"n4","to":"n5"},
+ {"from":"n5","to":"n6","label":"tak"},{"from":"n5","to":"n10","label":"nie","kind":"branch"},
+ {"from":"n6","to":"n7"},{"from":"n7","to":"n9","label":"tak"},{"from":"n7","to":"n8","label":"nie","kind":"branch"},
+ {"from":"n8","to":"n9","kind":"join"},
+ {"from":"n9","to":"n5","label":"następny wiersz","kind":"loop"},
+ {"from":"n10","to":"n11"},{"from":"n11","to":"n12"}
+],
+"layout":{"n1":[0,0],"n2":[1,0],"n3":[2,0],"n4":[3,0],"n5":[4,0],"n6":[5,0],"n7":[6,0],"n8":[7,1],"n9":[8,0],"n10":[9,0],"n11":[10,0],"n12":[11,0]}
+}
+</script>
+<script type="application/json" id="deps-data">
+{"nodes":[{"id":"main.py","entry":true},{"id":"src/challange_page.py"},{"id":"src/parabank_page.py"},{"id":"src/excel_tools.py"},{"id":"src/report.py"},{"id":"src/robot_logger.py"}],
+ "edges":[["main.py","src/challange_page.py"],["main.py","src/parabank_page.py"],["main.py","src/excel_tools.py"],["main.py","src/report.py"],["src/report.py","src/robot_logger.py"]]}
+</script>
+<script>
+{
+ const reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+ const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+ /* ---------- router zakładek ---------- */
+ const tabs=[...document.querySelectorAll('.tab')];
+ const links=[...document.querySelectorAll('#nav > a')];
+ const route=()=>{
+  const id=decodeURIComponent(location.hash.slice(1))||'przeglad';
+  let el=document.getElementById(id),tab=null,target=null;
+  if(el&&el.classList.contains('tab'))tab=el;else if(el){tab=el.closest('.tab');target=el}
+  if(!tab)tab=tabs[0];
+  tabs.forEach(t=>{t.hidden=t!==tab});
+  links.forEach(a=>{if(a.getAttribute('href')==='#'+tab.id)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
+  hideTip(true);
+  requestAnimationFrame(()=>{drawFlow();drawDeps();if(target)target.scrollIntoView({block:'start'});else window.scrollTo(0,0)});
+ };
+ /* ---------- podpowiedzi ---------- */
+ const tip=document.getElementById('tip');let pinned=null;
+ const place=el=>{tip.hidden=false;const r=el.getBoundingClientRect(),tw=tip.offsetWidth,th=tip.offsetHeight;let x=r.left,y=r.bottom+8;if(x+tw>innerWidth-12)x=innerWidth-tw-12;if(x<12)x=12;if(y+th>innerHeight-12)y=r.top-th-8;if(y<12)y=12;tip.style.left=x+'px';tip.style.top=y+'px'};
+ function hideTip(force){if(pinned&&!force)return;if(pinned)pinned.classList.remove('on');pinned=null;tip.classList.remove('pin');tip.hidden=true}
+ const showItem=el=>{const n=el.cloneNode(true);n.querySelectorAll('i').forEach(i=>i.remove());tip.innerHTML='<b>'+esc(n.textContent.trim())+'</b><p><span>Czym jest</span>'+esc(el.dataset.w)+'</p><p><span>Rola w projekcie</span>'+esc(el.dataset.r)+'</p>';place(el)};
+ document.querySelectorAll('.it[data-w]').forEach(el=>{
+  el.addEventListener('mouseenter',()=>{if(!pinned)showItem(el)});
+  el.addEventListener('mouseleave',()=>{if(!pinned)hideTip()});
+  el.addEventListener('focus',()=>{if(!pinned)showItem(el)});
+  el.addEventListener('blur',()=>{if(!pinned)hideTip()});
+  el.addEventListener('click',ev=>{ev.stopPropagation();if(pinned===el){hideTip(true);return}if(pinned)pinned.classList.remove('on');pinned=el;el.classList.add('on');showItem(el);tip.classList.add('pin')});
+ });
+ document.addEventListener('click',ev=>{if(pinned&&!tip.contains(ev.target))hideTip(true)});
+ document.addEventListener('keydown',ev=>{if(ev.key==='Escape')hideTip(true)});
+ window.addEventListener('scroll',()=>{if(pinned&&pinned.classList)showItem(pinned);else hideTip()},{passive:true});
+ /* ---------- przyciski kopiowania ---------- */
+ document.querySelectorAll('.cb').forEach(box=>{const b=document.createElement('button');b.className='cp';b.type='button';b.textContent='Kopiuj';
+  b.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(box.querySelector('pre').textContent);b.textContent='Skopiowano'}catch(e){b.textContent='Zaznacz i skopiuj'}setTimeout(()=>{b.textContent='Kopiuj'},1600)});box.appendChild(b)});
+ /* ---------- dane przepływu ---------- */
+ const flow=JSON.parse(document.getElementById('flow-data').textContent);
+ const byId={};flow.nodes.forEach((n,i)=>{n.num=i+1;byId[n.id]=n});
+ const kindName={term:'start / koniec',step:'czynność robota',sys:'kontakt z systemem zewnętrznym',dec:'decyzja'};
+ const showFlow=g=>{const n=byId[g.dataset.go];if(!n)return;
+  tip.innerHTML='<b>'+n.num+'. '+esc(n.label)+'</b><p class="tk">'+esc(kindName[n.kind])+'</p><p>'+esc(n.desc)+'</p><p><span>Moduł i funkcja</span><code>'+esc(n.module)+'</code> · <code>'+esc(n.func)+'</code></p>'+(n.reads.length?'<p><span>Czyta</span>'+n.reads.map(esc).join(', ')+'</p>':'')+(n.writes.length?'<p><span>Zapisuje / zwraca</span>'+n.writes.map(esc).join(', ')+'</p>':'')+'<p class="tk">Kliknij, aby przejść do szczegółów kroku.</p>';place(g)};
+ /* ---------- diagram przepływu (SVG) ---------- */
+ const svg=document.getElementById('flow');
+ const defs='<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#111"/></marker><marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e4002b"/></marker></defs>';
+ function drawFlow(){
+  if(svg.closest('.tab').hidden)return;
+  const W=svg.clientWidth||svg.parentNode.clientWidth;if(!W)return;
+  const rowH=78,top=26,rows=Math.max(...Object.values(flow.layout).map(p=>p[0]))+1,H=top*2+(rows-1)*rowH+40;
+  svg.setAttribute('viewBox',`0 0 ${W} ${H}`);svg.style.height=H+'px';
+  const narrow=W<640,bw=narrow?W*.44:Math.min(300,W*.4),bh=44,colX=narrow?[W*.29,W*.76]:[W*.36,W*.74];
+  const P=id=>{const [r,c]=flow.layout[id];return{x:colX[c],y:top+20+r*rowH}};
+  let e='',n='';
+  const bottom=(id)=>{const p=P(id),k=byId[id].kind;return{x:p.x,y:p.y+(k==='dec'?bh/2+6:bh/2)}};
+  const topOf=(id)=>{const p=P(id),k=byId[id].kind;return{x:p.x,y:p.y-(k==='dec'?bh/2+6:bh/2)}};
+  flow.edges.forEach(ed=>{
+   const a=P(ed.from),b=P(ed.to),kind=ed.kind||'normal';
+   if(kind==='loop'){
+    const x0=a.x+bw/2,x1=b.x+bw/2+(byId[ed.to].kind==='dec'?-bw/2+bw*.3:0),off=Math.min(70,W*.08),xr=Math.max(x0,x1)+off;
+    e+=`<path class="lp" marker-end="url(#ahr)" d="M${x0},${a.y}C${xr},${a.y} ${xr},${b.y} ${x1+6},${b.y}"/>`;
+    if(ed.label)e+=`<text class="lblr" x="${x0+10}" y="${a.y+bh/2+12}" style="text-anchor:start">${esc(ed.label)}</text>`;
+   }else if(a.x!==b.x){
+    const s=byId[ed.from].kind==='dec'?{x:a.x+bw*.36,y:a.y}:{x:a.x+(b.x>a.x?bw/2:-bw/2),y:a.y};
+    const t=b.y>a.y?topOf(ed.to):{x:b.x,y:b.y};
+    if(b.x>a.x){e+=`<path class="edge" marker-end="url(#ah)" d="M${s.x},${s.y}H${t.x}V${t.y}"/>`;if(ed.label)e+=`<text class="lbl" x="${s.x+10}" y="${s.y-12}" style="text-anchor:start">${esc(ed.label)}</text>`}
+    else{const tt=topOf(ed.to);const tx=tt.x+bw*.25;e+=`<path class="edge" marker-end="url(#ah)" d="M${a.x},${bottom(ed.from).y}V${tt.y-14}H${tx}V${tt.y}"/>`}
+   }else{
+    const s=bottom(ed.from),t=topOf(ed.to),ra=flow.layout[ed.from][0],rb=flow.layout[ed.to][0],cc=flow.layout[ed.from][1];
+    const blocked=Object.entries(flow.layout).some(([id,q])=>q[1]===cc&&q[0]>Math.min(ra,rb)&&q[0]<Math.max(ra,rb));
+    if(blocked){const xb=a.x-bw/2-26;e+=`<path class="edge" marker-end="url(#ah)" d="M${a.x-bw*.36},${a.y}H${xb}V${t.y-12}H${b.x-bw*.25}V${t.y}"/>`;if(ed.label)e+=`<text class="lbl" x="${xb-2}" y="${(a.y+t.y)/2}" style="text-anchor:end">${esc(ed.label)}</text>`}
+    else{e+=`<path class="edge" marker-end="url(#ah)" d="M${s.x},${s.y}V${t.y}"/>`;if(ed.label)e+=`<text class="lbl" x="${s.x+16}" y="${(s.y+t.y)/2}" style="text-anchor:start">${esc(ed.label)}</text>`}
+   }
+  });
+  const lines=(t,maxW,fs)=>{const per=Math.max(6,Math.floor(maxW/(fs*.56)));if(t.length<=per)return[t];const w=t.split(' ');let a='',b='';for(const x of w){if(!b&&(a+' '+x).trim().length<=per)a=(a+' '+x).trim();else b=(b+' '+x).trim()}return b?[a,b]:[a]};
+  flow.nodes.forEach(nd=>{const p=P(nd.id),fs=narrow?12:14;let shape,cls;
+   if(nd.kind==='dec'){const hw=bw*.42,hh=bh/2+6;shape=`<polygon class="n-dec" points="${p.x},${p.y-hh} ${p.x+hw},${p.y} ${p.x},${p.y+hh} ${p.x-hw},${p.y}"/>`;cls='t-dec'}
+   else{const rx=nd.kind==='term'?22:3;shape=`<rect x="${p.x-bw/2}" y="${p.y-bh/2}" width="${bw}" height="${bh}" rx="${rx}" class="${nd.kind==='sys'?'n-sys':nd.kind==='term'?'n-term':'n-step'}"/>`;cls=nd.kind==='sys'?'t-sys':'t-step'}
+   const numCls=nd.kind==='sys'?'t-numw':'t-num';
+   n+=`<g data-go="${nd.id}" tabindex="0" role="button" aria-label="${esc(nd.num+'. '+nd.label)}: szczegóły">${shape}${lines(nd.label,nd.kind==='dec'?bw*.62:bw-30,fs).map((t,k,a)=>`<text x="${nd.kind==='dec'?p.x:p.x+9}" y="${p.y+(k-(a.length-1)/2)*(fs+2)}" class="${cls}" font-size="${fs}">${esc(t)}</text>`).join('')}${nd.kind!=='dec'?`<text x="${p.x-bw/2+12}" y="${p.y}" class="${numCls}">${nd.num}</text>`:''}</g>`});
+  svg.innerHTML=defs+e+n;
+ }
+ const goRow=id=>{hideTip(true);const r=document.getElementById('row-'+id);if(!r)return;document.querySelectorAll('.row.hl').forEach(x=>x.classList.remove('hl'));r.classList.add('hl');r.scrollIntoView({behavior:reduce?'auto':'smooth',block:'center'})};
+ svg.addEventListener('click',ev=>{const g=ev.target.closest('[data-go]');if(g){ev.stopPropagation();goRow(g.dataset.go)}});
+ svg.addEventListener('mouseover',ev=>{const g=ev.target.closest('[data-go]');if(g&&!pinned)showFlow(g)});
+ svg.addEventListener('mouseout',ev=>{const g=ev.target.closest('[data-go]');if(g&&!g.contains(ev.relatedTarget)&&!pinned)hideTip()});
+ svg.addEventListener('focusin',ev=>{const g=ev.target.closest('[data-go]');if(g&&!pinned)showFlow(g)});
+ svg.addEventListener('focusout',()=>{if(!pinned)hideTip()});
+ svg.addEventListener('keydown',ev=>{const g=ev.target.closest('[data-go]');if(g&&(ev.key==='Enter'||ev.key===' ')){ev.preventDefault();goRow(g.dataset.go)}});
+ /* ---------- krok po kroku (z tych samych danych) ---------- */
+ const chip=(t,cls)=>`<div class="c ${cls||''}">${esc(t)}</div>`;
+ const isFile=t=>/[\/\\]|\.\w{2,4}\b/.test(t)&&!/ /.test(t.split(',')[0].trim().replace(/\s.*/,''))||/\.(yml|yaml|json|xlsx|db|txt|csv)\b/.test(t);
+ const rowsHtml=flow.nodes.map((nd,i)=>{
+  const ins=nd.reads.map(t=>chip(t,isFile(t)?'f':'')).join(''),outs=nd.writes.map(t=>chip(t,isFile(t)?'f':'')).join('');
+  const out=flow.edges.filter(e=>e.from===nd.id);
+  const decOut=nd.kind==='dec'?'<div class="dec-out">'+out.map(e=>`<span>${esc(e.label||'')} → ${byId[e.to].num}</span>`).join('')+'</div>':'';
+  const loop=out.find(e=>e.kind==='loop');
+  const nextTxt=loop?`<div class="down"><div class="v loop">${esc(loop.label)} → krok ${byId[loop.to].num}</div></div>`:(i<flow.nodes.length-1?'<div class="down"><div class="v"></div></div>':'');
+  return `<div class="row" id="row-${nd.id}"><div class="ins">${ins}</div><div class="ar${ins?'':' none'}"></div><div class="node ${nd.kind==='sys'?'sys':nd.kind==='dec'?'dec':''}"><div class="nh"><span class="num">${nd.num}</span><b>${esc(nd.label)}</b><code>${esc(nd.module)}</code></div><p>${esc(nd.desc)}</p><ol class="calls"><li>${esc(nd.func)}</li></ol>${decOut}</div><div class="ar${outs?'':' none'}"></div><div class="outs">${outs}</div></div>${nextTxt}`;
+ }).join('');
+ document.getElementById('flowrows').innerHTML=rowsHtml;
+ /* ---------- graf zależności ---------- */
+ const deps=JSON.parse(document.getElementById('deps-data').textContent);
+ const dsvg=document.getElementById('deps');
+ function drawDeps(){
+  if(dsvg.closest('.tab').hidden)return;
+  const W=dsvg.clientWidth||dsvg.parentNode.clientWidth;if(!W)return;
+  const depth={};const entry=deps.nodes.find(n=>n.entry);depth[entry.id]=0;
+  for(let k=0;k<deps.nodes.length;k++)deps.edges.forEach(([a,b])=>{if(depth[a]!=null&&(depth[b]==null||depth[b]<depth[a]+1)&&depth[a]+1<deps.nodes.length)depth[b]=depth[a]+1});
+  deps.nodes.forEach(n=>{if(depth[n.id]==null)depth[n.id]=1});
+  const layers={};deps.nodes.forEach(n=>{(layers[depth[n.id]]=layers[depth[n.id]]||[]).push(n)});
+  const L=Object.keys(layers).length,maxN=Math.max(...Object.values(layers).map(l=>l.length));
+  const rowH=40,H=Math.max(120,maxN*rowH+30);dsvg.setAttribute('viewBox',`0 0 ${W} ${H}`);dsvg.style.height=H+'px';
+  const longest=Math.max(...deps.nodes.map(n=>n.id.split('/').pop().length)),bw=Math.min(longest*8+20,(W-20)/L-36),bh=28,pos={};
+  Object.entries(layers).forEach(([d,l])=>{l.forEach((n,i)=>{pos[n.id]={x:10+bw/2+d*((W-20-bw)/Math.max(1,L-1)),y:(H-(l.length-1)*rowH)/2+i*rowH}})});
+  let e='',s='';
+  deps.edges.forEach(([a,b])=>{const p=pos[a],q=pos[b],mx=(p.x+q.x)/2;e+=`<path class="edge" marker-end="url(#ah2)" d="M${p.x+bw/2},${p.y}C${mx},${p.y} ${mx},${q.y} ${q.x-bw/2-2},${q.y}"/>`});
+  deps.nodes.forEach(n=>{const p=pos[n.id],label=n.id.split('/').pop();s+=`<rect x="${p.x-bw/2}" y="${p.y-bh/2}" width="${bw}" height="${bh}" rx="2" class="${n.entry?'n-entry':'n-mod'}"/><text x="${p.x}" y="${p.y}" class="${n.entry?'t-entry':'t-mod'}">${esc(label)}</text>`});
+  dsvg.innerHTML='<defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#111"/></marker></defs>'+e+s;
+ }
+ new ResizeObserver(()=>{drawFlow();drawDeps()}).observe(document.querySelector('main'));
+ window.addEventListener('hashchange',route);
+ route();
+}
+</script>
+</body>
+</html>
