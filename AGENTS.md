@@ -77,8 +77,15 @@ llm:
 1. **Moduły uruchamiamy przez `-m`** z katalogu głównego, np. `python -m dev_agents.config`. Wtedy importy modułów projektu działają bez instalowania pakietu.
 2. **Agent = czysta funkcja + cienki węzeł.** Logikę da się wywołać bez grafu; węzeł grafu tylko ją opakowuje:
    ```python
-   def plan(project_map: _schemas.ProjectMap, ctx: _context.RunContext) -> _schemas.Plan: ...   # logika
-   def run(state: _state.DocState, runtime: Runtime[_context.RunContext]) -> dict:              # węzeł
+   def plan(                                  # logika
+       project_map: _schemas.ProjectMap,
+       ctx: _context.RunContext,
+   ) -> _schemas.Plan: ...
+
+   def run(                                   # węzeł
+       state: _state.DocState,
+       runtime: Runtime[_context.RunContext],
+   ) -> dict:
        return {"plan": plan(state["project_map"], runtime.context)}
    ```
 3. **Pliki czytamy zawsze z `encoding="utf-8"`**; obce pliki (analizowane projekty) dodatkowo z `errors="replace"` i z rozpoznawaniem BOM (UTF-8 i UTF-16 - np. `requirements.txt` z `pip freeze` w Windows PowerShell 5.1 jest w UTF-16). W kodzie i plikach repo używamy zwykłego myślnika `-` (bez typograficznych półpauz i pauz).
@@ -134,7 +141,10 @@ llm:
    - dalej, gdy potrzebne: argumenty i wynik, jeśli nie są oczywiste z nazw i typów.
    **Nie piszemy w docstringach, gdzie funkcja jest wołana.**
    ```python
-   def _is_project_module(root: str, module: str) -> bool:
+   def _is_project_module(
+       root: str,
+       module: str,
+   ) -> bool:
        """Sprawdza, czy moduł o podanej pełnej nazwie (np. 'src.report') istnieje w katalogu projektu jako plik .py lub folder.
 
        Po co: od tego zależy, czy import trafi do grupy modułów projektu, czy bibliotek.
@@ -165,6 +175,19 @@ llm:
    - Funkcja testowa nazywa się `manual_test()` i nie ma podłogi (i tak nie da się jej zaimportować). Każdy moduł powinien taką mieć.
    - Wyjątki zgłasza inżynier: `__init__.py` i pliki bez logiki, w których test byłby sztuczny. Moduł z `main()` nie potrzebuje osobnego testu - jego uruchomienie jest testem.
    - **Kod w bloku testowym nie importuje własnego modułu.** Uruchomiony moduł działa jako `__main__`; ponowny import pod prawdziwą nazwą tworzy drugą kopię modułu, a klasy z obu kopii są dla Pythona różne (np. `isinstance` daje `False`).
+9. **Każdy parametr definicji funkcji w osobnej linii** - także wtedy, gdy parametr jest jeden. Po każdym parametrze przecinek (także po ostatnim), nawias zamykający z typem wyniku w osobnej linii:
+   ```python
+   def invoke_structured(
+       model: BaseChatModel,
+       schema: type[pydantic.BaseModel],
+       method: str,
+       messages: list[BaseMessage],
+       attempts: int = 2,
+   ) -> pydantic.BaseModel:
+   ```
+   - Dotyczy funkcji, metod (`self` i `cls` też w osobnej linii) i funkcji w bloku testowym. Funkcja bez parametrów zostaje w jednej linii: `def main() -> None:`.
+   - Dotyczy tylko definicji - wywołania funkcji piszemy normalnie.
+   - Po co: sygnatura czyta się jak lista, każdy parametr ma miejsce na adnotację typu i wartość domyślną, a dodanie lub usunięcie parametru zmienia w diffie jedną linię.
 
 ## Nie proponuj bez wyraźnej prośby
 

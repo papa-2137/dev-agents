@@ -83,7 +83,9 @@ class AppConfig(BaseModel):
 # --- Sprawdzenia i przetwarzanie ---
 
 
-def _check_agent_profiles(app_config: AppConfig) -> None:
+def _check_agent_profiles(
+    app_config: AppConfig,
+) -> None:
     """Sprawdza, czy każdy agent z llm.agents wskazuje profil istniejący w llm.profiles; przy błędzie rzuca ValueError.
 
     Po co: literówka w nazwie profilu wyszłaby inaczej dopiero przy tworzeniu modelu dla agenta,
@@ -98,7 +100,9 @@ def _check_agent_profiles(app_config: AppConfig) -> None:
             raise ValueError(komunikat_bledu)
 
 
-def _check_structured_output_methods(app_config: AppConfig) -> None:
+def _check_structured_output_methods(
+    app_config: AppConfig,
+) -> None:
     """Sprawdza, czy metoda structured output każdego profilu jest jedną z obsługiwanych; przy błędzie rzuca ValueError.
 
     Po co: literówka w nazwie metody (np. 'json_shema') wyszłaby inaczej dopiero przy pierwszym
@@ -114,7 +118,10 @@ def _check_structured_output_methods(app_config: AppConfig) -> None:
             raise ValueError(komunikat_bledu)
 
 
-def _resolve_paths(paths: PathsConfig, config_dir: str) -> None:
+def _resolve_paths(
+    paths: PathsConfig,
+    config_dir: str,
+) -> None:
     """Zamienia ścieżki z sekcji paths na bezwzględne: względne liczy od katalogu configu, bezwzględne zostawia.
 
     Po co: reszta narzędzia dostaje jednoznaczne ścieżki i działa tak samo bez względu na to,
@@ -126,7 +133,10 @@ def _resolve_paths(paths: PathsConfig, config_dir: str) -> None:
     paths.knowledge_base = os.path.abspath(os.path.join(config_dir, paths.knowledge_base))
 
 
-def _build_config(raw_config: dict, config_dir: str) -> AppConfig:
+def _build_config(
+    raw_config: dict,
+    config_dir: str,
+) -> AppConfig:
     """Zamienia słownik wczytany z YAML-a na AppConfig, sprawdza profile agentów i metody, rozwiązuje ścieżki.
 
     Po co: oddziela budowę configu od czytania pliku - test ręczny sprawdza na niej celowo zepsute
@@ -145,7 +155,9 @@ def _build_config(raw_config: dict, config_dir: str) -> AppConfig:
 # --- Wczytywanie ---
 
 
-def load_config(path: str) -> AppConfig:
+def load_config(
+    path: str,
+) -> AppConfig:
     """Wczytuje config.yaml z podanej ścieżki i zwraca sprawdzony AppConfig ze ścieżkami bezwzględnymi.
 
     Po co: jedyne wejście do konfiguracji dla całego narzędzia - zamiast surowego słownika każdy moduł
@@ -164,14 +176,19 @@ def load_config(path: str) -> AppConfig:
 if __name__ == "__main__":
     import copy
 
-    def _print_config(app_config: AppConfig) -> None:
+    def _print_config(
+        app_config: AppConfig,
+    ) -> None:
         """Wypisuje config jako JSON z wcięciami.
 
         Po co: widać dokładnie to, co dostaje reszta narzędzia, w tym ścieżki bezwzględne.
         """
         print(app_config.model_dump_json(indent=2))
 
-    def _print_error(title: str, error: Exception) -> None:
+    def _print_error(
+        title: str,
+        error: Exception,
+    ) -> None:
         """Wypisuje tytuł przypadku testowego i komunikat błędu, który zgłosił config.
 
         Po co: test pokazuje, czy komunikat jest czytelny dla osoby, która popełniła błąd w configu.
@@ -179,7 +196,11 @@ if __name__ == "__main__":
         print(f"\n--- {title} ---")
         print(f"{type(error).__name__}: {error}")
 
-    def _try_broken_config(title: str, raw_config: dict, config_dir: str) -> None:
+    def _try_broken_config(
+        title: str,
+        raw_config: dict,
+        config_dir: str,
+    ) -> None:
         """Buduje config z celowo zepsutej kopii i wypisuje zgłoszony błąd (albo informację, że błędu nie było).
 
         Po co: sprawdzenie komunikatów błędów bez ręcznego psucia config.yaml.

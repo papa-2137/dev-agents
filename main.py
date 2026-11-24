@@ -26,7 +26,11 @@ import dev_agents.config as _config
 # --- Wyświetlanie ---
 
 
-def _print_summary(config_path: str, app_config: _config.AppConfig, project_path: str) -> None:
+def _print_summary(
+    config_path: str,
+    app_config: _config.AppConfig,
+    project_path: str,
+) -> None:
     """Wypisuje podsumowanie: plik configu, agentów z profilem, modelem i metodą, katalogi i projekt (jeśli podany).
 
     Po co: widoczny efekt uruchomienia - od razu widać, który model dostanie który agent,
