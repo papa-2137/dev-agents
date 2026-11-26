@@ -100,6 +100,16 @@ class ScanConfig(BaseModel):
     frameworks: dict[str, FrameworkConfig]  # nazwa frameworku -> wpis
 
 
+class FlowConfig(BaseModel):
+    """Sekcja `flow`: progi ostrzeżeń dla diagramu przepływu.
+
+    Po co: zbyt duży diagram jest nieczytelny - zespół ustawia próg w configu, bez zmian w kodzie.
+    """
+
+    max_nodes: int  # więcej klocków → ostrzeżenie
+    max_decisions: int  # więcej decyzji → ostrzeżenie
+
+
 class AppConfig(BaseModel):
     """Cały config.yaml.
 
@@ -109,6 +119,7 @@ class AppConfig(BaseModel):
     llm: LLMConfig
     paths: PathsConfig
     scan: ScanConfig
+    flow: FlowConfig
 
 
 # --- Sprawdzenia i przetwarzanie ---

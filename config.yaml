@@ -69,3 +69,9 @@ scan:
       paths: ["roboforge_framework/*"]
       packages: ["roboforge"]
       knowledge: frameworks/roboforge.md
+
+# Diagram przepływu: progi ostrzeżeń - diagram większy niż próg to znak, że szczegóły techniczne powinny zejść
+# do wierszy „krok po kroku” pod diagramem (agent dostaje ostrzeżenie i upraszcza diagram).
+flow:
+  max_nodes: 30
+  max_decisions: 8

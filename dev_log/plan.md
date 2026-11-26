@@ -227,6 +227,7 @@ analysis:                 # od kroku 50
 
 flow:                     # od kroku 32
   max_nodes: 30
+  max_decisions: 8
 
 limits:                   # od kroku 59
   max_review_rounds: 2
