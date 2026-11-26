@@ -2,7 +2,7 @@
 
 Co robi: wczytuje config.yaml, zamienia go na obiekty Pythona (podpowiedzi w edytorze, dostęp przez
 atrybuty, np. app_config.llm.profiles["small"].model), sprawdza, czy każdy agent wskazuje istniejący
-profil modelu, czy metoda structured output w każdym profilu i role plików w sekcji `scan` są znane, a ścieżki z sekcji `paths`
+profil modelu, czy metoda structured output w każdym profilu i role plików w sekcji `scan` są znane i czy pliki wiedzy frameworków istnieją, a ścieżki z sekcji `paths`
 zamienia na bezwzględne.
 
 Dlaczego istnieje: to jedyne wejście do ustawień narzędzia. Pozostałe moduły dostają już sprawdzony,
@@ -19,7 +19,7 @@ Rola: moduł używany przez punkt wejścia programu i przez warstwy, które potr
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.config
 Najpierw wypisuje wczytany config jako JSON (ścieżki w `paths` mają być bezwzględne), potem komunikaty
-błędów dla pięciu celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
+błędów dla sześciu celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
 """
 
 import os
@@ -70,6 +70,18 @@ class PathsConfig(BaseModel):
     knowledge_base: str
 
 
+class FrameworkConfig(BaseModel):
+    """Wpis frameworku w sekcji scan.frameworks: technologia, wzorce ścieżek, nazwy pakietów i plik wiedzy.
+
+    Po co: nowy framework to nowy wpis w configu i plik wiedzy, bez zmian w kodzie.
+    """
+
+    technology: str  # nazwa technologii, np. "python" - framework sprawdzany tylko w projektach tej technologii
+    paths: list[str]  # wzorce ścieżek plików frameworku skopiowanego do projektu, np. "roboforge_framework/*"
+    packages: list[str]  # nazwy pakietów importowanych w kodzie robota, np. "roboforge"
+    knowledge: str  # plik wiedzy dla agentów, względnie do knowledge_base/knowledge/
+
+
 class ScanConfig(BaseModel):
     """Sekcja `scan`: ustawienia skanowania analizowanego projektu.
 
@@ -82,6 +94,7 @@ class ScanConfig(BaseModel):
     ignore: list[str]  # wzorce nazw plików i katalogów, np. ".git", "*.pyc"
     secret_patterns: list[str]  # wzorce nazw plików sekretów - tylko metadane, nigdy treść
     role_patterns: dict[str, list[str]]  # rola -> wzorce nazw; wygrywa pierwsza pasująca (kolejność z YAML)
+    frameworks: dict[str, FrameworkConfig]  # nazwa frameworku -> wpis
 
 
 class AppConfig(BaseModel):
@@ -147,6 +160,22 @@ def _check_role_names(
             raise ValueError(komunikat_bledu)
 
 
+def _check_framework_knowledge(
+    app_config: AppConfig,
+) -> None:
+    """Sprawdza, czy plik wiedzy każdego frameworku istnieje w knowledge_base/knowledge/; przy braku rzuca ValueError.
+
+    Po co: literówka w nazwie pliku wiedzy wyszłaby inaczej dopiero przy pracy agentów; tak wychodzi przy starcie.
+
+    Uwaga: wymaga ścieżek bezwzględnych - wołane po _resolve_paths().
+    """
+    for nazwa, framework in app_config.scan.frameworks.items():
+        sciezka = os.path.join(app_config.paths.knowledge_base, "knowledge", framework.knowledge)
+        if not os.path.isfile(sciezka):
+            komunikat_bledu = f"Framework '{nazwa}': brak pliku wiedzy {sciezka}"
+            raise ValueError(komunikat_bledu)
+
+
 def _resolve_paths(
     paths: PathsConfig,
     config_dir: str,
@@ -179,6 +208,7 @@ def _build_config(
     _check_structured_output_methods(app_config)
     _check_role_names(app_config)
     _resolve_paths(app_config.paths, config_dir)
+    _check_framework_knowledge(app_config)
     return app_config
 
 
@@ -242,7 +272,7 @@ if __name__ == "__main__":
             _print_error(title, blad)
 
     def manual_test():
-        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla pięciu zepsutych kopii.
+        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla sześciu zepsutych kopii.
 
         Po co: szybkie sprawdzenie, czy config się wczytuje, ścieżki są bezwzględne, a błędy w configu
         dają czytelne komunikaty.
@@ -274,5 +304,9 @@ if __name__ == "__main__":
         zla_rola = copy.deepcopy(raw_config)
         zla_rola["scan"]["role_patterns"]["launcer"] = zla_rola["scan"]["role_patterns"].pop("launcher")
         _try_broken_config("Nieznana rola w scan.role_patterns ('launcer')", zla_rola, repo_dir)
+
+        zla_wiedza = copy.deepcopy(raw_config)
+        zla_wiedza["scan"]["frameworks"]["roboforge"]["knowledge"] = "frameworks/roboforg.md"
+        _try_broken_config("Brak pliku wiedzy frameworku ('roboforg.md')", zla_wiedza, repo_dir)
 
     manual_test()

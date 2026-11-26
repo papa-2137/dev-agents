@@ -7,7 +7,9 @@ Co robi:
       katalogu dev_agents_doc/ - wyników towaru, które nie mogą trafić do analizy,
     - build_file_entries() nadaje każdemu plikowi rolę i rozmiar: secret (scan.secret_patterns, sprawdzane
       pierwsze), source (kod wg technologii projektu), pierwsza pasująca rola z scan.role_patterns, a bez
-      dopasowania - other.
+      dopasowania - other; plikom frameworku skopiowanego do projektu wpisuje framework_name (scan.frameworks.paths),
+    - project_packages() i detect_frameworks() ustalają frameworki projektu - po ścieżkach plików i po pakietach
+      importowanych w kodzie (scan.frameworks.packages), więc działa też dla frameworku zainstalowanego poza projektem.
 
 Dlaczego istnieje: to pierwszy krok mapy projektu - z listy plików korzystają technologia (detect, punkty
 wejścia) i cała mapa, a rola decyduje, co dalej dzieje się z plikiem (kod - do analityków, konfiguracja
@@ -18,8 +20,9 @@ Rola: moduł rdzenia towaru, używany przy budowie mapy projektu.
 
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.scanner
-        tabele ścieżka | rola | rozmiar dla robotów testowych 01 i 02 oraz katalogu tymczasowego (katalogi,
-        które mają być pominięte, sekret .env, plik binarny, plik nieznanego typu), pod każdą liczba plików w rolach
+        tabele ścieżka | rola | rozmiar | framework dla robotów testowych 01 i 02 oraz katalogu tymczasowego
+        (katalogi do pominięcia, sekret .env, plik binarny, plik nieznanego typu, skopiowany framework), pod każdą
+        liczba plików w rolach i wykryte frameworki
     python -m dev_agents.scanner <katalog projektu>
         tabela dowolnego projektu
 """
@@ -144,13 +147,84 @@ def build_file_entries(
     Po co: z tej listy powstaje mapa projektu - kolejne etapy wiedzą, które pliki są kodem, które wolno czytać
     i które są tylko metadanymi.
 
-    Uwaga: framework_name zostaje puste - pliki frameworku oznacza osobny etap skanera.
+    Uwaga: framework_name dostają tylko pliki frameworku skopiowanego do projektu (wzorce scan.frameworks.paths).
     """
     wpisy = []
     for path in files:
-        rozmiar = os.path.getsize(os.path.join(root, path))
-        wpisy.append(_schemas.FileEntry(path=path, role=_file_role(path, scan_config, technology), size_bytes=rozmiar))
+        wpis = _schemas.FileEntry(
+            path=path,
+            role=_file_role(path, scan_config, technology),
+            size_bytes=os.path.getsize(os.path.join(root, path)),
+            framework_name=_framework_for_path(path, scan_config.frameworks),
+        )
+        wpisy.append(wpis)
     return wpisy
+
+
+# --- Frameworki ---
+
+
+def _framework_for_path(
+    path: str,
+    frameworks: dict[str, _config.FrameworkConfig],
+) -> str:
+    """Zwraca nazwę frameworku, do którego wzorców ścieżek pasuje plik; "" gdy żadnego.
+
+    Po co: pliki frameworku skopiowanego do projektu nie są kodem robota - analitycy ich nie opisują.
+    """
+    for nazwa, framework in frameworks.items():
+        if _is_ignored(path, framework.paths):
+            return nazwa
+    return ""
+
+
+def project_packages(
+    root: str,
+    entries: list[_schemas.FileEntry],
+    technology: _base.Technology | None,
+) -> list[str]:
+    """Zwraca posortowane nazwy pakietów spoza projektu importowanych w plikach źródłowych (references().packages), bez powtórzeń.
+
+    Po co: po pakietach rozpoznajemy frameworki zainstalowane poza projektem (np. Roboforge instalowany edytowalnie).
+    """
+    pakiety = []
+    if technology is None:
+        return pakiety
+    for wpis in entries:
+        if wpis.role != "source":
+            continue
+        for pakiet in technology.references(root, wpis.path).packages:
+            if pakiet not in pakiety:
+                pakiety.append(pakiet)
+    posortowane = sorted(pakiety)
+    return posortowane
+
+
+def detect_frameworks(
+    entries: list[_schemas.FileEntry],
+    packages: list[str],
+    frameworks: dict[str, _config.FrameworkConfig],
+    technology_name: str,
+) -> list[str]:
+    """Zwraca nazwy frameworków projektu: tych z technologii projektu, które mają oznaczone pliki albo pakiet na liście importów.
+
+    Po co: wykryty framework dostaje swój plik wiedzy dla agentów, a przewodnik opisuje cykl życia robota.
+    """
+    wykryte = []
+    for nazwa, framework in frameworks.items():
+        if framework.technology != technology_name:
+            continue
+        czy_po_pakiecie = False
+        for pakiet in framework.packages:
+            if pakiet in packages:
+                czy_po_pakiecie = True
+        czy_po_sciezce = False
+        for wpis in entries:
+            if wpis.framework_name == nazwa:
+                czy_po_sciezce = True
+        if czy_po_pakiecie or czy_po_sciezce:
+            wykryte.append(nazwa)
+    return wykryte
 
 
 # --- Test ręczny ---
@@ -180,6 +254,7 @@ if __name__ == "__main__":
             "src/__pycache__/modul.cpython-314.pyc",
             "moje_srodowisko/pyvenv.cfg",
             "moje_srodowisko/Lib/site-packages/obca_paczka.py",
+            "roboforge_framework/launcher.py",
         ]
         for sciezka in pliki:
             pelna = os.path.join(directory, sciezka)
@@ -190,8 +265,8 @@ if __name__ == "__main__":
     def _scan(
         root: str,
         scan_config: _config.ScanConfig,
-    ) -> tuple[str, list[_schemas.FileEntry]]:
-        """Listuje pliki, wybiera technologię projektu i nadaje role. Zwraca (nazwa technologii albo "brak", wpisy).
+    ) -> tuple[str, list[_schemas.FileEntry], list[str]]:
+        """Listuje pliki, wybiera technologię, nadaje role i wykrywa frameworki. Zwraca (technologia albo "brak", wpisy, frameworki).
 
         Po co: logika testu bez wypisywania - ten sam przebieg co później w mapie projektu.
         """
@@ -201,7 +276,9 @@ if __name__ == "__main__":
         if technologia is not None:
             nazwa_technologii = technologia.name
         wpisy = build_file_entries(root, pliki, scan_config, technologia)
-        wynik = (nazwa_technologii, wpisy)
+        pakiety = project_packages(root, wpisy, technologia)
+        frameworki = detect_frameworks(wpisy, pakiety, scan_config.frameworks, nazwa_technologii)
+        wynik = (nazwa_technologii, wpisy, frameworki)
         return wynik
 
     def _print_entries(
@@ -209,20 +286,22 @@ if __name__ == "__main__":
         root: str,
         technology_name: str,
         entries: list[_schemas.FileEntry],
+        frameworks: list[str],
     ) -> None:
-        """Wypisuje tabelę ścieżka | rola | rozmiar i liczbę plików w każdej roli.
+        """Wypisuje tabelę ścieżka | rola | rozmiar | framework, liczbę plików w każdej roli i wykryte frameworki.
 
         Po co: czytelny wynik testu; tylko formatuje gotowe dane.
         """
         print(f"=== {title}: {root} (technologia: {technology_name}, plików: {len(entries)}) ===")
         licznik = {}
         for wpis in entries:
-            print(f"  {wpis.path:<55} {wpis.role:<11} {wpis.size_bytes:>8}")
+            print(f"  {wpis.path:<55} {wpis.role:<11} {wpis.size_bytes:>8}  {wpis.framework_name}")
             licznik[wpis.role] = licznik.get(wpis.role, 0) + 1
         podsumowanie = []
         for rola, liczba in licznik.items():
             podsumowanie.append(f"{rola}: {liczba}")
-        print(f"  role -> {', '.join(podsumowanie)}\n")
+        print(f"  role -> {', '.join(podsumowanie)}")
+        print(f"  Frameworki: {frameworks}\n")
 
     def manual_test():
         """Z argumentem <katalog> - tabela ról projektu; bez argumentów - roboty testowe i katalog tymczasowy.
@@ -232,8 +311,8 @@ if __name__ == "__main__":
         katalog_repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         app_config = _config.load_config(os.path.join(katalog_repo, "config.yaml"))
         if len(sys.argv) == 2:
-            nazwa_technologii, wpisy = _scan(sys.argv[1], app_config.scan)
-            _print_entries("projekt", sys.argv[1], nazwa_technologii, wpisy)
+            nazwa_technologii, wpisy, frameworki = _scan(sys.argv[1], app_config.scan)
+            _print_entries("projekt", sys.argv[1], nazwa_technologii, wpisy, frameworki)
             return
 
         katalog_testow = os.path.normpath(os.path.join(katalog_repo, "..", "..", "tests"))
@@ -242,14 +321,14 @@ if __name__ == "__main__":
             if not os.path.isdir(root):
                 print(f"=== {tytul}: brak katalogu {root} - pomijam ===\n")
                 continue
-            nazwa_technologii, wpisy = _scan(root, app_config.scan)
-            _print_entries(tytul, root, nazwa_technologii, wpisy)
+            nazwa_technologii, wpisy, frameworki = _scan(root, app_config.scan)
+            _print_entries(tytul, root, nazwa_technologii, wpisy, frameworki)
 
         temp_dir = tempfile.mkdtemp()
         try:
             _make_temp_project(temp_dir)
-            nazwa_technologii, wpisy = _scan(temp_dir, app_config.scan)
-            _print_entries("katalog tymczasowy", temp_dir, nazwa_technologii, wpisy)
+            nazwa_technologii, wpisy, frameworki = _scan(temp_dir, app_config.scan)
+            _print_entries("katalog tymczasowy", temp_dir, nazwa_technologii, wpisy, frameworki)
         finally:
             shutil.rmtree(temp_dir)
 
