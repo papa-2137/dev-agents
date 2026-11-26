@@ -19,7 +19,7 @@ Rola: moduł używany przez punkt wejścia programu i przez warstwy, które potr
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.config
 Najpierw wypisuje wczytany config jako JSON (ścieżki w `paths` mają być bezwzględne), potem komunikaty
-błędów dla piętnastu celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
+błędów dla siedemnastu celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
 """
 
 import os
@@ -120,6 +120,7 @@ class AnalysisConfig(BaseModel):
     max_file_size_kb: int  # plik jednostki większy niż tyle KB nie jest czytany (ValueError z nazwą pliku)
     chunk_lines: int  # jednostka dłuższa niż tyle linii jest analizowana po kawałkach (krok 51)
     chunk_overlap_lines: int  # zakład przy cięciu w środku funkcji: następny kawałek zaczyna się tyle linii wcześniej
+    max_concurrency: int  # ilu analityków pracuje naraz w grafie (krok 52); każdy woła model, więc to też limit zapytań naraz
 
 
 class AppConfig(BaseModel):
@@ -235,7 +236,7 @@ def _check_guide_template(
 def _check_analysis(
     app_config: AppConfig,
 ) -> None:
-    """Sprawdza progi analysis: long_unit_lines, max_file_size_kb i chunk_lines dodatnie, chunk_overlap_lines nieujemny i mniejszy niż połowa chunk_lines; przy błędzie rzuca ValueError.
+    """Sprawdza progi analysis: long_unit_lines, max_file_size_kb, chunk_lines i max_concurrency dodatnie, chunk_overlap_lines nieujemny i mniejszy niż połowa chunk_lines; przy błędzie rzuca ValueError.
 
     Po co: próg 0 albo ujemny oznaczałby „każda funkcja jest długa” i zalałby tabelę ryzykownych miejsc, limit
     rozmiaru 0 odrzuciłby każdy plik przed analizą, a kawałki z zakładem większym niż połowa długości nie posuwałyby się naprzód.
@@ -245,6 +246,9 @@ def _check_analysis(
         raise ValueError(komunikat_bledu)
     if app_config.analysis.max_file_size_kb < 1:
         komunikat_bledu = f"analysis.max_file_size_kb musi być dodatni, jest: {app_config.analysis.max_file_size_kb}"
+        raise ValueError(komunikat_bledu)
+    if app_config.analysis.max_concurrency < 1:
+        komunikat_bledu = f"analysis.max_concurrency musi być dodatni, jest: {app_config.analysis.max_concurrency}"
         raise ValueError(komunikat_bledu)
     if app_config.analysis.chunk_lines < 1:
         komunikat_bledu = f"analysis.chunk_lines musi być dodatni, jest: {app_config.analysis.chunk_lines}"
@@ -357,7 +361,7 @@ if __name__ == "__main__":
             _print_error(title, blad)
 
     def manual_test():
-        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla piętnastu zepsutych kopii.
+        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla siedemnastu zepsutych kopii.
 
         Po co: szybkie sprawdzenie, czy config się wczytuje, ścieżki są bezwzględne, a błędy w configu
         dają czytelne komunikaty.
@@ -425,5 +429,13 @@ if __name__ == "__main__":
         brak_kawalka = copy.deepcopy(raw_config)
         del brak_kawalka["analysis"]["chunk_lines"]
         _try_broken_config("Config bez analysis.chunk_lines", brak_kawalka, repo_dir)
+
+        zla_wspolbieznosc = copy.deepcopy(raw_config)
+        zla_wspolbieznosc["analysis"]["max_concurrency"] = 0
+        _try_broken_config("Współbieżność analysis.max_concurrency równa 0", zla_wspolbieznosc, repo_dir)
+
+        brak_wspolbieznosci = copy.deepcopy(raw_config)
+        del brak_wspolbieznosci["analysis"]["max_concurrency"]
+        _try_broken_config("Config bez analysis.max_concurrency", brak_wspolbieznosci, repo_dir)
 
     manual_test()

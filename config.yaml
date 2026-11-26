@@ -86,3 +86,5 @@ analysis:
   chunk_lines: 300
   # Przy cięciu w środku funkcji (gdy nie ma granicy jednostki) następny kawałek zaczyna się tyle linii wcześniej.
   chunk_overlap_lines: 10
+  # Ilu analityków (jednostek kodu) pracuje naraz. Każdy woła model, więc to także limit równoczesnych zapytań do bramki.
+  max_concurrency: 4

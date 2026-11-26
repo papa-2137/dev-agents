@@ -1,11 +1,15 @@
-"""Graf agentów (LangGraph): skan projektu, potem plan pracy.
+"""Graf agentów (LangGraph): skan projektu, plan pracy, równoległa analiza jednostek.
 
-Co robi: buduje graf START -> scan -> planner -> END. Węzeł scan woła scanner.build_project_map na projekcie ze stanu
+Co robi: buduje graf START -> scan -> planner -> (analyst x N, równolegle) -> END. Węzeł scan woła scanner.build_project_map na projekcie ze stanu
 (project_path) z ustawieniami skanowania z kontekstu (runtime.context.config.scan) i dopisuje do stanu
 project_map. Węzeł niczego nie zapisuje na dysku - zapis wyników należy do wołającego (main.py, krok 44).
 Pracę węzła owija Stage z progress.py: linie "scan: start" i "scan: gotowe w X s - wynik" (albo "BŁĄD po X s")
 trafiają do runtime.context.report (krok 45). Węzeł planner (agents/planner.py, krok 48) czyta mapę ze stanu,
 woła model małym planem pracy, dopisuje do stanu plan i zapisuje plan.json w magazynie wyników.
+Po plannerze krawędź warunkowa (dispatch_analysts) wysyła Send("analyst", ładunek) na każde zadanie planu;
+węzeł analyst (agents/analyst.py, krok 52) analizuje jedną jednostkę i zapisuje notes/<jednostka>.json, a reducer
+pola notes w stanie skleja notatki wszystkich analityków. Ilu analityków pracuje naraz, ustawia
+analysis.max_concurrency, przekazane do invoke przez run_config().
 
 Dlaczego istnieje: kolejne etapy (analitycy, autor diagramu, pisarze, recenzent) dołączamy do tego
 szkieletu po jednym - najpierw uczymy się LangGraph na grafie bez modelu. Graf przyjmuje stan (RunState)
@@ -17,15 +21,20 @@ Pojęcia LangGraph użyte tutaj:
     StateGraph(RunState, context_schema=RunContext) - graf ze stanem i typem kontekstu,
     węzeł - zwykła funkcja (state, runtime) zwracająca TYLKO zmienione pola stanu,
     Runtime[RunContext] - wstrzykiwany do węzła; runtime.context to RunContext z invoke(..., context=...),
-    START i END - znaczniki początku i końca; compile() zwraca graf, który się uruchamia przez invoke().
+    START i END - znaczniki początku i końca; compile() zwraca graf, który się uruchamia przez invoke(),
+    Send(węzeł, ładunek) - polecenie "uruchom ten węzeł z tym stanem"; lista Send zwrócona z krawędzi warunkowej
+    uruchamia węzeł wielokrotnie, równolegle (wzorzec map-reduce),
+    reducer - funkcja przypisana polu stanu (Annotated[list, operator.add]), która łączy zwroty równoległych węzłów,
+    config={"max_concurrency": n} w invoke() - ilu węzłów naraz.
 
 Test ręczny (z katalogu głównego repo; wymaga zainstalowanego langgraph, bez wywołań modelu i bez sieci):
     python -m dev_agents.graph
-        buduje kontekst (modele, spis bazy wiedzy, szablon), podmienia model plannera na udawany (bez sieci)
+        buduje kontekst (modele, spis bazy wiedzy, szablon), podmienia modele plannera i analityków na udawane (bez sieci)
         i uruchamia graf na małym projekcie tymczasowym oraz na robotach testowych 02 i 01 (tylko odczyt, bez
         zapisu w nich); dla każdego wypisuje stan końcowy, porównuje mapę z grafu z mapą z bezpośredniego skanu,
-        sprawdza linie postępu (scan: start i koniec, planner: start i koniec z liczbą zadań) oraz to, że plan
-        obejmuje wszystkie jednostki kodu i trafił do plan.json w magazynie tymczasowym; na końcu
+        sprawdza linie postępu (scan, planner, analityk dla każdej jednostki: start i koniec z czasem), to, że plan
+        obejmuje wszystkie jednostki kodu i trafił do plan.json w magazynie tymczasowym, oraz że notatek jest tyle
+        co zadań, każda jednostka ma notatkę w stanie i w notes/<jednostka>.json; na końcu
         "zgodne z oczekiwaniem: True".
         Jeśli w środowisku nie ma zmiennych z kluczem i adresem modeli (nazwy w config.yaml), test ustawia
         atrapy tylko dla tego procesu - prawdziwe modele nie są wołane.
@@ -35,8 +44,11 @@ import os
 
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
+from langgraph.types import Send
 
+import dev_agents.agents.analyst as _analyst
 import dev_agents.agents.planner as _planner
+import dev_agents.config as _config
 import dev_agents.context as _context
 import dev_agents.progress as _progress
 import dev_agents.scanner as _scanner
@@ -67,11 +79,40 @@ def scan_node(
     return zmiana_stanu
 
 
+# --- Krawędź warunkowa i ustawienia uruchomienia ---
+
+
+def dispatch_analysts(
+    state: _state.RunState,
+) -> list[Send]:
+    """Zwraca po jednym poleceniu Send("analyst", ...) na każde zadanie z planu; ładunek to mapa projektu, plan i zadanie.
+
+    Po co: krawędź warunkowa za plannerem - LangGraph uruchomi węzeł analyst tyle razy, ile jest zadań, równolegle
+    (nie więcej naraz niż max_concurrency). Plan jest uzupełniony przez complete_plan, więc zadań jest tyle co jednostek kodu.
+    """
+    polecenia = []
+    for zadanie in state["plan"].tasks:
+        ladunek = {"project_map": state["project_map"], "plan": state["plan"], "task": zadanie}
+        polecenia.append(Send("analyst", ladunek))
+    return polecenia
+
+
+def run_config(
+    app_config: _config.AppConfig,
+) -> dict:
+    """Zwraca ustawienia uruchomienia grafu (argument config w invoke): max_concurrency z analysis.max_concurrency.
+
+    Po co: LangGraph ogranicza liczbę równoległych węzłów tylko przez to ustawienie; jedno miejsce, które woła main.py i test.
+    """
+    ustawienia = {"max_concurrency": app_config.analysis.max_concurrency}
+    return ustawienia
+
+
 # --- Budowa grafu ---
 
 
 def build_graph():
-    """Buduje i kompiluje graf START -> scan -> planner -> END; zwraca graf gotowy do invoke(stan, context=RunContext).
+    """Buduje i kompiluje graf START -> scan -> planner -> analyst (po jednym na zadanie, równolegle) -> END; zwraca graf gotowy do invoke(stan, context=RunContext, config=run_config(...)).
 
     Po co: jedno miejsce z układem grafu - kolejne kroki planu dopisują tu węzły i krawędzie.
     """
@@ -80,7 +121,9 @@ def build_graph():
     budowniczy.add_node("planner", _planner.planner_node)
     budowniczy.add_edge(START, "scan")
     budowniczy.add_edge("scan", "planner")
-    budowniczy.add_edge("planner", END)
+    budowniczy.add_node("analyst", _analyst.analyst_node)
+    budowniczy.add_conditional_edges("planner", dispatch_analysts, ["analyst"])
+    budowniczy.add_edge("analyst", END)
     graf = budowniczy.compile()
     return graf
 
@@ -129,6 +172,40 @@ if __name__ == "__main__":
             plik.write("requests\n")
         return projekt
 
+    def _fake_analyst_answer(
+        messages,
+    ):
+        """Odpowiada jak model analityka: dla promptu części 1 notatką NoteFlow z celem, dla części 2 NoteDetails z pustymi listami.
+
+        Po co: analityk woła model dwa razy z różnymi schematami, a udawany model rozpoznaje część po opisie w prompcie;
+        nazwę jednostki i tak ustawia kod analityka, więc odpowiedź jej nie zależy.
+        """
+        odpowiedz = _schemas.NoteDetails(
+            settings=[],
+            requirements=[],
+            external_dependencies=[],
+            risky_places=[],
+            possible_failures=[],
+            extension_points=[],
+            conventions=[],
+            maintainer_hints=[],
+            glossary_candidates=[],
+        )
+        if "CZĘŚĆ 1 z 2" in messages[1].content:
+            odpowiedz = _schemas.NoteFlow(
+                unit_name="dowolna",
+                purpose="Cel testowy",
+                flow_role="",
+                automated_application="",
+                key_functions=[],
+                actions=[],
+                process_steps=[],
+                error_handling=[],
+                inputs=[],
+                outputs=[],
+            )
+        return odpowiedz
+
     def _context_lines(
         context: _context.RunContext,
     ) -> list[str]:
@@ -166,13 +243,14 @@ if __name__ == "__main__":
         Po co: sprawdza, że węzeł scan daje dokładnie ten wynik co skaner wołany wprost, że uruchomienie
         nie utworzyło ani nie zmieniło katalogu wyników w skanowanym projekcie, że węzeł scan zgłosił dwie linie
         postępu (start i koniec), że plan z węzła planner obejmuje wszystkie jednostki kodu, jest zapisany jako
-        plan.json w magazynie i że planner zgłosił start oraz koniec z liczbą zadań; progress_lines to lista,
-        do której context.report dopisuje linie.
+        plan.json w magazynie i że planner zgłosił start oraz koniec z liczbą zadań, że notatek jest tyle co zadań
+        (każda jednostka dokładnie raz, także w notes/<jednostka>.json w magazynie) i że każdy analityk zgłosił start
+        oraz koniec z czasem; progress_lines to lista, do której context.report dopisuje linie.
         """
         katalog_wynikow = os.path.join(root, _output.OUTPUT_DIR_NAME)
         istnial_przed = os.path.exists(katalog_wynikow)
         ile_linii_przed = len(progress_lines)
-        stan = graph.invoke({"project_path": root}, context=context)
+        stan = graph.invoke({"project_path": root}, context=context, config=run_config(context.config))
         nowe_linie = progress_lines[ile_linii_przed:]
         linie_scan = []
         linie_planner = []
@@ -194,8 +272,32 @@ if __name__ == "__main__":
             and linie_planner[0].endswith("] planner: start")
             and f"zadań: {liczba_jednostek}," in linie_planner[-1]
         )
+        notatki = stan.get("notes", [])
+        nazwy_notatek = []
+        for notatka in notatki:
+            nazwy_notatek.append(notatka.unit_name)
+        nazwy_zadan = []
+        for zadanie in plan.tasks:
+            nazwy_zadan.append(zadanie.unit)
+        notatki_zgodne = len(notatki) == len(plan.tasks) and sorted(nazwy_notatek) == sorted(nazwy_zadan)
+        notatki_zapisane = True
+        for notatka in notatki:
+            zapisana = context.store.load_json(f"notes/{notatka.unit_name}.json", _schemas.ModuleNote)
+            if zapisana != notatka:
+                notatki_zapisane = False
+        start_analitykow = 0
+        koniec_analitykow = 0
+        for linia_postepu in nowe_linie:
+            if "] analyst " in linia_postepu and linia_postepu.endswith(": start"):
+                start_analitykow += 1
+            if "] analyst " in linia_postepu and ": gotowe w " in linia_postepu:
+                koniec_analitykow += 1
+        postep_analitykow = start_analitykow == len(plan.tasks) and koniec_analitykow == len(plan.tasks)
         zgodne = (
             mapa == bezposrednio
+            and notatki_zgodne
+            and notatki_zapisane
+            and postep_analitykow
             and istnial_przed == istnieje_po
             and postep_scan
             and plan_pelny
@@ -214,6 +316,9 @@ if __name__ == "__main__":
             f"  plan obejmuje wszystkie jednostki kodu ({liczba_jednostek}): {plan_pelny}",
             f"  plan.json w magazynie == plan ze stanu: {plan_zapisany}",
             f"  linie postępu węzła planner (start, uwagi, koniec z liczbą zadań): {postep_planner}",
+            f"  notatek ({len(notatki)}) tyle co zadań, każda jednostka raz: {notatki_zgodne}",
+            f"  notes/<jednostka>.json w magazynie == notatki ze stanu: {notatki_zapisane}",
+            f"  analitycy: start i koniec z czasem dla każdej jednostki: {postep_analitykow}",
         ]
         for linia_postepu in nowe_linie:
             linie.append(f"    {linia_postepu}")
@@ -223,8 +328,8 @@ if __name__ == "__main__":
     def manual_test():
         """Buduje kontekst i graf, uruchamia je na projekcie tymczasowym i robotach testowych 02 i 01 (tylko odczyt).
 
-        Po co: sprawdzenie szkieletu LangGraph z prawdziwym skanem i udawanym modelem plannera (pusty plan,
-        który complete_plan uzupełnia o wszystkie jednostki), bez sieci i bez zapisu w cudzych projektach.
+        Po co: sprawdzenie szkieletu LangGraph z prawdziwym skanem i udawanymi modelami plannera (pusty plan,
+        który complete_plan uzupełnia o wszystkie jednostki) i analityków (stała notatka), bez sieci i bez zapisu w cudzych projektach.
         """
         katalog_repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         app_config = _config.load_config(os.path.join(katalog_repo, "config.yaml"))
@@ -239,6 +344,7 @@ if __name__ == "__main__":
             linie_postepu = []
             kontekst = _context.build_context(app_config, magazyn, linie_postepu.append)
             kontekst.models["planner"] = _fakes.FakeStructuredModel(_schemas.Plan(summary="Plan testowy", tasks=[]))
+            kontekst.models["analyst"] = _fakes.FakeStructuredModel(_fake_analyst_answer)
             graf = build_graph()
             for linia in _context_lines(kontekst):
                 print(linia)

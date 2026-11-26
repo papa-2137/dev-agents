@@ -160,8 +160,8 @@ def _run_graph(
     project_root: str,
     app_config: _config.AppConfig,
     store: _output.RunStore,
-) -> tuple[_schemas.ProjectMap, _schemas.Plan]:
-    """Buduje kontekst, uruchamia graf agentów na projekcie i zwraca (mapa projektu, plan) ze stanu końcowego.
+) -> tuple[_schemas.ProjectMap, _schemas.Plan, int]:
+    """Buduje kontekst, uruchamia graf agentów na projekcie i zwraca (mapa projektu, plan, liczba notatek analityków) ze stanu końcowego.
 
     Po co: jedyne miejsce w main.py, które zna graf; kolejne węzły nie zmieniają tej funkcji, bo dochodzą do grafu.
     Węzły zgłaszają postęp liniami na ekran (progress.print_line podane w kontekście), a po grafie wypisana
@@ -176,10 +176,10 @@ def _run_graph(
         sys.exit(f"BŁĄD: {blad}")
     graf = _graph.build_graph()
     czas_startu = time.monotonic()
-    stan_koncowy = graf.invoke({"project_path": project_root}, context=kontekst)
+    stan_koncowy = graf.invoke({"project_path": project_root}, context=kontekst, config=_graph.run_config(app_config))
     razem = _progress.format_seconds(time.monotonic() - czas_startu)
     _progress.print_line(_progress.format_line("razem", razem))
-    wynik = (stan_koncowy["project_map"], stan_koncowy["plan"])
+    wynik = (stan_koncowy["project_map"], stan_koncowy["plan"], len(stan_koncowy.get("notes", [])))
     return wynik
 
 
@@ -240,11 +240,12 @@ def main() -> None:
     if args.render_only:
         project_map = mapa_wstepna
     else:
-        project_map, plan = _run_graph(mapa_wstepna.root, app_config, magazyn)
+        project_map, plan, liczba_notatek = _run_graph(mapa_wstepna.root, app_config, magazyn)
     zapisany_plik = magazyn.save_json("project_map.json", project_map)
     _print_scan_summary(project_map, zapisany_plik)
     if plan is not None:
         _print_plan_summary(plan)
+        print(f"  notatki analityków: {liczba_notatek} (dev_agents_doc/notes/)")
     if args.render_only:
         zapisany_przewodnik = _render_placeholder_guide(project_map, app_config, magazyn)
         print(f"  zapisano: {zapisany_przewodnik} (zaślepki zamiast tekstu agentów, diagram przykładowy)")

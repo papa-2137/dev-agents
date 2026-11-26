@@ -3,8 +3,11 @@
 Co robi: definiuje RunState - słownik (TypedDict) z polami wspólnymi dla całego przebiegu:
     project_path - ścieżka katalogu analizowanego projektu (wejście grafu),
     project_map  - mapa projektu z skanera (wynik węzła scan; zawiera też graf zależności i kolejność czytania),
-    plan         - plan przebiegu (wynik węzła planner; do grafu dołącza go krok 48).
-Kolejne etapy (notatki analityków, diagram, treść przewodnika) dopisują tu swoje pola w swoich krokach.
+    plan         - plan przebiegu (wynik węzła planner),
+    task         - zadanie jednego analityka; wpisuje je do ładunku Send graf (graph.dispatch_analysts), nie węzły,
+    notes        - notatki analityków (wynik równoległych węzłów analyst); pole z reducerem operator.add:
+                   każdy analityk zwraca listę z jedną notatką, a LangGraph skleja listy w jedną.
+Kolejne etapy (diagram, treść przewodnika) dopisują tu swoje pola w swoich krokach.
 
 Dlaczego istnieje: w LangGraph węzeł dostaje stan i zwraca tylko te pola, które zmienia - słownik z polami
 opcjonalnymi (total=False) pasuje do tego wprost. Stan trzyma tylko dane, które się zmieniają w trakcie
@@ -15,6 +18,7 @@ Rola: moduł rdzenia towaru, importowany przez graph.py i kolejne węzły.
 Test ręczny: brak własnego - stan jest sprawdzany w teście grafu (python -m dev_agents.graph).
 """
 
+import operator
 import typing
 
 import dev_agents.schemas as _schemas
@@ -30,3 +34,5 @@ class RunState(typing.TypedDict, total=False):
     project_path: str
     project_map: _schemas.ProjectMap
     plan: _schemas.Plan
+    task: _schemas.AnalysisTask
+    notes: typing.Annotated[list[_schemas.ModuleNote], operator.add]

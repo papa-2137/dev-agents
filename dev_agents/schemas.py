@@ -257,7 +257,7 @@ class NoteAction(pydantic.BaseModel):
     czynność to jeden rozpoznawalny krok procesu, a nie linia kodu.
     """
 
-    title: str = pydantic.Field(description="Krótki tytuł czynności językiem biznesowo-technicznym, kilka słów, np. Wczytaj listę plików zamówień.")
+    title: str = pydantic.Field(description="Krótki tytuł czynności językiem biznesowo-technicznym, kilka słów, zawsze w trybie rozkazującym (Wczytaj, Otwórz, Zapisz), nie w bezokoliczniku, np. Wczytaj listę plików zamówień.")
     kind: typing.Literal["step", "system", "decision", "error"] = pydantic.Field(
         description="Rodzaj: step (zwykły krok), system (kontakt z systemem poza robotem: strona, API, baza, plik na serwerze), decision (rozgałęzienie), error (obsługa błędu)."
     )

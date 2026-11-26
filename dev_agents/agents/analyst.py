@@ -20,9 +20,10 @@ policzone przez model "na oko". Pliki o roli secret nigdy nie są czytane, a pli
 kończy się ValueError z nazwą pliku. Notatka kawałka jest zwracana
 w dwóch odpowiedziach, bo bramka odrzuca schematy powyżej 48 pól, a cała notatka ma ich 54 (pomiar: scripts/probe_schema.py).
 
-Czego NIE robi: nie jest węzłem grafu (równoległych analityków dokłada krok 52), niczego nie zapisuje na dysku.
+Węzeł grafu: analyst_node (krok 52) analizuje jedną jednostkę z ładunku Send i zapisuje notes/<jednostka>.json;
+analyze_unit sam niczego nie zapisuje.
 
-Rola: agent grafu (faza F); wołają go węzeł analityków (krok 52) i test ręczny.
+Rola: agent grafu (faza F); wołają go węzeł analyst (krok 52) i test ręczny.
 
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.agents.analyst
@@ -44,14 +45,17 @@ import os
 import typing
 
 from langchain_core.messages import HumanMessage, SystemMessage
+from langgraph.runtime import Runtime
 
 import dev_agents.agents.chunks as _chunks
 import dev_agents.agents.common as _common
 import dev_agents.context as _context
 import dev_agents.files as _files
 import dev_agents.llm as _llm
+import dev_agents.progress as _progress
 import dev_agents.prompts as _prompts
 import dev_agents.schemas as _schemas
+import dev_agents.state as _state
 
 _AGENT_NAME = "analyst"
 
@@ -366,6 +370,32 @@ def analyze_unit(
     notatka = _chunks.merge_chunk_notes(notatki)
     wynik = fix_note(notatka, task.unit, najwiecej_linii)
     return wynik
+
+
+# --- Węzeł grafu ---
+
+
+def analyst_node(
+    state: _state.RunState,
+    runtime: Runtime[_context.RunContext],
+) -> dict:
+    """Węzeł analyst: analizuje jedną jednostkę z zadania (state["task"]), zapisuje notes/<jednostka>.json i zwraca notes z jedną notatką.
+
+    Po co: graf uruchamia ten węzeł równolegle, po jednym razu na zadanie z planu (graph.dispatch_analysts, Send);
+    stan tej instancji to ładunek Send (project_map, plan, task). Zwrócona lista z jedną notatką jest sklejana
+    z listami pozostałych analityków przez reducer pola notes. Praca jest owinięta w Stage o nazwie "analyst <jednostka>":
+    start, linie "kawałek k/n", uwagi o poprawkach notatki i koniec z czasem.
+    """
+    kontekst = runtime.context
+    zadanie = state["task"]
+    with _progress.Stage(kontekst.report, f"{_AGENT_NAME} {zadanie.unit}") as etap:
+        notatka, uwagi = analyze_unit(zadanie, state["project_map"], state["plan"], kontekst, etap.note)
+        for uwaga in uwagi:
+            etap.note(f"uwaga: {uwaga}")
+        zapisany_plik = kontekst.store.save_json(f"notes/{zadanie.unit}.json", notatka)
+        etap.set_result(f"czynności: {len(notatka.actions)}, zapisano {zapisany_plik}")
+    zmiana_stanu = {"notes": [notatka]}
+    return zmiana_stanu
 
 
 # --- Test ręczny ---

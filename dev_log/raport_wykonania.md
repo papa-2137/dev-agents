@@ -12,7 +12,7 @@
 | C - Mapa projektu bez modelu (9-29) | ✅ zakończona (M3) |
 | D - Szablon przewodnika i HTML bez modelu (30-39) | ✅ zakończona (M4) |
 | E - Prompty i baza wiedzy (40-42) | ✅ zakończona |
-| F - Graf i agenci (43-59) | 🟡 w toku (43-50 ✅) |
+| F - Graf i agenci (43-59) | 🟡 w toku (43-51 ✅) |
 | G - Ergonomia (60-63) | ⬜ |
 | H - Miasto (64-68) | ⬜ |
 
@@ -38,6 +38,11 @@ Wpisy kroków 1-29 (fazy A-C) są w archiwum: `dev_log/raport_wykonania_fazy_A-C
 - Pierwsze prawdziwe wywołania odrzuciła bramka: 400 `minimum is not supported`, potem `compiled grammar is too large`. Hipoteza o polach opcjonalnych była błędna; `scripts/probe_schema.py` zmierzył limit: **48 pól schematu po rozwinięciu klas** przechodzi, 49 nie; osobno max 16 pól "tekst albo null"; głębokość, enumy, ponowne użycie klasy i pola domyślne nie mają znaczenia (zmierzone na profilu small).
 - Rozwiązanie: notatka zwracana w **dwóch odpowiedziach** (`NoteFlow` 22 pola, `NoteDetails` 32 pola), `merge_note()` składa `ModuleNote` (54 pola, nie idzie do modelu); `schemas.count_schema_properties()` i limit testowy `MAX_MODEL_SCHEMA_PROPERTIES` = 40. Test schematów ostrzega, że `GuideBlock` (45) i `GuideTab` (47) przekroczą limit - do odchudzenia przed krokiem 55.
 - Wybory: rekomendowane (tryb pracy fazy F). Test użytkownika: OK (prawdziwy model, `main.py` robota 01). Commit `cc62725`.
+
+### Krok 51. Analityk: długie pliki po kawałkach - ✅
+- Nowy `dev_agents/agents/chunks.py` (zwykły kod, własny test): `split_ranges` (cięcie po końcach funkcji i klas z `units()`, bez granicy - w środku z zakładem), `plan_chunks` (krótkie pliki razem, długi plik w kawałkach), `build_previous_summary`, `merge_chunk_notes` (cele połączone, rola z pierwszego niepustego kawałka, listy bez powtórzeń, ustawienia łączą `used_in`). `analyst.analyze_unit` analizuje kawałki po kolei (każdy: dwa wywołania modelu, kod z bezwzględnymi numerami linii, podsumowanie poprzednich kawałków, sekcja `<kawalek>` w `user.md`) i zgłasza postęp "kawałek k/n" przez funkcję `note`. Config: `analysis.chunk_lines` (300) i `chunk_overlap_lines` (10) z walidacją. `common.number_lines` z numeracją od podanej linii, `cut_lines`.
+- Poprawka z testu: tytuły czynności w trybie rozkazującym (opis pola `title` w `NoteAction`; poprawka trafia do następnego commita).
+- Wybory: rekomendowane (tryb pracy fazy F). Test użytkownika: OK (robot 01 `main.py` jednym kawałkiem, numery linii zgodne z kodem; robot 02 po kawałkach). Commit `eaa1289`.
 
 ---
 
@@ -100,3 +105,4 @@ Wpisy kroków 1-29 (fazy A-C) są w archiwum: `dev_log/raport_wykonania_fazy_A-C
 | 2026-11-26 | Raport podzielony po raz czwarty: wpisy kroków 43-49 (faza F, część 1) przeniesione bez zmian do `dev_log/raport_wykonania_fazy_F_43-49.md`; w `raport_wykonania.md` zostają podsumowanie, kroki od 50 i tabela decyzji | Raport (46 KB) zbliżał się do 48 KB, powyżej którego nie da się go przeczytać jednym odczytem i podmienić kopii na claude.ai; wybór: rekomendowane (tryb pracy fazy F) |
 | 2026-11-26 | Krok 50: (1) notatka analityka w dwóch wywołaniach modelu (`NoteFlow` + `NoteDetails`), składana kodem w `ModuleNote`; (2) limit schematu dla modelu 40 pól (zmierzony limit bramki 48); (3) `analysis.max_file_size_kb: 100`; (4) wspólne `agents/common.py`; (5) skrypt `scripts/probe_schema.py` do mierzenia limitów bramki; `plan_kroki.md` kroki 49, 50 zaktualizowane | (1) cała notatka (54 pola) przekracza limit bramki, a przycinanie gubiłoby treść; koszt: kod jednostki idzie do modelu dwa razy; (2) zapas względem pomiaru tylko na profilu small; (3) większy plik analizuje krok 51; (4) jedna logika wiedzy dla wszystkich agentów; (5) pomiar zamiast zgadywania; wybór: rekomendowane (tryb pracy fazy F) |
 | 2026-11-26 | **Do omówienia na koniec fazy F (decyzja użytkownika, teraz brak czasu):** konsekwencje zmian z kroku 50: podwójny koszt tokenów analityka (kod dwa razy), limit 48 pól zmierzony tylko na small (sprawdzić medium), odchudzenie `GuideBlock`/`GuideTab` i ewentualne rozbicie zakładek na wiele wywołań, wpływ na czas i koszt całego przebiegu | Decyzja użytkownika: jedziemy dalej, omówienie po zakończeniu fazy F |
+| 2026-11-26 | Krok 51: (1) podział i składanie kawałków w osobnym `agents/chunks.py`; (2) cięcie po końcach jednostek z `units()` w drugiej połowie kawałka, inaczej w środku z zakładem 10 linii; (3) podsumowanie poprzednich kawałków składa kod z ich notatek (bez dodatkowego wywołania modelu); (4) `analysis.max_file_size_kb` zostaje twardym limitem pliku, o podziale decyduje `analysis.chunk_lines` (300); (5) `analyze_unit` dostaje funkcję `note` do linii postępu; `plan_kroki.md` krok 51 zaktualizowany | (1) analityk bez logiki cięcia i scalania, osobny test; (2) funkcja nie jest urywana, gdy da się ciąć na granicy, a przy funkcji dłuższej niż kawałek kontekst nie ginie; (3) mniej wywołań i kosztu, przewidywalny wynik; (4) dwa różne powody (rozmiar odczytu, długość kawałka); (5) węzeł z kroku 52 poda `Stage.note`; wybór: rekomendowane (tryb pracy fazy F) |

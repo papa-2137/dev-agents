@@ -282,7 +282,7 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 52. Graf: równolegli analitycy**
 - **Funkcja:** analiza wszystkich jednostek naraz.
-- **Robimy:** `Send` na każde zadanie z planu, reducer listy notatek w stanie, `analysis.max_concurrency` w configu, zapis `notes/*.json`.
+- **Robimy:** krawędź warunkowa `dispatch_analysts` za plannerem: `Send("analyst", {project_map, plan, task})` na każde zadanie; węzeł `analyst_node` (w `agents/analyst.py`) woła `analyze_unit` z `Stage.note` i zapisuje `notes/<jednostka>.json`; w stanie pola `task` i `notes` (reducer `operator.add`); `analysis.max_concurrency` (4) w configu, przekazane jako `config={"max_concurrency": n}` przez `graph.run_config()` (main.py i test); test na udawanym analitykach (dwa wywołania na kawałek).
 - **Sprawdzamy:** liczba notatek = liczba zadań; podgląd postępu pokazuje analityków z czasami.
 - **Uczymy się:** `Send`, reducery, równoległe węzły.
 
