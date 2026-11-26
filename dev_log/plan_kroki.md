@@ -293,7 +293,7 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 54. Graf: autor diagramu po analitykach**
 - **Funkcja:** diagram jako etap przepływu, zanim powstaną pozostałe zakładki.
-- **Robimy:** węzeł `flow` po analitykach, zapis `flow.json`, diagram w stanie.
+- **Robimy:** węzeł `flow_writer` (z kroku 53) po analitykach (krawędź `analyst -> flow_writer` czeka na wszystkich), zapis `flow.json`, diagram w stanie; test grafu z udawanym autorem diagramu; `main.py` wypisuje liczbę klocków.
 - **Sprawdzamy:** przebieg tworzy `flow.json`; podgląd postępu pokazuje liczbę klocków i wynik sprawdzenia spójności.
 
 **Krok 55. Agent pisarz zakładki (bez grafu) (W2, W4, W6, W7)**

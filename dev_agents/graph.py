@@ -1,6 +1,6 @@
 """Graf agentów (LangGraph): skan projektu, plan pracy, równoległa analiza jednostek.
 
-Co robi: buduje graf START -> scan -> planner -> (analyst x N, równolegle) -> END. Węzeł scan woła scanner.build_project_map na projekcie ze stanu
+Co robi: buduje graf START -> scan -> planner -> (analyst x N, równolegle) -> flow_writer -> END. Węzeł scan woła scanner.build_project_map na projekcie ze stanu
 (project_path) z ustawieniami skanowania z kontekstu (runtime.context.config.scan) i dopisuje do stanu
 project_map. Węzeł niczego nie zapisuje na dysku - zapis wyników należy do wołającego (main.py, krok 44).
 Pracę węzła owija Stage z progress.py: linie "scan: start" i "scan: gotowe w X s - wynik" (albo "BŁĄD po X s")
@@ -10,6 +10,9 @@ Po plannerze krawędź warunkowa (dispatch_analysts) wysyła Send("analyst", ła
 węzeł analyst (agents/analyst.py, krok 52) analizuje jedną jednostkę i zapisuje notes/<jednostka>.json, a reducer
 pola notes w stanie skleja notatki wszystkich analityków. Ilu analityków pracuje naraz, ustawia
 analysis.max_concurrency, przekazane do invoke przez run_config().
+Po analitykach węzeł flow_writer (agents/flow_writer.py, krok 54) układa z notatek diagram całego procesu,
+zapisuje flow.json i dopisuje do stanu flow; zaczyna dopiero, gdy skończą wszyscy analitycy (krawędź analyst ->
+flow_writer czeka na wszystkie zadania wysłane przez Send).
 
 Dlaczego istnieje: kolejne etapy (analitycy, autor diagramu, pisarze, recenzent) dołączamy do tego
 szkieletu po jednym - najpierw uczymy się LangGraph na grafie bez modelu. Graf przyjmuje stan (RunState)
@@ -29,12 +32,12 @@ Pojęcia LangGraph użyte tutaj:
 
 Test ręczny (z katalogu głównego repo; wymaga zainstalowanego langgraph, bez wywołań modelu i bez sieci):
     python -m dev_agents.graph
-        buduje kontekst (modele, spis bazy wiedzy, szablon), podmienia modele plannera i analityków na udawane (bez sieci)
+        buduje kontekst (modele, spis bazy wiedzy, szablon), podmienia modele plannera, analityków i autora diagramu na udawane (bez sieci)
         i uruchamia graf na małym projekcie tymczasowym oraz na robotach testowych 02 i 01 (tylko odczyt, bez
         zapisu w nich); dla każdego wypisuje stan końcowy, porównuje mapę z grafu z mapą z bezpośredniego skanu,
-        sprawdza linie postępu (scan, planner, analityk dla każdej jednostki: start i koniec z czasem), to, że plan
+        sprawdza linie postępu (scan, planner, analityk dla każdej jednostki, flow_writer: start i koniec z czasem), to, że plan
         obejmuje wszystkie jednostki kodu i trafił do plan.json w magazynie tymczasowym, oraz że notatek jest tyle
-        co zadań, każda jednostka ma notatkę w stanie i w notes/<jednostka>.json; na końcu
+        co zadań, każda jednostka ma notatkę w stanie i w notes/<jednostka>.json, a diagram jest spójny i zapisany jako flow.json; na końcu
         "zgodne z oczekiwaniem: True".
         Jeśli w środowisku nie ma zmiennych z kluczem i adresem modeli (nazwy w config.yaml), test ustawia
         atrapy tylko dla tego procesu - prawdziwe modele nie są wołane.
@@ -47,6 +50,7 @@ from langgraph.runtime import Runtime
 from langgraph.types import Send
 
 import dev_agents.agents.analyst as _analyst
+import dev_agents.agents.flow_writer as _flow_writer
 import dev_agents.agents.planner as _planner
 import dev_agents.config as _config
 import dev_agents.context as _context
@@ -112,7 +116,7 @@ def run_config(
 
 
 def build_graph():
-    """Buduje i kompiluje graf START -> scan -> planner -> analyst (po jednym na zadanie, równolegle) -> END; zwraca graf gotowy do invoke(stan, context=RunContext, config=run_config(...)).
+    """Buduje i kompiluje graf START -> scan -> planner -> analyst (po jednym na zadanie, równolegle) -> flow_writer -> END; zwraca graf gotowy do invoke(stan, context=RunContext, config=run_config(...)).
 
     Po co: jedno miejsce z układem grafu - kolejne kroki planu dopisują tu węzły i krawędzie.
     """
@@ -123,7 +127,9 @@ def build_graph():
     budowniczy.add_edge("scan", "planner")
     budowniczy.add_node("analyst", _analyst.analyst_node)
     budowniczy.add_conditional_edges("planner", dispatch_analysts, ["analyst"])
-    budowniczy.add_edge("analyst", END)
+    budowniczy.add_node("flow_writer", _flow_writer.flow_writer_node)
+    budowniczy.add_edge("analyst", "flow_writer")
+    budowniczy.add_edge("flow_writer", END)
     graf = budowniczy.compile()
     return graf
 
@@ -136,6 +142,8 @@ if __name__ == "__main__":
 
     import dev_agents.config as _config
     import dev_agents.fakes as _fakes
+    import dev_agents.flow as _flow
+    import dev_agents.guide_content as _content
     import dev_agents.output as _output
     import dev_agents.schemas as _schemas
 
@@ -205,6 +213,21 @@ if __name__ == "__main__":
                 outputs=[],
             )
         return odpowiedz
+
+    def _fake_flow() -> _content.FlowGraph:
+        """Zwraca mały poprawny diagram (start, jeden krok, koniec), którym odpowiada udawany autor diagramu.
+
+        Po co: test grafu sprawdza przekazanie notatek i zapis diagramu, nie jego treść.
+        """
+        diagram = _content.FlowGraph(
+            nodes=[
+                _content.FlowNode(id="n1", kind="start", label="Start"),
+                _content.FlowNode(id="n2", kind="step", label="Krok", module="main.py", functions=["run:1"]),
+                _content.FlowNode(id="n3", kind="end", label="Koniec"),
+            ],
+            edges=[_content.FlowEdge(source="n1", target="n2"), _content.FlowEdge(source="n2", target="n3")],
+        )
+        return diagram
 
     def _context_lines(
         context: _context.RunContext,
@@ -293,8 +316,18 @@ if __name__ == "__main__":
             if "] analyst " in linia_postepu and ": gotowe w " in linia_postepu:
                 koniec_analitykow += 1
         postep_analitykow = start_analitykow == len(plan.tasks) and koniec_analitykow == len(plan.tasks)
+        diagram = stan["flow"]
+        problemy_diagramu, _ = _flow.validate_flow(diagram, context.config.flow)
+        diagram_zapisany = context.store.load_json("flow.json", _content.FlowGraph) == diagram
+        linie_flow = []
+        for linia_postepu in nowe_linie:
+            if "] flow_writer: " in linia_postepu:
+                linie_flow.append(linia_postepu)
+        postep_flow = len(linie_flow) == 2 and linie_flow[0].endswith("] flow_writer: start") and "] flow_writer: gotowe w " in linie_flow[1]
+        diagram_zgodny = problemy_diagramu == [] and diagram_zapisany and postep_flow
         zgodne = (
             mapa == bezposrednio
+            and diagram_zgodny
             and notatki_zgodne
             and notatki_zapisane
             and postep_analitykow
@@ -319,6 +352,7 @@ if __name__ == "__main__":
             f"  notatek ({len(notatki)}) tyle co zadań, każda jednostka raz: {notatki_zgodne}",
             f"  notes/<jednostka>.json w magazynie == notatki ze stanu: {notatki_zapisane}",
             f"  analitycy: start i koniec z czasem dla każdej jednostki: {postep_analitykow}",
+            f"  diagram bez problemów ({len(diagram.nodes)} klocków), flow.json == diagram ze stanu, linie postępu flow_writer: {diagram_zgodny}",
         ]
         for linia_postepu in nowe_linie:
             linie.append(f"    {linia_postepu}")
@@ -329,7 +363,7 @@ if __name__ == "__main__":
         """Buduje kontekst i graf, uruchamia je na projekcie tymczasowym i robotach testowych 02 i 01 (tylko odczyt).
 
         Po co: sprawdzenie szkieletu LangGraph z prawdziwym skanem i udawanymi modelami plannera (pusty plan,
-        który complete_plan uzupełnia o wszystkie jednostki) i analityków (stała notatka), bez sieci i bez zapisu w cudzych projektach.
+        który complete_plan uzupełnia o wszystkie jednostki), analityków (stała notatka) i autora diagramu (stały diagram), bez sieci i bez zapisu w cudzych projektach.
         """
         katalog_repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         app_config = _config.load_config(os.path.join(katalog_repo, "config.yaml"))
@@ -345,6 +379,7 @@ if __name__ == "__main__":
             kontekst = _context.build_context(app_config, magazyn, linie_postepu.append)
             kontekst.models["planner"] = _fakes.FakeStructuredModel(_schemas.Plan(summary="Plan testowy", tasks=[]))
             kontekst.models["analyst"] = _fakes.FakeStructuredModel(_fake_analyst_answer)
+            kontekst.models["flow_writer"] = _fakes.FakeStructuredModel(_fake_flow())
             graf = build_graph()
             for linia in _context_lines(kontekst):
                 print(linia)

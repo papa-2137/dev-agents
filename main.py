@@ -38,6 +38,7 @@ import time
 import dev_agents.config as _config
 import dev_agents.context as _context
 import dev_agents.graph as _graph
+import dev_agents.guide_content as _guide_content
 import dev_agents.guide_placeholders as _placeholders
 import dev_agents.guide_template as _template
 import dev_agents.output as _output
@@ -160,8 +161,8 @@ def _run_graph(
     project_root: str,
     app_config: _config.AppConfig,
     store: _output.RunStore,
-) -> tuple[_schemas.ProjectMap, _schemas.Plan, int]:
-    """Buduje kontekst, uruchamia graf agentów na projekcie i zwraca (mapa projektu, plan, liczba notatek analityków) ze stanu końcowego.
+) -> tuple[_schemas.ProjectMap, _schemas.Plan, int, _guide_content.FlowGraph | None]:
+    """Buduje kontekst, uruchamia graf agentów na projekcie i zwraca (mapa projektu, plan, liczba notatek analityków, diagram albo None) ze stanu końcowego.
 
     Po co: jedyne miejsce w main.py, które zna graf; kolejne węzły nie zmieniają tej funkcji, bo dochodzą do grafu.
     Węzły zgłaszają postęp liniami na ekran (progress.print_line podane w kontekście), a po grafie wypisana
@@ -179,7 +180,7 @@ def _run_graph(
     stan_koncowy = graf.invoke({"project_path": project_root}, context=kontekst, config=_graph.run_config(app_config))
     razem = _progress.format_seconds(time.monotonic() - czas_startu)
     _progress.print_line(_progress.format_line("razem", razem))
-    wynik = (stan_koncowy["project_map"], stan_koncowy["plan"], len(stan_koncowy.get("notes", [])))
+    wynik = (stan_koncowy["project_map"], stan_koncowy["plan"], len(stan_koncowy.get("notes", [])), stan_koncowy.get("flow"))
     return wynik
 
 
@@ -240,12 +241,14 @@ def main() -> None:
     if args.render_only:
         project_map = mapa_wstepna
     else:
-        project_map, plan, liczba_notatek = _run_graph(mapa_wstepna.root, app_config, magazyn)
+        project_map, plan, liczba_notatek, diagram = _run_graph(mapa_wstepna.root, app_config, magazyn)
     zapisany_plik = magazyn.save_json("project_map.json", project_map)
     _print_scan_summary(project_map, zapisany_plik)
     if plan is not None:
         _print_plan_summary(plan)
         print(f"  notatki analityków: {liczba_notatek} (dev_agents_doc/notes/)")
+        if diagram is not None:
+            print(f"  diagram przepływu: klocków {len(diagram.nodes)}, strzałek {len(diagram.edges)} (dev_agents_doc/flow.json)")
     if args.render_only:
         zapisany_przewodnik = _render_placeholder_guide(project_map, app_config, magazyn)
         print(f"  zapisano: {zapisany_przewodnik} (zaślepki zamiast tekstu agentów, diagram przykładowy)")
