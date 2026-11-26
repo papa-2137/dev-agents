@@ -206,6 +206,7 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 - **Funkcja:** zatwierdzenie wyglądu i układu na prawdziwych danych, zanim wydamy pierwszy token na treść.
 - **Robimy:** `main.py --render-only`: skan → sekcje `scanner` i `code` wypełnione, sekcje `llm` z zaślepką, diagram z danych przykładowych → `dev_agents_doc/guide.html`.
 - **Sprawdzamy:** przewodniki robotów 01 i 02 otwierają się offline; metryczka, drzewo, zależności do skopiowania, graf zależności i karty „jak czytać” prawdziwe; uwagi do wyglądu poprawione przed fazą E. ✅ **M4**
+- **Decyzje użytkownika (rekomendowane: A, A, A):** zaślepki składa nowy moduł `guide_placeholders.py` (tekst w nawiasach kwadratowych w kształcie typu sekcji, zdania „plik: [dlaczego…]” w kolejności czytania, wpisy metryczki z wartością „[wartość]” - bez haseł); diagram przykładowy ogólny, każdy napis z „[przykład]”; robot 01 tylko do odczytu: jego przewodnik w pamięci (`python -m dev_agents.guide_placeholders robot01` zapisuje `guide_test.html` w repo), prawdziwy zapis `dev_agents_doc/` przez `main.py --render-only` tylko na robocie 02. Metryczka ma zaślepki, a nie prawdziwe wartości: wartości pliku konfiguracyjnego przepisuje agent (kod ich nie parsuje).
 
 ### Faza E - Prompty i baza wiedzy
 

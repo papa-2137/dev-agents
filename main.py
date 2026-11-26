@@ -3,8 +3,10 @@
 Co robi: odczytuje argumenty wiersza poleceń, wczytuje config.yaml, buduje mapę analizowanego projektu
 (scanner.build_project_map - pliki z rolami, punkty wejścia, jednostki kodu z zakresami linii, frameworki,
 pliki tekstowe, graf zależności i kolejność czytania), zapisuje ją jako dev_agents_doc/project_map.json
-w katalogu projektu i wypisuje krótkie podsumowanie. Kolejne etapy (graf agentów, przewodnik HTML) dochodzą
-tutaj w kolejnych krokach planu.
+w katalogu projektu i wypisuje krótkie podsumowanie. Z opcją --render-only składa dodatkowo przewodnik bez
+modelu: sekcje z kodu są prawdziwe, sekcje agentów mają zaślepki, diagram jest przykładowy - wynik to
+dev_agents_doc/guide.html (podgląd wyglądu na prawdziwym robocie, bez wydawania tokenów). Kolejne etapy
+(graf agentów) dochodzą tutaj w kolejnych krokach planu.
 
 Dlaczego istnieje: jedno polecenie uruchamia całe narzędzie. Domyślny config jest szukany obok main.py,
 a nie w bieżącym katalogu, więc program działa tak samo bez względu na to, skąd go uruchomiono
@@ -16,14 +18,20 @@ Rola: samodzielny skrypt - nikt go nie importuje; jego uruchomienie jest testem 
 Uruchomienie z katalogu głównego repo:
     python main.py --project <ścieżka do katalogu robota>
     python main.py --project <ścieżka do katalogu robota> --config <ścieżka do config.yaml>
+    python main.py --project <ścieżka do katalogu robota> --render-only
+        dodatkowo zapisuje dev_agents_doc/guide.html (zaślepki zamiast tekstu agentów, bez wywołań modelu)
 """
 
 import argparse
+import datetime
 import os
 import sys
 
 import dev_agents.config as _config
+import dev_agents.guide_placeholders as _placeholders
+import dev_agents.guide_template as _template
 import dev_agents.output as _output
+import dev_agents.render as _render
 import dev_agents.scanner as _scanner
 import dev_agents.schemas as _schemas
 
@@ -106,11 +114,39 @@ def _print_scan_summary(
     print(f"  zapisano: {saved_path}")
 
 
+# --- Przewodnik bez modelu ---
+
+
+def _render_placeholder_guide(
+    project_map: _schemas.ProjectMap,
+    app_config: _config.AppConfig,
+    store: _output.RunStore,
+) -> str:
+    """Składa przewodnik z zaślepkami (sekcje z kodu prawdziwe, sekcje agentów zaślepki), zapisuje guide.html i zwraca ścieżkę.
+
+    Po co: podgląd wyglądu przewodnika na prawdziwym robocie przed pierwszym wywołaniem modelu (krok 39); nie woła modelu.
+    """
+    szablon = _template.load_template(app_config.paths.guide_template)
+    tresc = _placeholders.build_placeholder_content(szablon, project_map)
+    wygenerowano = datetime.datetime.now().strftime("%Y-%m-%d %H:%M")
+    html = _render.render_guide(
+        tresc,
+        szablon,
+        project_map,
+        os.path.dirname(app_config.paths.guide_template),
+        f"{wygenerowano} (podgląd bez modelu)",
+        app_config.analysis.long_unit_lines,
+        app_config.flow,
+    )
+    zapisany_plik = store.save_text("guide.html", html)
+    return zapisany_plik
+
+
 # --- Uruchomienie ---
 
 
 def _parse_args() -> argparse.Namespace:
-    """Odczytuje argumenty: --project (wymagany, sprawdzany) i --config (domyślnie config.yaml obok main.py).
+    """Odczytuje argumenty: --project (wymagany, sprawdzany), --config (domyślnie config.yaml obok main.py), --render-only.
 
     Po co: jedno miejsce z opcjami programu. Domyślna ścieżka configu liczona względem main.py
     sprawia, że program działa z dowolnego katalogu; literówka w ścieżce projektu daje czytelny błąd.
@@ -119,6 +155,7 @@ def _parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Przewodnik dla dewelopera z kodu robota RPA, tworzony przez zespół agentów.")
     parser.add_argument("--project", required=True, help="ścieżka do katalogu analizowanego projektu")
     parser.add_argument("--config", default=default_config, help="ścieżka do pliku konfiguracyjnego (domyślnie: config.yaml obok main.py)")
+    parser.add_argument("--render-only", action="store_true", help="zapisz też dev_agents_doc/guide.html z zaślepkami zamiast tekstu agentów (bez wywołań modelu)")
     args = parser.parse_args()
     if not os.path.isdir(args.project):
         parser.error(f"--project: katalog nie istnieje: {args.project}")
@@ -126,7 +163,7 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Uruchamia program: argumenty -> config -> mapa projektu -> zapis project_map.json -> podsumowanie.
+    """Uruchamia program: argumenty -> config -> mapa projektu -> zapis project_map.json -> podsumowanie (-> guide.html z --render-only).
 
     Po co: spis treści całego przebiegu; kolejne etapy narzędzia dopisujemy tu jako kolejne wywołania.
 
@@ -145,6 +182,9 @@ def main() -> None:
         sys.exit(f"BŁĄD: {blad}")
     zapisany_plik = magazyn.save_json("project_map.json", project_map)
     _print_scan_summary(project_map, zapisany_plik)
+    if args.render_only:
+        zapisany_przewodnik = _render_placeholder_guide(project_map, app_config, magazyn)
+        print(f"  zapisano: {zapisany_przewodnik} (zaślepki zamiast tekstu agentów, diagram przykładowy)")
 
 
 if __name__ == "__main__":
