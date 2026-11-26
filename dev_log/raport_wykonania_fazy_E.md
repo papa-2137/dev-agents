@@ -1,0 +1,24 @@
+# Dev-Agents: raport wykonania - faza E (kroki 40-42)
+
+> Archiwum wpisów kroków fazy E przeniesionych bez zmian z `dev_log/raport_wykonania.md`. Podsumowanie faz, kroki od 43 i tabela decyzji zostają w głównym raporcie.
+
+### Krok 40. `prompts.py` - prompty agentów z plików Markdown - ✅
+- Nowy `dev_agents/prompts.py` (przeniesiony z doc-agents, w regułach stylu towaru): `read_prompt_file` (UTF-8, brak pliku → `FileNotFoundError` ze ścieżką) i `render_prompt(prompts_dir, agent, variables)` → `(system, user)`: `system.md` bez zmian (nie jest szablonem), `user.md` jako szablon Jinja2 ze `StrictUndefined` i `keep_trailing_newline`, bez escapowania (prompt to Markdown); brak zmiennej → `ValueError` z nazwą agenta i zmiennej.
+- Test w bloku `__main__` (`python -m dev_agents.prompts`): prompt „przyklad” tworzony w katalogu tymczasowym i sprzątany; 6 przypadków (system bez zmian, user z danymi, zmienna nadmiarowa, składnia Jinja2 i znaki `<` `&` w wartości wypisane dosłownie, brak zmiennej, brak pliku), `zgodne z oczekiwaniem: True`.
+- Odstępstwa od planu: brak (katalog `prompts/` powstaje w fazie F razem z agentami; `paths.prompts` już był w `config.yaml`).
+- Wybory użytkownika: rekomendowane (1B, 2A, 3A). Test użytkownika: OK. Commit `9c6deab`.
+
+### Krok 41. `knowledge.py` - spis bazy wiedzy i bezpieczny odczyt - ✅
+- Nowy `dev_agents/knowledge.py` (przeniesiony z doc-agents bez szablonów dokumentu - te mamy w `guide_template.py`): `KBEntry` (plik względny do `knowledge/`, „Kiedy użyć”, tagi), `parse_entry`, `parse_index`, `load_index` i `read_kb_file`; `_knowledge_dir` i `_resolve_kb_path` jako jedno miejsce granicy bazy.
+- Spis ścisły: blok, którego pierwsza linia jest nazwą pliku `.md`, musi mieć „Kiedy użyć:”; powtórzony wpis, nazwa spoza bazy i wpis wskazujący brakujący plik → `ValueError` z nazwą pliku; nagłówek `#` i instrukcja na początku `index.md` pomijane; podkatalogi w nazwach dozwolone (`frameworks/roboforge.md`).
+- Granica bazy po `os.path.realpath` (blokuje `..`, ścieżkę bezwzględną spoza bazy i dowiązanie wskazujące poza bazę).
+- Test w bloku `__main__` (`python -m dev_agents.knowledge`): bazy testowe w katalogu tymczasowym (sprzątanym), 12 przypadków (spis z podkatalogami i wpisem bez tagów, odczyt z podkatalogu, brak pliku, literówka, powtórzenie, nazwa spoza bazy w spisie, `../config.yaml`, ścieżka bezwzględna, `..` w środku, dowiązanie - bez uprawnień do dowiązań przypadek pomijany), `zgodne z oczekiwaniem: True`; gdy w repo jest prawdziwy `index.md`, test wypisuje też jego wpisy (w kroku 42 bez zmian w kodzie).
+- Odstępstwa od planu: spis ścisły i `realpath` (plan: parser i blokada ścieżek); raport podzielony - wpisy kroków 30-39a w `dev_log/raport_wykonania_fazy_D.md`.
+- Wybory użytkownika: rekomendowane (1A, 2B, 3B) i archiwizacja raportu. Test użytkownika: OK. Commit `ae403e7`.
+
+### Krok 42. Treść bazy wiedzy i `knowledge_file()` technologii - ✅
+- Pliki wiedzy w `knowledge_base/knowledge/`: `guide_goals.md` (odbiorca, ton, poziom szczegółów, oznaczanie informacji wywnioskowanych znacznikiem `[wywnioskowane]` i `certain = false`, „Nie wynika z kodu.”, hasło wpisane wprost dosłownie jako `plain_password`, pliki sekretów tylko jako metadane, ryzykowne miejsca, ścieżki procesu z numerami klocków); `diagram_rules.md` (rodzaje klocków `start`/`end`/`step`/`system`/`decision`, jeden klocek na czynność widoczną dla biznesu, każdy kontakt z systemem osobno, tylko decyzje biznesowe, pętle jako `loop`, ok. 30 klocków, dane klocka i rodzaje danych, kolejność klocków = kolejność przepływu); `technologies/python.md` (z `python_conventions.md` z doc-agents); `frameworks/roboforge.md` (pełna treść w miejsce makiety: ukryty przepływ sterowania, cykl życia, pętla po elementach jako jawna pętla na diagramie, `BusinessRuleException`, `get_config`); `index.md` (tylko `guide_goals.md` i `diagram_rules.md`, z uwagą, że technologie i frameworki dołącza kod).
+- `dev_agents/technologies/base.py`: nowa metoda opcjonalna `knowledge_file()` (domyślnie `""` - brak pliku), opis w kontrakcie i w „Jak dodać technologię” (krok 4); `python.py`: `PythonTechnology.knowledge_file()` zwraca `technologies/python.md`; test (`python -m dev_agents.technologies.python`) kończy się blokiem „Plik wiedzy technologii” (nazwa, czy plik istnieje przez `knowledge.read_kb_file`, pierwsza linia); test `technologies.base` wypisuje `knowledge_file`.
+- Poprawka przy okazji: `python.py` - `return _schemas.References()` zamienione na zmienną `brak_odwolan` (reguła stylu: `return` tylko nazwa lub stała).
+- Odstępstwa od planu: osobny plik `diagram_rules.md` (plan: zasady diagramu w `guide_goals.md`); `index.md` bez plików technologii i frameworków (plan: `index.md` ogólnie); `knowledge_file()` jako metoda kontraktu zgodnie z planem (krok 12).
+- Wybory użytkownika: rekomendowane (1B, 2A, 3A). Test użytkownika: OK. Commit `53c8e7e`.

@@ -1,12 +1,13 @@
-"""Graf agentów (LangGraph): na razie jeden węzeł - skan projektu.
+"""Graf agentów (LangGraph): skan projektu, potem plan pracy.
 
-Co robi: buduje graf START -> scan -> END. Węzeł scan woła scanner.build_project_map na projekcie ze stanu
+Co robi: buduje graf START -> scan -> planner -> END. Węzeł scan woła scanner.build_project_map na projekcie ze stanu
 (project_path) z ustawieniami skanowania z kontekstu (runtime.context.config.scan) i dopisuje do stanu
 project_map. Węzeł niczego nie zapisuje na dysku - zapis wyników należy do wołającego (main.py, krok 44).
 Pracę węzła owija Stage z progress.py: linie "scan: start" i "scan: gotowe w X s - wynik" (albo "BŁĄD po X s")
-trafiają do runtime.context.report (krok 45).
+trafiają do runtime.context.report (krok 45). Węzeł planner (agents/planner.py, krok 48) czyta mapę ze stanu,
+woła model małym planem pracy, dopisuje do stanu plan i zapisuje plan.json w magazynie wyników.
 
-Dlaczego istnieje: kolejne etapy (planner, analitycy, autor diagramu, pisarze, recenzent) dołączamy do tego
+Dlaczego istnieje: kolejne etapy (analitycy, autor diagramu, pisarze, recenzent) dołączamy do tego
 szkieletu po jednym - najpierw uczymy się LangGraph na grafie bez modelu. Graf przyjmuje stan (RunState)
 i kontekst (RunContext) osobno: stan się zmienia w trakcie przebiegu, kontekst nie.
 
@@ -20,12 +21,14 @@ Pojęcia LangGraph użyte tutaj:
 
 Test ręczny (z katalogu głównego repo; wymaga zainstalowanego langgraph, bez wywołań modelu i bez sieci):
     python -m dev_agents.graph
-        buduje kontekst (modele, spis bazy wiedzy, szablon) i uruchamia graf na małym projekcie tymczasowym
-        oraz na robotach testowych 02 i 01 (tylko odczyt, bez zapisu w nich); dla każdego wypisuje stan końcowy
-        i porównuje mapę z grafu z mapą z bezpośredniego skanu; sprawdza też, że węzeł scan zgłosił dwie linie
-        postępu (start i koniec z czasem); na końcu "zgodne z oczekiwaniem: True".
+        buduje kontekst (modele, spis bazy wiedzy, szablon), podmienia model plannera na udawany (bez sieci)
+        i uruchamia graf na małym projekcie tymczasowym oraz na robotach testowych 02 i 01 (tylko odczyt, bez
+        zapisu w nich); dla każdego wypisuje stan końcowy, porównuje mapę z grafu z mapą z bezpośredniego skanu,
+        sprawdza linie postępu (scan: start i koniec, planner: start i koniec z liczbą zadań) oraz to, że plan
+        obejmuje wszystkie jednostki kodu i trafił do plan.json w magazynie tymczasowym; na końcu
+        "zgodne z oczekiwaniem: True".
         Jeśli w środowisku nie ma zmiennych z kluczem i adresem modeli (nazwy w config.yaml), test ustawia
-        atrapy tylko dla tego procesu - modele nie są wołane.
+        atrapy tylko dla tego procesu - prawdziwe modele nie są wołane.
 """
 
 import os
@@ -33,6 +36,7 @@ import os
 from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 
+import dev_agents.agents.planner as _planner
 import dev_agents.context as _context
 import dev_agents.progress as _progress
 import dev_agents.scanner as _scanner
@@ -67,14 +71,16 @@ def scan_node(
 
 
 def build_graph():
-    """Buduje i kompiluje graf START -> scan -> END; zwraca graf gotowy do invoke(stan, context=RunContext).
+    """Buduje i kompiluje graf START -> scan -> planner -> END; zwraca graf gotowy do invoke(stan, context=RunContext).
 
     Po co: jedno miejsce z układem grafu - kolejne kroki planu dopisują tu węzły i krawędzie.
     """
     budowniczy = StateGraph(_state.RunState, context_schema=_context.RunContext)
     budowniczy.add_node("scan", scan_node)
+    budowniczy.add_node("planner", _planner.planner_node)
     budowniczy.add_edge(START, "scan")
-    budowniczy.add_edge("scan", END)
+    budowniczy.add_edge("scan", "planner")
+    budowniczy.add_edge("planner", END)
     graf = budowniczy.compile()
     return graf
 
@@ -86,7 +92,9 @@ if __name__ == "__main__":
     import tempfile
 
     import dev_agents.config as _config
+    import dev_agents.fakes as _fakes
     import dev_agents.output as _output
+    import dev_agents.schemas as _schemas
 
     def _ensure_test_env(
         app_config: _config.AppConfig,
@@ -156,19 +164,44 @@ if __name__ == "__main__":
         """Uruchamia graf na projekcie i zwraca (linie opisu stanu końcowego, czy wynik zgadza się z oczekiwaniem).
 
         Po co: sprawdza, że węzeł scan daje dokładnie ten wynik co skaner wołany wprost, że uruchomienie
-        nie utworzyło ani nie zmieniło katalogu wyników w skanowanym projekcie i że węzeł zgłosił dwie linie
-        postępu (start i koniec); progress_lines to lista, do której context.report dopisuje linie.
+        nie utworzyło ani nie zmieniło katalogu wyników w skanowanym projekcie, że węzeł scan zgłosił dwie linie
+        postępu (start i koniec), że plan z węzła planner obejmuje wszystkie jednostki kodu, jest zapisany jako
+        plan.json w magazynie i że planner zgłosił start oraz koniec z liczbą zadań; progress_lines to lista,
+        do której context.report dopisuje linie.
         """
         katalog_wynikow = os.path.join(root, _output.OUTPUT_DIR_NAME)
         istnial_przed = os.path.exists(katalog_wynikow)
         ile_linii_przed = len(progress_lines)
         stan = graph.invoke({"project_path": root}, context=context)
         nowe_linie = progress_lines[ile_linii_przed:]
-        postep_poprawny = len(nowe_linie) == 2 and nowe_linie[0].endswith("] scan: start") and "] scan: gotowe w " in nowe_linie[1]
+        linie_scan = []
+        linie_planner = []
+        for linia_postepu in nowe_linie:
+            if "] scan: " in linia_postepu:
+                linie_scan.append(linia_postepu)
+            if "] planner: " in linia_postepu:
+                linie_planner.append(linia_postepu)
+        postep_scan = len(linie_scan) == 2 and linie_scan[0].endswith("] scan: start") and "] scan: gotowe w " in linie_scan[1]
         istnieje_po = os.path.exists(katalog_wynikow)
         mapa = stan["project_map"]
         bezposrednio = _scanner.build_project_map(root, context.config.scan)
-        zgodne = mapa == bezposrednio and istnial_przed == istnieje_po and postep_poprawny
+        plan = stan["plan"]
+        liczba_jednostek = len(mapa.code_units)
+        plan_pelny = len(plan.tasks) == liczba_jednostek
+        plan_zapisany = context.store.load_json("plan.json", _schemas.Plan) == plan
+        postep_planner = (
+            len(linie_planner) >= 2
+            and linie_planner[0].endswith("] planner: start")
+            and f"zadań: {liczba_jednostek}," in linie_planner[-1]
+        )
+        zgodne = (
+            mapa == bezposrednio
+            and istnial_przed == istnieje_po
+            and postep_scan
+            and plan_pelny
+            and plan_zapisany
+            and postep_planner
+        )
         linie = [
             f"=== {title} ===",
             f"  klucze stanu końcowego: {sorted(stan.keys())}",
@@ -177,7 +210,10 @@ if __name__ == "__main__":
             f"  krawędzie zależności: {len(mapa.dependency_edges)}, kolejność czytania: {mapa.reading_order}",
             f"  mapa z grafu == mapa z bezpośredniego skanu: {mapa == bezposrednio}",
             f"  katalog wyników w projekcie bez zmian: {istnial_przed == istnieje_po}",
-            f"  linie postępu węzła scan (start i koniec): {postep_poprawny}",
+            f"  linie postępu węzła scan (start i koniec): {postep_scan}",
+            f"  plan obejmuje wszystkie jednostki kodu ({liczba_jednostek}): {plan_pelny}",
+            f"  plan.json w magazynie == plan ze stanu: {plan_zapisany}",
+            f"  linie postępu węzła planner (start, uwagi, koniec z liczbą zadań): {postep_planner}",
         ]
         for linia_postepu in nowe_linie:
             linie.append(f"    {linia_postepu}")
@@ -187,7 +223,8 @@ if __name__ == "__main__":
     def manual_test():
         """Buduje kontekst i graf, uruchamia je na projekcie tymczasowym i robotach testowych 02 i 01 (tylko odczyt).
 
-        Po co: sprawdzenie szkieletu LangGraph z prawdziwym skanem, bez modelu i bez zapisu w cudzych projektach.
+        Po co: sprawdzenie szkieletu LangGraph z prawdziwym skanem i udawanym modelem plannera (pusty plan,
+        który complete_plan uzupełnia o wszystkie jednostki), bez sieci i bez zapisu w cudzych projektach.
         """
         katalog_repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         app_config = _config.load_config(os.path.join(katalog_repo, "config.yaml"))
@@ -201,6 +238,7 @@ if __name__ == "__main__":
             magazyn = _output.create_run_store(temp_dir)
             linie_postepu = []
             kontekst = _context.build_context(app_config, magazyn, linie_postepu.append)
+            kontekst.models["planner"] = _fakes.FakeStructuredModel(_schemas.Plan(summary="Plan testowy", tasks=[]))
             graf = build_graph()
             for linia in _context_lines(kontekst):
                 print(linia)

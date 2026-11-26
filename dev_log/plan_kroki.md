@@ -258,8 +258,8 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 48. Graf: scan → planner**
 - **Funkcja:** planner jako etap przepływu.
-- **Robimy:** węzeł planner w grafie, zapis `plan.json`.
-- **Sprawdzamy:** przebieg tworzy `plan.json`; podgląd postępu pokazuje liczbę zadań.
+- **Robimy:** węzeł planner w grafie (START → scan → planner → END), zapis `plan.json`; wspólny udawany model `dev_agents/fakes.py` (`FakeStructuredModel`) do testów agentów bez sieci; `main.py` wypisuje linię o planie (liczba zadań, pliki wiedzy).
+- **Sprawdzamy:** przebieg tworzy `plan.json`; podgląd postępu pokazuje liczbę zadań; test grafu na udawanym modelu sprawdza pełność planu, zapis `plan.json` i linie postępu.
 
 **Krok 49. `schemas.py` - notatka analityka (W1-W7)**
 - **Funkcja:** ustrukturyzowana wiedza o jednej jednostce kodu - surowiec dla wszystkich zakładek.

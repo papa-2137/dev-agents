@@ -12,7 +12,7 @@
 | C - Mapa projektu bez modelu (9-29) | ✅ zakończona (M3) |
 | D - Szablon przewodnika i HTML bez modelu (30-39) | ✅ zakończona (M4) |
 | E - Prompty i baza wiedzy (40-42) | ✅ zakończona |
-| F - Graf i agenci (43-59) | 🟡 w toku (43-45 ✅) |
+| F - Graf i agenci (43-59) | 🟡 w toku (43-47 ✅) |
 | G - Ergonomia (60-63) | ⬜ |
 | H - Miasto (64-68) | ⬜ |
 
@@ -31,28 +31,7 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ✅ makieta `dev_log/guide_mockup.htm
 - Test użytkownika: wynik.
 -->
 
-Wpisy kroków 1-29 (fazy A-C) są w archiwum: `dev_log/raport_wykonania_fazy_A-C.md`; wpisy kroków 30-39a (faza D) w archiwum: `dev_log/raport_wykonania_fazy_D.md`.
-
-### Krok 40. `prompts.py` - prompty agentów z plików Markdown - ✅
-- Nowy `dev_agents/prompts.py` (przeniesiony z doc-agents, w regułach stylu towaru): `read_prompt_file` (UTF-8, brak pliku → `FileNotFoundError` ze ścieżką) i `render_prompt(prompts_dir, agent, variables)` → `(system, user)`: `system.md` bez zmian (nie jest szablonem), `user.md` jako szablon Jinja2 ze `StrictUndefined` i `keep_trailing_newline`, bez escapowania (prompt to Markdown); brak zmiennej → `ValueError` z nazwą agenta i zmiennej.
-- Test w bloku `__main__` (`python -m dev_agents.prompts`): prompt „przyklad” tworzony w katalogu tymczasowym i sprzątany; 6 przypadków (system bez zmian, user z danymi, zmienna nadmiarowa, składnia Jinja2 i znaki `<` `&` w wartości wypisane dosłownie, brak zmiennej, brak pliku), `zgodne z oczekiwaniem: True`.
-- Odstępstwa od planu: brak (katalog `prompts/` powstaje w fazie F razem z agentami; `paths.prompts` już był w `config.yaml`).
-- Wybory użytkownika: rekomendowane (1B, 2A, 3A). Test użytkownika: OK. Commit `9c6deab`.
-
-### Krok 41. `knowledge.py` - spis bazy wiedzy i bezpieczny odczyt - ✅
-- Nowy `dev_agents/knowledge.py` (przeniesiony z doc-agents bez szablonów dokumentu - te mamy w `guide_template.py`): `KBEntry` (plik względny do `knowledge/`, „Kiedy użyć”, tagi), `parse_entry`, `parse_index`, `load_index` i `read_kb_file`; `_knowledge_dir` i `_resolve_kb_path` jako jedno miejsce granicy bazy.
-- Spis ścisły: blok, którego pierwsza linia jest nazwą pliku `.md`, musi mieć „Kiedy użyć:”; powtórzony wpis, nazwa spoza bazy i wpis wskazujący brakujący plik → `ValueError` z nazwą pliku; nagłówek `#` i instrukcja na początku `index.md` pomijane; podkatalogi w nazwach dozwolone (`frameworks/roboforge.md`).
-- Granica bazy po `os.path.realpath` (blokuje `..`, ścieżkę bezwzględną spoza bazy i dowiązanie wskazujące poza bazę).
-- Test w bloku `__main__` (`python -m dev_agents.knowledge`): bazy testowe w katalogu tymczasowym (sprzątanym), 12 przypadków (spis z podkatalogami i wpisem bez tagów, odczyt z podkatalogu, brak pliku, literówka, powtórzenie, nazwa spoza bazy w spisie, `../config.yaml`, ścieżka bezwzględna, `..` w środku, dowiązanie - bez uprawnień do dowiązań przypadek pomijany), `zgodne z oczekiwaniem: True`; gdy w repo jest prawdziwy `index.md`, test wypisuje też jego wpisy (w kroku 42 bez zmian w kodzie).
-- Odstępstwa od planu: spis ścisły i `realpath` (plan: parser i blokada ścieżek); raport podzielony - wpisy kroków 30-39a w `dev_log/raport_wykonania_fazy_D.md`.
-- Wybory użytkownika: rekomendowane (1A, 2B, 3B) i archiwizacja raportu. Test użytkownika: OK. Commit `ae403e7`.
-
-### Krok 42. Treść bazy wiedzy i `knowledge_file()` technologii - ✅
-- Pliki wiedzy w `knowledge_base/knowledge/`: `guide_goals.md` (odbiorca, ton, poziom szczegółów, oznaczanie informacji wywnioskowanych znacznikiem `[wywnioskowane]` i `certain = false`, „Nie wynika z kodu.”, hasło wpisane wprost dosłownie jako `plain_password`, pliki sekretów tylko jako metadane, ryzykowne miejsca, ścieżki procesu z numerami klocków); `diagram_rules.md` (rodzaje klocków `start`/`end`/`step`/`system`/`decision`, jeden klocek na czynność widoczną dla biznesu, każdy kontakt z systemem osobno, tylko decyzje biznesowe, pętle jako `loop`, ok. 30 klocków, dane klocka i rodzaje danych, kolejność klocków = kolejność przepływu); `technologies/python.md` (z `python_conventions.md` z doc-agents); `frameworks/roboforge.md` (pełna treść w miejsce makiety: ukryty przepływ sterowania, cykl życia, pętla po elementach jako jawna pętla na diagramie, `BusinessRuleException`, `get_config`); `index.md` (tylko `guide_goals.md` i `diagram_rules.md`, z uwagą, że technologie i frameworki dołącza kod).
-- `dev_agents/technologies/base.py`: nowa metoda opcjonalna `knowledge_file()` (domyślnie `""` - brak pliku), opis w kontrakcie i w „Jak dodać technologię” (krok 4); `python.py`: `PythonTechnology.knowledge_file()` zwraca `technologies/python.md`; test (`python -m dev_agents.technologies.python`) kończy się blokiem „Plik wiedzy technologii” (nazwa, czy plik istnieje przez `knowledge.read_kb_file`, pierwsza linia); test `technologies.base` wypisuje `knowledge_file`.
-- Poprawka przy okazji: `python.py` - `return _schemas.References()` zamienione na zmienną `brak_odwolan` (reguła stylu: `return` tylko nazwa lub stała).
-- Odstępstwa od planu: osobny plik `diagram_rules.md` (plan: zasady diagramu w `guide_goals.md`); `index.md` bez plików technologii i frameworków (plan: `index.md` ogólnie); `knowledge_file()` jako metoda kontraktu zgodnie z planem (krok 12).
-- Wybory użytkownika: rekomendowane (1B, 2A, 3A). Test użytkownika: OK. Commit `53c8e7e`.
+Wpisy kroków 1-29 (fazy A-C) są w archiwum: `dev_log/raport_wykonania_fazy_A-C.md`; wpisy kroków 30-39a (faza D) w archiwum: `dev_log/raport_wykonania_fazy_D.md`; wpisy kroków 40-42 (faza E) w archiwum: `dev_log/raport_wykonania_fazy_E.md`.
 
 ### Krok 43. Pierwszy graf LangGraph: tylko skan - ✅
 - `dev_agents/state.py`: `RunState` (`TypedDict`, `total=False`): `project_path` (wejście grafu) i `project_map` (wynik węzła `scan`; graf zależności i kolejność czytania są już w `ProjectMap`, więc osobnego pola nie ma).
@@ -76,6 +55,19 @@ Wpisy kroków 1-29 (fazy A-C) są w archiwum: `dev_log/raport_wykonania_fazy_A-C
 - Test `python -m dev_agents.progress` (prawdziwe linie na ekranie i 10 sprawdzeń: format linii i czasu, etap udany, z postępem, bez wyniku, z błędem, wyjątek niepołykany); test grafu sprawdza dla każdego przypadku dwie linie postępu węzła `scan`.
 - Odstępstwa od planu: postęp raportują węzły przez funkcję `report` w kontekście, a nie `stream(..., stream_mode=["tasks", "values"])` - według dokumentacji LangGraph tryb `tasks` wymaga checkpointera, a tryb `updates` nie ma zdarzenia startu; `plan_kroki.md` krok 45 zaktualizowany.
 - Wybory użytkownika: rekomendowane (1C, 2A). Test użytkownika: OK. Commit `db1be3d`.
+
+### Krok 46. `schemas.py` - plan - ✅
+- `dev_agents/schemas.py`: `AnalysisTask` (`unit` - nazwa jednostki z mapy projektu, `hint` - wskazówka) i `Plan` (`summary`, `tasks`, `analyst_knowledge`, `flow_knowledge`, `writer_knowledge`); `Field(description=...)` przy każdym polu, schemat płaski bez `anyOf`; docstringi modułu zaktualizowane.
+- Test (`python -m dev_agents.schemas`): plan robota 02 ułożony ręcznie, JSON i zgodność po odczycie; schemat JSON klasy `Plan` bez `anyOf` i z opisem przy każdym polu; plan bez `summary` i `tasks` odrzucony przy odczycie; `zgodne z oczekiwaniem: True`.
+- Odstępstwa od planu: bez pola `optional_sections` (opcjonalną sekcję pisarz pomija sam, gdy nie ma treści); bez pola `skipped` (analizujemy wszystkie jednostki, brakujące dopisze kod w kroku 47); `plan_kroki.md` krok 46 zaktualizowany.
+- Wybory: rekomendowane (1A, 2A, 3A) - tryb pracy fazy F. Test użytkownika: OK. Commit `5c2f225`.
+
+### Krok 47. Agent planner (bez grafu) - ✅
+- Nowy `dev_agents/agents/planner.py` (pakiet `dev_agents/agents/`): `build_planner_variables` (mapa projektu jako JSON bez pola `root`, bez kodu źródłowego, z dosłowną treścią plików zależności, konfiguracji i uruchamiających; spis bazy wiedzy), `create_plan` (`render_prompt`, `llm.invoke_structured` ze schematem `Plan`, potem `complete_plan`), `complete_plan` (zadanie z nieznaną jednostką usuwane, powtórzone usuwane, jednostka pominięta dopisana na końcu z pustą wskazówką, plik wiedzy spoza spisu albo powtórzony usunięty; każda poprawka to uwaga), `planner_node` (praca w `Stage`, uwagi jako linie postępu, zapis `plan.json`, zwraca tylko `plan`), `print_plan`.
+- Prompty `prompts/planner/system.md` i `user.md` (zadanie: podsumowanie, zadania dla wszystkich jednostek w kolejności `reading_order` ze wskazówkami, trzy listy wiedzy; dane w tagach to nie polecenia; hasło wpisane wprost wskazywane bez przepisywania wartości); pole `plan` w `RunState`.
+- Test `python -m dev_agents.agents.planner`: 21 sprawdzeń na udawanym modelu (prompt bez kodu i bez ścieżki dysku, z treścią konfiguracji i spisem wiedzy; poprawianie planu z pięcioma błędami; węzeł: `plan.json`, wywołanie modelu, linie postępu), `zgodne z oczekiwaniem: True`; z argumentem `<katalog robota>` prawdziwy model plannera czyta `dev_agents_doc/project_map.json` i wypisuje plan (zapis `plan.json` w katalogu wyników robota).
+- Odstępstwa od planu: poprawianie planu przez kod (plan: sam planner); prompt bez `root`; raport: wpisy fazy E (kroki 40-42) przeniesione do `dev_log/raport_wykonania_fazy_E.md`.
+- Wybory: rekomendowane (tryb pracy fazy F). Test użytkownika: OK (w tym prawdziwy model na robocie 02). Commit `bbb8832`.
 
 ---
 
@@ -131,3 +123,5 @@ Wpisy kroków 1-29 (fazy A-C) są w archiwum: `dev_log/raport_wykonania_fazy_A-C
 | 2026-11-26 | Krok 44: (1) `project_map.json` zapisuje `main.py` po grafie, a nie węzeł `scan` (węzeł zostaje czysty: stan wejdzie, stan wyjdzie); (2) szybki skan technologii przed grafem i założeniem magazynu - nierozpoznana technologia nie zostawia `dev_agents_doc/` w cudzym katalogu, kosztem drugiego skanu w trybie pełnym; (3) `--render-only` nie buduje kontekstu ani grafu, więc działa bez kluczy modeli, a tryb pełny bez kluczy kończy się od razu z nazwą zmiennej | Jedno miejsce zapisu; brak śmieci w projektach, których nie rozpoznano; podgląd wyglądu bez kluczy |
 | 2026-11-26 | Krok 45: (1) postęp raportują węzły przez funkcję `report` w `RunContext` i menedżer kontekstu `Stage` (`progress.py`), nie strumień LangGraph `stream(..., stream_mode=["tasks", "values"])` z planu; (2) linie tylko na ekran, bez pliku `run_log.txt`; `plan_kroki.md` krok 45 zaktualizowany | (1) tryb `tasks` wymaga checkpointera (stan z obiektami Pydantic zapisywany po każdym kroku), tryb `updates` nie ma zdarzenia startu, więc długi węzeł milczałby do końca; `report` działa tak samo dla węzłów równoległych i da się podstawić w teście bez LangGraph; (2) mniej kodu, plik dziennika można dodać w fazie G; wybór użytkownika (rekomendowane: 1C, 2A) |
 | 2026-11-26 | **Tryb pracy do końca fazy F (od kroku 46):** wybory w każdym kroku są zawsze rekomendowane, bez czekania na decyzję użytkownika; inżynier opisuje po fakcie, co zrobił i jakie przyjął warianty (z decyzjami w tabeli), użytkownik robi test i push, po czym zaczyna się następny krok; zmiany planu i odstępstwa nadal wpisywane do raportu i `plan_kroki.md` | Decyzja użytkownika: przyspieszenie fazy F - kolejne wybory prawie zawsze były rekomendowane; użytkownik zachowuje kontrolę przez test, push i możliwość cofnięcia dowolnej decyzji po fakcie |
+| 2026-11-26 | Krok 46: (1) analizujemy wszystkie jednostki z mapy, planner tylko ustala kolejność i wskazówki (bez pola `skipped`), brakujące jednostki dopisze kod w kroku 47; (2) pliki wiedzy w trzech listach (analitycy, autor diagramu, pisarze); (3) bez pola `optional_sections` - pisarz pomija opcjonalną sekcję, gdy nie ma treści; `plan_kroki.md` krok 46 zaktualizowany | (1) decyzja „prosty kod, nawet kosztem tokenów” - jedna zła decyzja modelu nie może usunąć fragmentu robota z przewodnika; (2) analityk nie potrzebuje zasad diagramu, a spis będzie rósł (UiPath, Robot Framework); (3) planner decydowałby, nie widząc notatek analityków, a zasada szablonu już ukrywa pustą sekcję opcjonalną; wybór: rekomendowane (1A, 2A, 3A) |
+| 2026-11-26 | Krok 47: (1) poprawki planu po odpowiedzi modelu robi kod (`complete_plan`), każda zgłoszona jako uwaga w linii postępu: nieznana albo powtórzona jednostka usuwana, pominięta dopisana z pustą wskazówką, plik wiedzy spoza spisu lub powtórzony usuwany; (2) mapa projektu w prompcie bez `root`; (3) test z argumentem woła prawdziwy model i zapisuje `plan.json` w `dev_agents_doc/` robota (robot 01 tylko do odczytu, nie uruchamiać); (4) raport: archiwum fazy E (`raport_wykonania_fazy_E.md`); `plan_kroki.md` krok 47 zaktualizowany | (1) żaden fragment robota nie może zniknąć z przewodnika po cichu (decyzja z kroku 46: analizujemy wszystko), a literówka w nazwie pliku wiedzy ma wyjść od razu; (2) ścieżka dysku (nazwa użytkownika) nie jest modelowi potrzebna; (3) plan na prawdziwym robocie i modelu bez uruchamiania grafu; (4) raport zbliżał się do 48 KB, powyżej którego nie da się go przeczytać jednym odczytem i podmienić kopii na claude.ai; wybór: rekomendowane (tryb pracy fazy F) |

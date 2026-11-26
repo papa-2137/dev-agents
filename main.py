@@ -6,10 +6,11 @@ projektu jest rozpoznana. Potem zakłada magazyn wyników (dev_agents_doc/) i ur
 (pliki z rolami, punkty wejścia, jednostki kodu z zakresami linii, frameworki, pliki tekstowe, graf zależności
 i kolejność czytania) pochodzi z węzła scan grafu; w trakcie pracy węzły wypisują linie postępu z godziną
 i czasem (progress.py), po grafie main.py wypisuje "razem: X s", zapisuje mapę jako dev_agents_doc/project_map.json
-i wypisuje krótkie podsumowanie. Z opcją --render-only graf i modele nie są używane: mapa pochodzi z samego
+i wypisuje krótkie podsumowanie, a w trybie pełnym także linię o planie (liczba zadań i pliki wiedzy;
+plan zapisuje węzeł planner jako dev_agents_doc/plan.json). Z opcją --render-only graf i modele nie są używane: mapa pochodzi z samego
 skanu, a program składa przewodnik bez modelu (sekcje z kodu prawdziwe, sekcje agentów to zaślepki, diagram
 przykładowy) - wynik to dev_agents_doc/guide.html, podgląd wyglądu bez wydawania tokenów i bez kluczy.
-Kolejne etapy (planner, analitycy, pisarze) dochodzą do grafu, a nie tutaj.
+Kolejne etapy (analitycy, pisarze) dochodzą do grafu, a nie tutaj.
 
 Dlaczego istnieje: jedno polecenie uruchamia całe narzędzie. Domyślny config jest szukany obok main.py,
 a nie w bieżącym katalogu, więc program działa tak samo bez względu na to, skąd go uruchomiono
@@ -159,8 +160,8 @@ def _run_graph(
     project_root: str,
     app_config: _config.AppConfig,
     store: _output.RunStore,
-) -> _schemas.ProjectMap:
-    """Buduje kontekst, uruchamia graf agentów na projekcie i zwraca mapę projektu ze stanu końcowego.
+) -> tuple[_schemas.ProjectMap, _schemas.Plan]:
+    """Buduje kontekst, uruchamia graf agentów na projekcie i zwraca (mapa projektu, plan) ze stanu końcowego.
 
     Po co: jedyne miejsce w main.py, które zna graf; kolejne węzły nie zmieniają tej funkcji, bo dochodzą do grafu.
     Węzły zgłaszają postęp liniami na ekran (progress.print_line podane w kontekście), a po grafie wypisana
@@ -178,11 +179,24 @@ def _run_graph(
     stan_koncowy = graf.invoke({"project_path": project_root}, context=kontekst)
     razem = _progress.format_seconds(time.monotonic() - czas_startu)
     _progress.print_line(_progress.format_line("razem", razem))
-    mapa = stan_koncowy["project_map"]
-    return mapa
+    wynik = (stan_koncowy["project_map"], stan_koncowy["plan"])
+    return wynik
 
 
 # --- Uruchomienie ---
+
+
+def _print_plan_summary(
+    plan: _schemas.Plan,
+) -> None:
+    """Wypisuje jedną linię o planie: liczba zadań analityków i liczby plików wiedzy dla analityków, autora diagramu i pisarzy.
+
+    Po co: po przebiegu widać od razu, że planner coś zaplanował; pełny plan jest w dev_agents_doc/plan.json.
+    """
+    print(
+        f"  plan: zadań {len(plan.tasks)}, pliki wiedzy: analitycy {len(plan.analyst_knowledge)}, "
+        f"autor diagramu {len(plan.flow_knowledge)}, pisarze {len(plan.writer_knowledge)}"
+    )
 
 
 def _parse_args() -> argparse.Namespace:
@@ -222,12 +236,15 @@ def main() -> None:
         magazyn = _output.create_run_store(mapa_wstepna.root)
     except (ValueError, OSError) as blad:
         sys.exit(f"BŁĄD: {blad}")
+    plan = None
     if args.render_only:
         project_map = mapa_wstepna
     else:
-        project_map = _run_graph(mapa_wstepna.root, app_config, magazyn)
+        project_map, plan = _run_graph(mapa_wstepna.root, app_config, magazyn)
     zapisany_plik = magazyn.save_json("project_map.json", project_map)
     _print_scan_summary(project_map, zapisany_plik)
+    if plan is not None:
+        _print_plan_summary(plan)
     if args.render_only:
         zapisany_przewodnik = _render_placeholder_guide(project_map, app_config, magazyn)
         print(f"  zapisano: {zapisany_przewodnik} (zaślepki zamiast tekstu agentów, diagram przykładowy)")

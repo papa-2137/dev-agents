@@ -223,58 +223,14 @@ if __name__ == "__main__":
     import tempfile
     import types
 
-    from langchain_core.messages import AIMessage
-
     import dev_agents.config as _config
+    import dev_agents.fakes as _fakes
     import dev_agents.guide_template as _guide_template
     import dev_agents.output as _output
     import dev_agents.scanner as _scanner
 
     _SOURCE_MARKER = "KOD_ZRODLOWY_MARKER"
     _CONFIG_LINE = "ustawienie_testowe: 42"
-
-    class _FakeModel:
-        """Udawany model: zapamiętuje wiadomości i zawsze zwraca ten sam, gotowy plan w kształcie odpowiedzi invoke_structured.
-
-        Po co: sprawdzenie plannera bez sieci i kluczy.
-        """
-
-        def __init__(
-            self,
-            plan: _schemas.Plan,
-        ):
-            """Zapamiętuje plan do zwrócenia i zeruje licznik wywołań oraz ostatnie wiadomości.
-
-            Po co: test sprawdza, ile razy i z czym model został zawołany.
-            """
-            self.plan = plan
-            self.calls = 0
-            self.messages = []
-
-        def with_structured_output(
-            self,
-            schema,
-            method=None,
-            include_raw=False,
-        ):
-            """Zwraca samego siebie - udaje model ze schematem odpowiedzi.
-
-            Po co: invoke_structured woła with_structured_output, a potem invoke.
-            """
-            return self
-
-        def invoke(
-            self,
-            messages,
-        ):
-            """Zapamiętuje wiadomości i zwraca poprawną odpowiedź z gotowym planem.
-
-            Po co: odtwarza kształt odpowiedzi prawdziwego modelu z include_raw=True.
-            """
-            self.calls += 1
-            self.messages = messages
-            odpowiedz = {"raw": AIMessage(content="{}"), "parsed": self.plan, "parsing_error": None}
-            return odpowiedz
 
     def _write_temp_project(
         temp_dir: str,
@@ -386,7 +342,7 @@ if __name__ == "__main__":
         Po co: cały węzeł (prompt, model, poprawianie, zapis, postęp) w jednym przebiegu bez sieci.
         """
         nazwy = _unit_names(project_map)
-        model = _FakeModel(_messy_plan(nazwy))
+        model = _fakes.FakeStructuredModel(_messy_plan(nazwy))
         linie = []
         magazyn = _output.create_run_store(temp_dir)
         kontekst = _context.RunContext(
