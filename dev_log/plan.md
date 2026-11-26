@@ -126,7 +126,8 @@ dev-agents/
 │   │   ├── writer.py             # pisarz zakładki
 │   │   └── reviewer.py
 │   └── technologies/
-│       ├── __init__.py           # rejestr technologii
+│       ├── __init__.py           # pakiet (bez importów)
+│       ├── registry.py           # rejestr technologii: kolejność sprawdzania, detect_technology(), get_technology()
 │       ├── base.py               # kontrakt technologii
 │       ├── config_parsers.py     # wspólne parsery YAML/JSON/TOML/INI → ConfigEntry (do użycia przez technologie)
 │       ├── python.py             # szkielet, szkielet sterowania, miary, importy, punkty wejścia, konfiguracja i stałe, użycia kluczy
