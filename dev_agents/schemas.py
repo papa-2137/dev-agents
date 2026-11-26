@@ -10,7 +10,7 @@ z grafem zależności między plikami robota i kolejnością czytania kodu. Dale
 autora diagramu i pisarzy) oraz notatka analityka - wynik analizy jednostki kodu i surowiec dla wszystkich
 zakładek (ModuleNote z klasami pomocniczymi NoteAction, NoteSetting, NoteRisk, NoteFailure, NoteRequirement,
 NoteTerm; dane czynności używają klasy DataRef z guide_content.py). Treść przewodnika i diagram
-są w guide_content.py. Kolejny schemat (recenzja) dochodzi w kroku, który go potrzebuje.
+są w guide_content.py. Recenzja - wynik recenzenta (ReviewIssue: adresat, sekcja i opis uwagi; ReviewResult: uwagi i sugestie).
 
 Dlaczego istnieje: jasna umowa między skanerem, technologiami, agentami i rendererem - każdy wie, co
 dostaje i co oddaje. Każdy obiekt da się zapisać do JSON (model_dump_json) i wczytać z powrotem
@@ -18,7 +18,7 @@ dostaje i co oddaje. Każdy obiekt da się zapisać do JSON (model_dump_json) i 
 Mapa projektu zawiera ścieżki i metadane, a nie treść kodu - kod czytamy z dysku dopiero przy analizie,
 dzięki czemu stan grafu pozostaje chudy; dosłownie trzymamy tylko małe pliki tekstowe (TextFile).
 
-Uwaga: schematy odpowiedzi modelu (Plan i AnalysisTask, ModuleNote i jej klasy pomocnicze, dalej recenzja) mają przy polach
+Uwaga: schematy odpowiedzi modelu (Plan i AnalysisTask, ModuleNote i jej klasy pomocnicze, ReviewResult i ReviewIssue) mają przy polach
 Field(description="...") - model widzi tylko schemat JSON - i są płaskie, bez wariantów anyOf. Schematy faktów
 o projekcie (SourceUnit ... ProjectMap) modelowi nie są podawane jako format odpowiedzi, więc mają same typy
 i komentarze.
@@ -399,6 +399,34 @@ class ModuleNote(NoteDetails, NoteFlow):
     """
 
 
+# --- Recenzja (wynik recenzenta) ---
+
+
+class ReviewIssue(pydantic.BaseModel):
+    """Jedna uwaga recenzenta: do czego się odnosi (diagram albo zakładka i sekcja) i co jest nie tak.
+
+    Po co: poprawki są celowane (krok 59) - przepisywany jest tylko diagram albo zakładki, których dotyczą uwagi,
+    więc każda uwaga ma adresata.
+    """
+
+    target: str = pydantic.Field(description='Adresat uwagi: "flow" dla diagramu przepływu albo id zakładki z listy zakładek, dokładnie jak podano.')
+    section_id: str = pydantic.Field(description="Id sekcji zakładki, której dotyczy uwaga, dokładnie jak w treści; pusty tekst dla diagramu albo gdy uwaga dotyczy całej zakładki.")
+    description: str = pydantic.Field(description="Co jest nie tak i co poprawić: jedno-dwa zdania z konkretem (nazwa klocka, zdanie z treści, brakująca czynność z notatek).")
+
+
+class ReviewResult(pydantic.BaseModel):
+    """Wynik recenzji przewodnika: uwagi wymagające poprawki i sugestie, które poprawki nie wymagają.
+
+    Po co: pętla recenzji (krok 59) poprawia tylko to, co ma uwagi; sugestie (powtórzenia, styl) trafiają do raportu
+    i nie uruchamiają kolejnej rundy. approved jest prawdą tylko wtedy, gdy uwag nie ma - kod ustawia to po odpowiedzi
+    modelu, żeby flaga nie rozjechała się z listą.
+    """
+
+    approved: bool = pydantic.Field(description="True, gdy nie ma żadnej uwagi wymagającej poprawki (issues puste).")
+    issues: list[ReviewIssue] = pydantic.Field(description="Uwagi wymagające poprawki: treść niepoparta notatkami, sprzeczność, brak kroku lub ścieżki, diagram zbyt ogólny albo przeładowany, ogólnik zamiast konkretu, sekret w złym miejscu, treść wymyślona tam, gdzie notatki mówią, że nie wynika z kodu. Pusta lista, gdy wszystko jest w porządku.")
+    suggestions: list[str] = pydantic.Field(description="Sugestie niewymagające poprawki: powtórzenia, sformułowania, styl. Pusta lista, gdy nie ma.")
+
+
 # --- Test ręczny ---
 
 if __name__ == "__main__":
@@ -720,7 +748,21 @@ if __name__ == "__main__":
             print(f"  {opis}: {zgodne_sprawdzenie}")
             if not zgodne_sprawdzenie:
                 notatka_zgodna = False
-        zgodne = is_equal and plan_zgodny and not problemy_planu and brakujace_odrzucone and notatka_zgodna
+        recenzja = ReviewResult(
+            approved=False,
+            issues=[ReviewIssue(target="flow", section_id="", description="Brak klocka dla wysyłki raportu.")],
+            suggestions=["Zdanie o konfiguracji powtarza się w dwóch sekcjach."],
+        )
+        recenzja_zgodna = ReviewResult.model_validate_json(recenzja.model_dump_json()) == recenzja
+        problemy_recenzji = _schema_problems(ReviewResult)
+        brakujace_recenzji_odrzucone = False
+        try:
+            ReviewResult.model_validate_json('{"approved": true}')
+        except pydantic.ValidationError:
+            brakujace_recenzji_odrzucone = True
+        print(f"  ReviewResult: odczyt równy oryginałowi: {recenzja_zgodna}, problemy schematu: {problemy_recenzji}, bez wymaganych pól odrzucona: {brakujace_recenzji_odrzucone}, pola schematu: {count_schema_properties(ReviewResult)}")
+        recenzja_ok = recenzja_zgodna and not problemy_recenzji and brakujace_recenzji_odrzucone and count_schema_properties(ReviewResult) <= MAX_MODEL_SCHEMA_PROPERTIES
+        zgodne = is_equal and plan_zgodny and not problemy_planu and brakujace_odrzucone and notatka_zgodna and recenzja_ok
         print(f"\nzgodne z oczekiwaniem: {zgodne}")
 
     manual_test()

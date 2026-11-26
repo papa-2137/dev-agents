@@ -12,7 +12,7 @@
 | C - Mapa projektu bez modelu (9-29) | ✅ zakończona (M3) |
 | D - Szablon przewodnika i HTML bez modelu (30-39) | ✅ zakończona (M4) |
 | E - Prompty i baza wiedzy (40-42) | ✅ zakończona |
-| F - Graf i agenci (43-59) | 🟡 w toku (43-56 ✅) |
+| F - Graf i agenci (43-59) | 🟡 w toku (43-57 ✅) |
 | G - Ergonomia (60-63) | ⬜ |
 | H - Miasto (64-68) | ⬜ |
 
@@ -35,6 +35,10 @@ Wpisy kroków 1-29 (fazy A-C) są w archiwum: `dev_log/raport_wykonania_fazy_A-C
 
 Wpisy kroków 50-54 (faza F) w archiwum: `dev_log/raport_wykonania_fazy_F_50-54.md`.
 Wpisy kroków 55-56 (faza F) w archiwum: `dev_log/raport_wykonania_fazy_F_55-56.md`.
+### Krok 57. Graf: render i finalize - ✅
+- Nowy `dev_agents/finalize.py`: `finalize_node` renderuje `state["content"]` przez `render.render_guide` (szablon, mapa projektu, katalog szablonu, progi z configu), zapisuje `guide.html` w magazynie wyników i zwraca `guide_path`. Test offline (5 sprawdzeń).
+- `graph.py`: krawędzie assemble -> finalize -> END; test grafu sprawdza `guide.html` i linie postępu finalize. `state.py`: pole `guide_path`. `main.py`: `_run_graph` zwraca końcowy stan, na końcu wypisuje `przewodnik: <ścieżka>`.
+- Wybory: rekomendowane (tryb pracy fazy F). Test użytkownika: OK. Commit `1f2549a`.
 
 ---
 
@@ -103,3 +107,4 @@ Wpisy kroków 55-56 (faza F) w archiwum: `dev_log/raport_wykonania_fazy_F_55-56.
 | 2026-11-26 | Krok 54: (1) węzeł `flow_writer` po analitykach, krawędź analyst -> flow_writer czeka na wszystkie notatki; (2) test grafu z udawanymi modelami; (3) `main.py` wypisuje podsumowanie diagramu; (4) raport: wpisy kroków 50-54 przeniesione do `raport_wykonania_fazy_F_50-54.md` | (1) diagram wymaga kompletu notatek; (2) bez kosztu i sieci; (3) szybka kontrola przebiegu; (4) limit rozmiaru raportu; wybór: rekomendowane (tryb pracy fazy F) |
 | 2026-11-26 | Krok 55: (1) schemat odpowiedzi pisarza budowany dynamicznie z sekcji zakładki (`tab_response_model`) zamiast odchudzania `GuideBlock`/`GuideTab`; (2) pole szablonu `writer_adds` dla sekcji scanner/code z dopiskami pisarza; (3) kod sprawdza wynik i ponawia raz; błędne odwołania do klocków czyszczone po ponowieniu; (4) pliki robota w prompcie tylko dla zakładki z metryczką, fakty kodu tylko dla ryzykownych miejsc; (5) pełne notatki do wszystkich pisarzy (koszt tokenów do omówienia na koniec fazy F) | (1) zakładki mają 4-32 pola i mieszczą się w limicie bramki bez zmiany renderera i schematu treści; (2) jawny znacznik w szablonie zamiast zgadywania z treści polecenia; (3) zwykły kod pilnuje tego, co da się sprawdzić, a problem nie jest ukrywany; (4) mniej tokenów w pozostałych zakładkach; (5) prostota, zasada „prosty kod, nawet kosztem tokenów”; wybór: rekomendowane (tryb pracy fazy F) |
 | 2026-11-26 | Krok 56: (1) lista zakładek do napisania liczona przez osobny węzeł `plan_tabs` (kod) i zapisana w stanie jako `tab_ids`, bo krawędź warunkowa widzi tylko stan; (2) `assemble.py` jako zwykły moduł z węzłem, bez bloków skanera w treści; (3) braki w treści (problemy zakładek i diagramu) są uwagami, `guide_content.json` powstaje zawsze; (4) raport: wpisy kroków 55-56 w `raport_wykonania_fazy_F_55-56.md` | (1) szablon jest w kontekście, a nie w stanie; (2) renderer i tak wypełnia sekcje scanner/code z mapy; (3) zasada: nic nie znika po cichu, ale przebieg nie ginie przez jeden słaby fragment (recenzent kroków 58-59 dostanie problemy); (4) limit rozmiaru raportu; wybór: rekomendowane (tryb pracy fazy F) |
+| 2026-11-26 | Krok 57: (1) `finalize` jako osobny moduł z węzłem (jak `assemble`); (2) `_run_graph` zwraca końcowy stan, a `main.py` czyta z niego wyniki; (3) `guide_path` w stanie | (1) jedna rola na moduł, test bez grafu; (2) jedno źródło wyników przebiegu zamiast osobnych odczytów; (3) ścieżka wyniku dostępna dla kolejnych kroków (recenzja, ergonomia); wybór: rekomendowane (tryb pracy fazy F) |
