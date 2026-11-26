@@ -170,6 +170,13 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.htm
 - Wybór użytkownika: A z poprawką (tabela decyzji).
 - Test użytkownika: OK. Commit `aec330b`.
 
+### Krok 23. `scanner.py` - pliki zależności, konfiguracyjne i uruchamiające przepisane dosłownie (z krokiem 24) - ✅
+- `config.yaml`: `scan.text_roles` (`dependency`, `config`, `launcher`), `scan.max_text_file_kb: 100`; `config.py`: pola w `ScanConfig`, `_check_text_roles` (tylko role z `role_patterns` - nigdy `secret` ani `source`; siódmy przypadek w teście configu).
+- `schemas.py`: `TextFile` (`path`, `role`, `text`), pole `ProjectMap.text_files`; `scanner._read_text_files` (pliki robota bez frameworku, przez `files.read_text_safe`, większe niż limit - tylko wpis w `files`), wypełniane także przy nierozpoznanej technologii.
+- Test w bloku `__main__`: sekcja „Pliki tekstowe” w skrócie mapy (treść tylko zależności - konfiguracja może mieć hasła); katalog tymczasowy z `config.yml`, `requirements.txt`, `duzy.json` (101 KB, poza `text_files`) i `.env` z treścią (poza `text_files`).
+- Odstępstwo od planu (wybór użytkownika B): krok 24 połączony z 23 (tabela decyzji); `plan.md` - przykład sekcji `scan`.
+- Test użytkownika: OK. Commit `18c958d`.
+
 ---
 
 ## Odstępstwa i decyzje poza planem
