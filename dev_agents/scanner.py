@@ -1,4 +1,4 @@
-"""Skaner analizowanego projektu: lista plików, a w kolejnych krokach role plików i mapa projektu.
+"""Skaner analizowanego projektu: lista plików, role plików, frameworki i mapa projektu.
 
 Co robi:
     - list_files() zwraca posortowaną listę ścieżek względnych (separator "/") wszystkich plików projektu,
@@ -8,23 +8,27 @@ Co robi:
     - build_file_entries() nadaje każdemu plikowi rolę i rozmiar: secret (scan.secret_patterns, sprawdzane
       pierwsze), source (kod wg technologii projektu), pierwsza pasująca rola z scan.role_patterns, a bez
       dopasowania - other; plikom frameworku skopiowanego do projektu wpisuje framework_name (scan.frameworks.paths),
-    - project_packages() i detect_frameworks() ustalają frameworki projektu - po ścieżkach plików i po pakietach
-      importowanych w kodzie (scan.frameworks.packages), więc działa też dla frameworku zainstalowanego poza projektem.
+    - detect_frameworks() ustala frameworki projektu - po ścieżkach plików i po pakietach importowanych w kodzie
+      robota (scan.frameworks.packages), więc działa też dla frameworku zainstalowanego poza projektem (np. w venv),
+    - build_project_map() składa całą mapę projektu (ProjectMap): technologia, pliki z rolami, punkty wejścia,
+      dla każdego pliku źródłowego robota jednostki z zakresami linii i odwołania (SourceFile), jednostki kodu
+      do analizy (jeden plik źródłowy robota = jedna jednostka) i wykryte frameworki.
 
 Dlaczego istnieje: to pierwszy krok mapy projektu - z listy plików korzystają technologia (detect, punkty
 wejścia) i cała mapa, a rola decyduje, co dalej dzieje się z plikiem (kod - do analityków, konfiguracja
 i pliki uruchamiające - jako tekst do agentów, sekret - wyłącznie metadane). Skaner nie otwiera żadnego
-pliku - listuje nazwy i rozmiary.
+pliku poza plikami źródłowymi, które czyta technologia (units, references).
 
 Rola: moduł rdzenia towaru, używany przy budowie mapy projektu.
 
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.scanner
-        tabele ścieżka | rola | rozmiar | framework dla robotów testowych 01 i 02 oraz katalogu tymczasowego
-        (katalogi do pominięcia, sekret .env, plik binarny, plik nieznanego typu, skopiowany framework), pod każdą
-        liczba plików w rolach i wykryte frameworki
+        skrót mapy robotów testowych 01 i 02 oraz katalogu tymczasowego (katalogi do pominięcia, sekret .env,
+        plik binarny, plik nieznanego typu, skopiowany framework z importem requests): tabela ścieżka | rola |
+        rozmiar | framework, punkty wejścia, jednostki i odwołania plików źródłowych, jednostki kodu, frameworki;
+        config testu ma dodatkowy, sztuczny framework z pakietem requests (nowy framework bez zmian w kodzie)
     python -m dev_agents.scanner <katalog projektu>
-        tabela dowolnego projektu
+        pełna mapa dowolnego projektu jako JSON (config bez zmian)
 """
 
 import fnmatch
@@ -33,6 +37,7 @@ import os
 import dev_agents.config as _config
 import dev_agents.schemas as _schemas
 import dev_agents.technologies.base as _base
+import dev_agents.technologies.registry as _registry
 
 
 # --- Lista plików ---
@@ -178,22 +183,18 @@ def _framework_for_path(
     return ""
 
 
-def project_packages(
-    root: str,
-    entries: list[_schemas.FileEntry],
-    technology: _base.Technology | None,
+def _project_packages(
+    source_files: list[_schemas.SourceFile],
 ) -> list[str]:
-    """Zwraca posortowane nazwy pakietów spoza projektu importowanych w plikach źródłowych (references().packages), bez powtórzeń.
+    """Zwraca posortowane nazwy pakietów importowanych w plikach źródłowych robota, bez powtórzeń.
 
-    Po co: po pakietach rozpoznajemy frameworki zainstalowane poza projektem (np. Roboforge instalowany edytowalnie).
+    Po co: po pakietach rozpoznajemy frameworki zainstalowane poza projektem (np. Roboforge w venv).
+
+    Uwaga: tylko kod robota - importy wewnątrz skopiowanego frameworku nie mogą wykryć innego frameworku.
     """
     pakiety = []
-    if technology is None:
-        return pakiety
-    for wpis in entries:
-        if wpis.role != "source":
-            continue
-        for pakiet in technology.references(root, wpis.path).packages:
+    for plik_zrodlowy in source_files:
+        for pakiet in plik_zrodlowy.references.packages:
             if pakiet not in pakiety:
                 pakiety.append(pakiet)
     posortowane = sorted(pakiety)
@@ -227,6 +228,66 @@ def detect_frameworks(
     return wykryte
 
 
+# --- Mapa projektu ---
+
+
+def _source_file(
+    root: str,
+    path: str,
+    technology: _base.Technology,
+) -> _schemas.SourceFile:
+    """Zwraca fakty o pliku źródłowym policzone przez technologię: jednostki z zakresami linii i odwołania.
+
+    Po co: jedno miejsce, w którym skaner pyta technologię o plik - reszta towaru korzysta już z mapy.
+    """
+    plik_zrodlowy = _schemas.SourceFile(
+        path=path,
+        units=technology.units(root, path),
+        references=technology.references(root, path),
+    )
+    return plik_zrodlowy
+
+
+def build_project_map(
+    root: str,
+    scan_config: _config.ScanConfig,
+) -> _schemas.ProjectMap:
+    """Zwraca mapę projektu: technologia, pliki z rolami, punkty wejścia, fakty o plikach źródłowych robota, jednostki kodu i frameworki.
+
+    Po co: jeden obiekt dla dalszych etapów (graf zależności, agenci, zapis project_map.json).
+
+    Uwaga: nierozpoznana technologia to nie błąd - mapa ma technology="" i tylko listę plików; o przerwaniu
+    pracy decyduje wołający. Pliki frameworku nie trafiają do source_files, code_units ani punktów wejścia.
+    """
+    katalog = os.path.abspath(root)
+    pliki = list_files(katalog, scan_config)
+    technologia = _registry.detect_technology(katalog, pliki)
+    wpisy = build_file_entries(katalog, pliki, scan_config, technologia)
+    mapa = _schemas.ProjectMap(
+        project_name=os.path.basename(katalog),
+        root=katalog,
+        technology="",
+        entrypoints=[],
+        files=wpisy,
+        code_units=[],
+    )
+    if technologia is None:
+        return mapa
+    pliki_robota = []
+    for wpis in wpisy:
+        if wpis.framework_name:
+            continue
+        pliki_robota.append(wpis.path)
+        if wpis.role == "source":
+            mapa.source_files.append(_source_file(katalog, wpis.path, technologia))
+            mapa.code_units.append(_schemas.CodeUnit(name=wpis.path, files=[wpis.path]))
+    mapa.technology = technologia.name
+    mapa.entrypoints = technologia.find_entrypoints(katalog, pliki_robota)
+    pakiety = _project_packages(mapa.source_files)
+    mapa.frameworks = detect_frameworks(wpisy, pakiety, scan_config.frameworks, technologia.name)
+    return mapa
+
+
 # --- Test ręczny ---
 
 if __name__ == "__main__":
@@ -234,15 +295,19 @@ if __name__ == "__main__":
     import sys
     import tempfile
 
-    import dev_agents.technologies.registry as _registry
-
     def _make_temp_project(
         directory: str,
     ) -> None:
-        """Tworzy projekt tymczasowy: zwykłe pliki, katalogi do pominięcia, sekret .env, plik binarny i plik nieznanego typu.
+        """Tworzy projekt tymczasowy: zwykłe pliki, katalogi do pominięcia, sekret .env, plik binarny, plik nieznanego typu i skopiowany framework.
 
-        Po co: sprawdzenie pomijania i ról bez dotykania robotów testowych.
+        Po co: sprawdzenie pomijania, ról i mapy bez dotykania robotów testowych; plik frameworku importuje
+        requests, a kod robota nie - sztuczny framework z pakietem requests nie może zostać wykryty.
         """
+        tresci = {
+            "main.py": "import src.modul\n\nsrc.modul.pomoc()\n",
+            "src/modul.py": "def pomoc():\n    return 1\n",
+            "roboforge_framework/launcher.py": "import requests\n",
+        }
         pliki = [
             "main.py",
             "src/modul.py",
@@ -260,75 +325,76 @@ if __name__ == "__main__":
             pelna = os.path.join(directory, sciezka)
             os.makedirs(os.path.dirname(pelna), exist_ok=True)
             with open(pelna, "w", encoding="utf-8") as plik:
-                plik.write("")
+                plik.write(tresci.get(sciezka, ""))
 
-    def _scan(
-        root: str,
+    def _test_scan_config(
         scan_config: _config.ScanConfig,
-    ) -> tuple[str, list[_schemas.FileEntry], list[str]]:
-        """Listuje pliki, wybiera technologię, nadaje role i wykrywa frameworki. Zwraca (technologia albo "brak", wpisy, frameworki).
+    ) -> _config.ScanConfig:
+        """Zwraca kopię sekcji scan z dopisanym sztucznym frameworkiem "sztuczny" (pakiet requests).
 
-        Po co: logika testu bez wypisywania - ten sam przebieg co później w mapie projektu.
+        Po co: sprawdzenie, że nowy framework to tylko wpis w configu, bez zmian w kodzie.
         """
-        pliki = list_files(root, scan_config)
-        technologia = _registry.detect_technology(root, pliki)
-        nazwa_technologii = "brak"
-        if technologia is not None:
-            nazwa_technologii = technologia.name
-        wpisy = build_file_entries(root, pliki, scan_config, technologia)
-        pakiety = project_packages(root, wpisy, technologia)
-        frameworki = detect_frameworks(wpisy, pakiety, scan_config.frameworks, nazwa_technologii)
-        wynik = (nazwa_technologii, wpisy, frameworki)
-        return wynik
+        kopia = scan_config.model_copy(deep=True)
+        kopia.frameworks["sztuczny"] = _config.FrameworkConfig(
+            technology="python",
+            paths=[],
+            packages=["requests"],
+            knowledge="frameworks/roboforge.md",
+        )
+        return kopia
 
-    def _print_entries(
+    def _print_map_summary(
         title: str,
-        root: str,
-        technology_name: str,
-        entries: list[_schemas.FileEntry],
-        frameworks: list[str],
+        project_map: _schemas.ProjectMap,
     ) -> None:
-        """Wypisuje tabelę ścieżka | rola | rozmiar | framework, liczbę plików w każdej roli i wykryte frameworki.
+        """Wypisuje skrót mapy: tabelę plików, punkty wejścia, jednostki i odwołania plików źródłowych, jednostki kodu i frameworki.
 
-        Po co: czytelny wynik testu; tylko formatuje gotowe dane.
+        Po co: czytelny wynik testu zamiast długiego JSON; tylko formatuje gotowe dane.
         """
-        print(f"=== {title}: {root} (technologia: {technology_name}, plików: {len(entries)}) ===")
-        licznik = {}
-        for wpis in entries:
+        technologia = project_map.technology
+        if not technologia:
+            technologia = "brak"
+        print(f"=== {title}: {project_map.root} (technologia: {technologia}, plików: {len(project_map.files)}) ===")
+        for wpis in project_map.files:
             print(f"  {wpis.path:<55} {wpis.role:<11} {wpis.size_bytes:>8}  {wpis.framework_name}")
-            licznik[wpis.role] = licznik.get(wpis.role, 0) + 1
-        podsumowanie = []
-        for rola, liczba in licznik.items():
-            podsumowanie.append(f"{rola}: {liczba}")
-        print(f"  role -> {', '.join(podsumowanie)}")
-        print(f"  Frameworki: {frameworks}\n")
+        print(f"  Punkty wejścia: {project_map.entrypoints}")
+        for plik_zrodlowy in project_map.source_files:
+            jednostki = []
+            for jednostka in plik_zrodlowy.units:
+                jednostki.append(f"{jednostka.name} {jednostka.start_line}-{jednostka.end_line}")
+            print(f"  {plik_zrodlowy.path}")
+            print(f"      jednostki: {', '.join(jednostki)}")
+            print(f"      pliki: {plik_zrodlowy.references.files}  pakiety: {plik_zrodlowy.references.packages}")
+        nazwy_jednostek = []
+        for jednostka_kodu in project_map.code_units:
+            nazwy_jednostek.append(jednostka_kodu.name)
+        print(f"  Jednostki kodu ({len(nazwy_jednostek)}): {nazwy_jednostek}")
+        print(f"  Frameworki: {project_map.frameworks}\n")
 
     def manual_test():
-        """Z argumentem <katalog> - tabela ról projektu; bez argumentów - roboty testowe i katalog tymczasowy.
+        """Z argumentem <katalog> - pełna mapa projektu jako JSON; bez argumentów - skrót map robotów testowych i katalogu tymczasowego.
 
-        Po co: sprawdzenie listy plików i ról na prawdziwych robotach i na przypadkach brzegowych.
+        Po co: sprawdzenie mapy na prawdziwych robotach i na przypadkach brzegowych.
         """
         katalog_repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         app_config = _config.load_config(os.path.join(katalog_repo, "config.yaml"))
         if len(sys.argv) == 2:
-            nazwa_technologii, wpisy, frameworki = _scan(sys.argv[1], app_config.scan)
-            _print_entries("projekt", sys.argv[1], nazwa_technologii, wpisy, frameworki)
+            print(build_project_map(sys.argv[1], app_config.scan).model_dump_json(indent=2))
             return
 
+        scan_config = _test_scan_config(app_config.scan)
         katalog_testow = os.path.normpath(os.path.join(katalog_repo, "..", "..", "tests"))
         for tytul, nazwa in [("robot 01", "01_rpa_challange_roboforge"), ("robot 02", "02_robot_bez_frameworku")]:
             root = os.path.join(katalog_testow, nazwa)
             if not os.path.isdir(root):
                 print(f"=== {tytul}: brak katalogu {root} - pomijam ===\n")
                 continue
-            nazwa_technologii, wpisy, frameworki = _scan(root, app_config.scan)
-            _print_entries(tytul, root, nazwa_technologii, wpisy, frameworki)
+            _print_map_summary(tytul, build_project_map(root, scan_config))
 
         temp_dir = tempfile.mkdtemp()
         try:
             _make_temp_project(temp_dir)
-            nazwa_technologii, wpisy, frameworki = _scan(temp_dir, app_config.scan)
-            _print_entries("katalog tymczasowy", temp_dir, nazwa_technologii, wpisy, frameworki)
+            _print_map_summary("katalog tymczasowy", build_project_map(temp_dir, scan_config))
         finally:
             shutil.rmtree(temp_dir)
 

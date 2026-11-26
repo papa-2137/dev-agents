@@ -156,6 +156,13 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.htm
 - Odstępstwo od doc-agents (wybór użytkownika A): bez wykrywania binarek po treści (tabela decyzji).
 - Test użytkownika: OK. Commit `1212c51`.
 
+### Krok 21. `scanner.py` - frameworki po ścieżkach i po pakietach - ✅
+- `config.yaml`: `scan.frameworks.roboforge` (`technology`, `paths`, `packages`, `knowledge`); `config.py`: `FrameworkConfig`, `ScanConfig.frameworks`, `_check_framework_knowledge` (brak pliku wiedzy → błąd przy starcie, szósty przypadek w teście configu).
+- `scanner.py`: `_framework_for_path` (wzorce `paths` → `FileEntry.framework_name`), `project_packages` (suma `references().packages` plików źródłowych), `detect_frameworks` (framework technologii projektu z oznaczonymi plikami albo z pakietem wśród importów). Framework zainstalowany w venv wykrywany po importach robota - skaner nie zagląda do venv.
+- Makieta `knowledge_base/knowledge/frameworks/roboforge.md` (pełna treść w kroku 42).
+- Wybór użytkownika: B + makieta (tabela decyzji).
+- Test użytkownika: OK. Commit `29ec11c`.
+
 ---
 
 ## Odstępstwa i decyzje poza planem

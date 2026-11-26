@@ -1,9 +1,9 @@
 """Schematy danych przekazywanych między etapami towaru (klasy Pydantic, bez logiki).
 
 Co zawiera: opis kształtu danych, które jeden etap produkuje, a następny odbiera. Na tym etapie:
-mapa projektu - wynik skanera: pliki z rolami (FileEntry), jednostki kodu do analizy (CodeUnit) i całość
-(ProjectMap) - oraz minimalne fakty o pliku źródłowym podawane przez technologię: jednostki z zakresami
-linii (SourceUnit) i odwołania do innych plików i pakietów (References). Kolejne schematy (pliki zależności,
+minimalne fakty o pliku źródłowym podawane przez technologię - jednostki z zakresami linii (SourceUnit),
+odwołania do innych plików i pakietów (References), razem dla jednego pliku (SourceFile) - oraz mapa
+projektu - wynik skanera: pliki z rolami (FileEntry), jednostki kodu do analizy (CodeUnit) i całość (ProjectMap). Kolejne schematy (pliki zależności,
 konfiguracja robota, graf zależności, plan, notatki analityków, diagram przepływu, treść przewodnika,
 recenzja) dochodzą w krokach, które ich potrzebują.
 
@@ -26,6 +26,45 @@ obiekt równy oryginałowi (oczekiwane: True).
 """
 
 import pydantic
+
+
+# --- Fakty o plikach źródłowych (wynik technologii) ---
+
+
+class SourceUnit(pydantic.BaseModel):
+    """Jednostka pliku źródłowego - funkcja, klasa, metoda, workflow, zadanie - z nazwą i zakresem linii.
+
+    Po co: pewne numery linii dla analityka i przewodnika, granice podziału długich plików na kawałki
+    i długość jednostek do tabeli "Ryzykowne miejsca" - bez zgadywania przez model.
+    """
+
+    name: str  # np. "run", "Klasa.metoda", "Main.xaml", nazwa zadania Robot Framework
+    start_line: int
+    end_line: int
+
+
+class References(pydantic.BaseModel):
+    """Odwołania pliku źródłowego: inne pliki projektu i pakiety spoza projektu.
+
+    Po co: z plików powstaje graf zależności i kolejność czytania, z pakietów - wykrywanie frameworków.
+
+    Uwaga: same fakty z kodu; podział pakietów na standardowe i do zainstalowania oraz ich opis robią agenci.
+    """
+
+    files: list[str] = []  # ścieżki względne plików projektu (separator "/")
+    packages: list[str] = []  # nazwy pakietów spoza projektu (w Pythonie bez biblioteki standardowej)
+
+
+class SourceFile(pydantic.BaseModel):
+    """Fakty o jednym pliku źródłowym robota policzone przez technologię: jednostki z zakresami linii i odwołania.
+
+    Po co: z tych faktów korzystają graf zależności (krawędzie z references.files), wykrywanie frameworków
+    (references.packages), podział długich plików i analitycy (numery linii) - liczone raz, przy skanie.
+    """
+
+    path: str  # ścieżka względna pliku (separator "/"), ta sama co w FileEntry
+    units: list[SourceUnit] = []
+    references: References = References()
 
 
 # --- Mapa projektu (wynik skanera) ---
@@ -60,7 +99,7 @@ class CodeUnit(pydantic.BaseModel):
 
 
 class ProjectMap(pydantic.BaseModel):
-    """Wynik skanera: co jest w projekcie - pliki z rolami, punkty wejścia, jednostki kodu i wykryte frameworki, bez treści plików.
+    """Wynik skanera: co jest w projekcie - pliki z rolami, punkty wejścia, jednostki kodu, fakty o plikach źródłowych i frameworki, bez treści plików.
 
     Po co: jeden obiekt opisujący projekt dla wszystkich dalszych etapów; zapisany jako project_map.json
     pozwala obejrzeć wynik skanera bez wywoływania modelu.
@@ -75,35 +114,8 @@ class ProjectMap(pydantic.BaseModel):
     entrypoints: list[str]  # ścieżki względne plików startowych
     files: list[FileEntry]
     code_units: list[CodeUnit]  # kod projektu do analizy (bez plików frameworku)
-    frameworks: list[str] = []  # frameworki wykryte po importach; [] = robot bez frameworku
-
-
-
-# --- Fakty o pliku źródłowym (wynik technologii) ---
-
-
-class SourceUnit(pydantic.BaseModel):
-    """Jednostka pliku źródłowego - funkcja, klasa, metoda, workflow, zadanie - z nazwą i zakresem linii.
-
-    Po co: pewne numery linii dla analityka i przewodnika, granice podziału długich plików na kawałki
-    i długość jednostek do tabeli "Ryzykowne miejsca" - bez zgadywania przez model.
-    """
-
-    name: str  # np. "run", "Klasa.metoda", "Main.xaml", nazwa zadania Robot Framework
-    start_line: int
-    end_line: int
-
-
-class References(pydantic.BaseModel):
-    """Odwołania pliku źródłowego: inne pliki projektu i pakiety spoza projektu.
-
-    Po co: z plików powstaje graf zależności i kolejność czytania, z pakietów - wykrywanie frameworków.
-
-    Uwaga: same fakty z kodu; podział pakietów na standardowe i do zainstalowania oraz ich opis robią agenci.
-    """
-
-    files: list[str] = []  # ścieżki względne plików projektu (separator "/")
-    packages: list[str] = []  # nazwy pakietów spoza projektu (w Pythonie bez biblioteki standardowej)
+    source_files: list[SourceFile] = []  # fakty o plikach źródłowych robota (bez plików frameworku)
+    frameworks: list[str] = []  # frameworki wykryte po ścieżkach i importach; [] = robot bez frameworku
 
 
 # --- Test ręczny ---
@@ -130,6 +142,18 @@ if __name__ == "__main__":
             CodeUnit(name="przetwarzanie.py", files=["przetwarzanie.py"]),
             CodeUnit(name="raport.py", files=["raport.py"]),
         ]
+        source_files = [
+            SourceFile(
+                path="przetwarzanie.py",
+                units=[SourceUnit(name="log", start_line=31, end_line=38), SourceUnit(name="run", start_line=41, end_line=411)],
+                references=References(packages=["requests"]),
+            ),
+            SourceFile(
+                path="raport.py",
+                units=[SourceUnit(name="main", start_line=13, end_line=71)],
+                references=References(packages=["openpyxl"]),
+            ),
+        ]
         przykladowa_mapa = ProjectMap(
             project_name="02_robot_bez_frameworku",
             root=r"C:\Users\jankiwoj_box\Documents\projects\claude\tests\02_robot_bez_frameworku",
@@ -137,6 +161,7 @@ if __name__ == "__main__":
             entrypoints=["przetwarzanie.py", "raport.py"],
             files=files,
             code_units=code_units,
+            source_files=source_files,
         )
         return przykladowa_mapa
 
