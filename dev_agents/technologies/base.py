@@ -96,7 +96,8 @@ class Technology:
         Po co: analityk widzi strukturę pliku przed lekturą całego kodu, a przy dużych plikach szkielet
         pozwala modelowi się zorientować bez czytania wszystkiego.
 
-        Wynik: czytelny tekst (wiele linii); pusty tekst, gdy nie da się zbudować szkieletu.
+        Wynik: czytelny tekst (wiele linii); gdy szkieletu nie da się zbudować (np. błąd składni) - jedna linia
+        z przyczyną, żeby analityk wiedział, dlaczego szkieletu brak.
         """
         raise NotImplementedError(f"{type(self).__name__}.outline() - do implementacji")
 

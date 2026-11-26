@@ -98,6 +98,12 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.htm
 - Test w bloku `__main__`: ręcznie złożona mapa robota 02 (7 plików, 2 jednostki kodu, `frameworks=[]`), zapis do JSON i odczyt.
 - Test użytkownika: JSON zgodny z oczekiwanym, `Odczyt z JSON zgodny z oryginałem: True` - OK. Commit wykonany przez użytkownika (wpis do raportu trafia do commita kroku 12).
 
+### Krok 12. Przenieś z doc-agents: `technologies/base.py` - ✅
+- `dev_agents/technologies/__init__.py` (sam docstring - rejestr w kroku 17), `dev_agents/technologies/base.py`: klasa `Technology` z sześcioma metodami z doc-agents (`name`, `detect`, `is_source`, `find_entrypoints`, `outline`, `imports`), w klasie bazowej `NotImplementedError` z nazwą klasy i metody; zwykłe metody, bez `abc` (zasada prostoty).
+- Zmiany względem doc-agents: w umowach wspólnych pliki projektu czytane wyłącznie przez `files.read_text_safe()` (zamiast `utf-8` + `errors="replace"`); w docstringu zasada rozwoju kontraktu (nowa metoda z domyślnym zachowaniem ogólnym w klasie bazowej); klasa demonstracyjna i funkcje testu w bloku `__main__`.
+- Odstępstwo od planu (wybór użytkownika A): nowe metody kontraktu dochodzą w swoich krokach (tabela decyzji).
+- Test użytkownika: wyniki klasy `demo` zgodne z oczekiwanymi, `NotImplementedError: Technology.detect() - do implementacji` - OK. Commit `fe14cc8`.
+
 ---
 
 ## Odstępstwa i decyzje poza planem
@@ -116,3 +122,4 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.htm
 | 2026-11-24 | Krok 10: `read_text_safe` bez BOM czyta najpierw ścisłym UTF-8, potem cp1250, a dopiero na końcu UTF-8 z zamianą błędów (plan: od razu UTF-8 z `errors="replace"`); `plan_kroki.md` krok 10 zaktualizowany | Na mieście będą pliki z polskiego Windows w cp1250 (`.bat`, `.ini`) - bez tego polskie znaki trafiałyby do modelu jako `�`; wybór użytkownika (B) |
 | 2026-11-24 | Krok 11: `ProjectMap` bez pól `dependency_files` i `config_files` - dochodzą razem ze swoimi klasami w krokach 23-24 (plan: pola od razu); `plan_kroki.md` krok 11 zaktualizowany | Bez pustych zaślepek i typów zgadywanych na zapas (AGENTS.md, Sposób pracy pkt 4); nowe pola będą miały wartość domyślną, więc nic się nie zepsuje; wybór użytkownika (A) |
 | 2026-11-26 | Krok 12: w `Technology` tylko sześć przenoszonych metod; nowe metody kontraktu (kroki 15, 23-26, 42) dochodzą w swoich krokach razem z domyślnym zachowaniem i typem wyniku (plan: wszystkie od razu); `plan_kroki.md` krok 12 zaktualizowany | Jak w kroku 11 - bez zaślepek i sygnatur do zmiany; każda metoda powstaje razem z testem; wybór użytkownika (A) |
+| 2026-11-26 | Krok 13: `outline()` przy błędzie składni zwraca jedną linię z przyczyną (np. kod w Pythonie 2) zamiast pustego tekstu (doc-agents); zdanie o wyniku `outline` w kontrakcie `technologies/base.py` poprawione | Analityk i przewodnik wiedzą, dlaczego szkieletu brak - informacja do „Ryzykownych miejsc” zamiast cichej dziury; wybór użytkownika (A) |
