@@ -9,16 +9,16 @@
 |---|---|
 | A - Fundament (kroki 1-5) | ✅ zakończona (M1) |
 | B - Dostęp do modelu (6-8) | ✅ zakończona (M2) |
-| C - Mapa projektu bez modelu (9-29) | 🟡 w toku |
+| C - Mapa projektu bez modelu (9-29) | ✅ zakończona (M3) |
 | D - Szablon przewodnika i HTML bez modelu (30-39) | ⬜ |
 | E - Prompty i baza wiedzy (40-42) | ⬜ |
 | F - Graf i agenci (43-59) | ⬜ |
 | G - Ergonomia (60-63) | ⬜ |
 | H - Miasto (64-68) | ⬜ |
 
-Kamienie milowe: M1 (krok 5) ✅ 2026-11-24 · M2 (8) ✅ 2026-11-24 · M3 (29) ⬜ · M4 (39) ⬜ · M5 (59) ⬜ · M6 (68) ⬜
+Kamienie milowe: M1 (krok 5) ✅ 2026-11-24 · M2 (8) ✅ 2026-11-24 · M3 (29) ✅ 2026-11-26 · M4 (39) ⬜ · M5 (59) ⬜ · M6 (68) ⬜
 
-Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.html` zaakceptowana
+Wymagania produktu W1-W8 (plan, sekcja 1): ✅ makieta `dev_log/guide_mockup.html` zaakceptowana 2026-11-26 (zmiany wyglądu ewentualnie po zobaczeniu prawdziwych przewodników)
 
 ---
 
@@ -190,6 +190,12 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.htm
 - Odstępstwo od planu (wybór użytkownika B): bez `DependencyGraph` i `dependency_graph.json` (tabela decyzji). W tym samym commicie uzupełnione wpis kroku 27 w raporcie i opis kroku 27 w planie (wcześniejszy zapis na dysk wziął starszą wersję plików).
 - Test użytkownika: OK. Commit `f685e43`.
 
+### Krok 29. `main.py` - skan i zapis wyników - ✅ (M3)
+- `main.py`: `--project` wymagany; config → `scanner.build_project_map` → `output.create_run_store` → `dev_agents_doc/project_map.json`; nagłówek (config, agenci z modelami) i podsumowanie (`_role_summary`, `_longest_unit`, `_print_scan_summary`); nierozpoznana technologia → `sys.exit` z komunikatem przed założeniem `dev_agents_doc/`; błąd katalogu wyników → jednolinijkowy `BŁĄD: ...`.
+- Wybory użytkownika: A, A - przebieg tylko na robocie 02 (robot 01 tylko do odczytu), nierozpoznana technologia → błąd (tabela decyzji).
+- Poprawka po teście (wybór użytkownika B): `*.json` jako `data`, w `config` tylko typowe nazwy konfiguracji JSON - plik wynikowy robota 02 trafiał do mapy jako „konfiguracja” (tabela decyzji).
+- Test użytkownika: robot 02 - 20 plików, `przetwarzanie.py:run 41-411 (371 linii)`, zapis `project_map.json`, drugi start - w katalogu tylko znacznik i mapa; bez `--project` - błąd argparse; katalog bez kodu - błąd, `dev_agents_doc` nie powstał - OK. Commit `a165c77`. **M3 osiągnięty: mapa projektu bez modelu. Faza C zakończona** (kroki 20, 25, 26 wycofane, 24 połączony z 23).
+
 ---
 
 ## Odstępstwa i decyzje poza planem
@@ -223,3 +229,4 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.htm
 | 2026-11-26 | Krok 28: graf zależności bez nowych klas - pola `ProjectMap.dependency_edges` (pary ścieżek, tylko między plikami robota) i `ProjectMap.reading_order` liczone przez `dependencies.build_dependencies` na końcu `scanner.build_project_map` (plan: schemat `DependencyGraph` i osobny `dependency_graph.json`); `plan_kroki.md` kroki 28, 29 i blok `dependency_graph`, `plan.md` lista plików wyników zaktualizowane | Krawędzie są już w `source_files` - jeden plik wyników i zero nowych klas, wszystko o projekcie w jednym obiekcie; wybór użytkownika (B) |
 | 2026-11-26 | Krok 29: (1) prawdziwy przebieg `main.py` tylko na robocie 02 - robot 01 zostaje tylko do odczytu (jego mapa przez `python -m dev_agents.scanner`, bez zapisu); (2) nierozpoznana technologia → błąd przed założeniem `dev_agents_doc/` zamiast zapisu pustej mapy; `plan_kroki.md` krok 29 zaktualizowany | (1) zapis w robocie 01 złamałby zasadę „tylko do odczytu”, a kopia robota zawierałaby plik sekretu; (2) w cudzym katalogu nie zostaje nic, gdy narzędzie nic nie zrobiło - do diagnozy wystarcza skaner; wybór użytkownika (A, A) |
 | 2026-11-26 | Po kroku 29: `*.json` przeniesione z roli `config` do `data`; w `config` tylko typowe nazwy konfiguracji JSON (`config*.json`, `settings*.json`, `appsettings*.json`, `*.config.json`); `config.yaml` i `plan.md` (przykład `scan`); w teście skanera `duzy.yml` (limit) i `wyniki.json` (rola `data`, poza plikami tekstowymi) | Przebieg na robocie 02 przepisał do mapy jako „konfigurację” plik wynikowy `dane/wyjscie/wyniki_20261124.json` - szum i tokeny dla agentów; role nadawane po nazwie pliku, więc rozróżnienie po typowych nazwach; wybór użytkownika (B) |
+| 2026-11-26 | Przed krokiem 30: makieta `guide_mockup.html` zaktualizowana do decyzji z fazy C i zaakceptowana - metryczka bez maskowania (hasło w pliku pokazane z czerwonym znacznikiem, notka o źródle wartości), grupa „w kodzie” (stała z plikiem i linią) i zdanie dla robota bez konfiguracji, notka w „Wymaganiach i dostępach”, uruchomienie z `.bat` i kolejność kroków, nowa sekcja „Ryzykowne miejsca” w zakładce Błędy i naprawa; wygląd, style i skrypty bez zmian | Makieta z kroku 1 pokazywała maskowanie (`***`) i nie miała „Ryzykownych miejsc” ani ustawień w kodzie, a od kroku 30 szablon przenosimy z niej jeden do jednego; akceptacja użytkownika - ewentualne zmiany wyglądu po zobaczeniu prawdziwych przewodników |

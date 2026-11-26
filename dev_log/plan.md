@@ -238,7 +238,7 @@ pricing:                  # od kroku 61, USD za 1M tokenów
 
 ## 7. Otwarte sprawy
 
-- [ ] Akceptacja makiety `dev_log/guide_mockup.html` (zakładki, sekcje, wygląd diagramu) - przed krokiem 30.
+- [x] Akceptacja makiety `dev_log/guide_mockup.html` (zakładki, sekcje, wygląd diagramu) - przed krokiem 30 (2026-11-26; zmiany wyglądu ewentualnie po zobaczeniu prawdziwych przewodników).
 - [ ] Język przewodnika (domyślnie polski) - sterowany promptami i bazą wiedzy, nie kodem.
 - [ ] Drugi projekt do przebiegu kontrolnego (krok 62).
 - [ ] Firmowa bramka: obsługa `json_schema` (krok 66).

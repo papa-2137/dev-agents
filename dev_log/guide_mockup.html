@@ -281,7 +281,7 @@ td.val code{background:var(--soft);padding:1px 5px}
 
 
  <h2>Metryczka robota</h2>
- <p class="note">Zebrane przez narzędzie z pliku konfiguracyjnego robota i z kodu, który go czyta: wartości są przepisane, miejsca użycia wyliczone. Wartości kluczy z hasłami i tokenami są zamaskowane. <span class="ph">[Gdy robot nie ma pliku konfiguracyjnego: „Robot nie ma pliku konfiguracyjnego - ustawienia są zapisane w kodzie, zobacz zakładkę Dla dewelopera.”]</span></p>
+ <p class="note">Wartości przepisane z pliku konfiguracyjnego robota (narzędzie przekazuje plik bez zmian) i ze stałych w kodzie; znaczenie kluczy i miejsca użycia opisuje agent na podstawie kodu. Niczego nie ukrywamy: hasło wpisane wprost w plik albo w kod jest pokazane, oznaczone na czerwono i trafia do „Ryzykownych miejsc” w zakładce Błędy i naprawa. <span class="ph">[Gdy robot nie ma pliku konfiguracyjnego: metryczka pokazuje tylko ustawienia zapisane w kodzie, z plikiem i linią. Gdy nie ma żadnych ustawień: „Robot nie ma konfiguracji - nie wynika z kodu.”]</span></p>
  <div class="pp">
   <div class="pp-h"><b>[config.yml]</b><span>wczytywany w <code>[main.py:51]</code> przez <code>[get_config(CONFIG_FILE)]</code> · ścieżki względne liczone od <span class="ph">[katalogu projektu]</span></span></div>
   <div class="pp-g">
@@ -294,7 +294,7 @@ td.val code{background:var(--soft);padding:1px 5px}
   </div>
  </div>
  <details class="cfg">
-  <summary>Pełna konfiguracja <span class="kv m">[9] kluczy</span></summary>
+  <summary>Pełna konfiguracja <span class="kv m">[10] kluczy</span></summary>
   <div class="scroll"><table class="stack cfgt">
    <thead><tr><th>Klucz</th><th>Wartość</th><th>Znaczenie</th><th>Używany w</th></tr></thead>
    <tbody>
@@ -307,7 +307,9 @@ td.val code{background:var(--soft);padding:1px 5px}
     <tr><td data-l="Klucz"><code>[url]</code></td><td class="val" data-l="Wartość"><code>[https://parabank.parasoft.com/parabank/]</code> <span class="kv r">sieć</span></td><td data-l="Znaczenie"><span class="ph">[adres aplikacji bankowej]</span></td><td data-l="Używany w"><code>[main.py:139]</code></td></tr>
     <tr><td data-l="Klucz"><code>[username]</code></td><td class="val" data-l="Wartość"><code>[robot]</code> <span class="kv m">konto</span></td><td data-l="Znaczenie"><span class="ph">[login robota w ParaBank]</span></td><td data-l="Używany w"><code>[main.py:142]</code></td></tr>
     <tr><td data-l="Klucz"><code>[password_env]</code></td><td class="val" data-l="Wartość"><code>[FAKE_PASSWD]</code> <span class="kv r">zmienna środowiskowa</span></td><td data-l="Znaczenie"><span class="ph">[nazwa zmiennej z hasłem do ParaBank; brak zmiennej zatrzymuje robota]</span></td><td data-l="Używany w"><code>[main.py:135]</code>, <code>[main.py:137]</code></td></tr>
-    <tr><td data-l="Klucz"><code>[password]</code></td><td class="val" data-l="Wartość"><code>***</code> <span class="kv r">zamaskowane</span></td><td data-l="Znaczenie"><span class="ph">[przykład: hasło wpisane wprost w plik - narzędzie pokazuje tylko, że istnieje]</span></td><td data-l="Używany w"><span class="ph">[-]</span></td></tr>
+    <tr><td data-l="Klucz"><code>[password]</code></td><td class="val" data-l="Wartość"><code>[Haslo123!]</code> <span class="kv r">hasło w pliku</span></td><td data-l="Znaczenie"><span class="ph">[przykład: hasło wpisane wprost w plik - pokazane bez zmian, opisane w „Ryzykownych miejscach”]</span></td><td data-l="Używany w"><code>[main.py:140]</code></td></tr>
+    <tr class="csec"><td colspan="4">w kodzie</td></tr>
+    <tr><td data-l="Klucz"><code>[URL]</code></td><td class="val" data-l="Wartość"><code>[https://api.example.test/zamowienia]</code> <span class="kv r">sieć</span></td><td data-l="Znaczenie"><span class="ph">[adres API, do którego robot wysyła zamówienia; stała w kodzie, nie w pliku konfiguracyjnym]</span></td><td data-l="Używany w"><code>[przetwarzanie.py:14]</code> <span class="kv m">stała</span></td></tr>
     <tr class="csec"><td colspan="4">[logger]</td></tr>
     <tr><td data-l="Klucz"><code>[logs_dir]</code></td><td class="val" data-l="Wartość"><code>[logs]</code> <span class="kv m">ścieżka</span></td><td data-l="Znaczenie"><span class="ph">[katalog dziennych logów CSV]</span></td><td data-l="Używany w"><code>[main.py:54]</code></td></tr>
     <tr><td data-l="Klucz"><code>[debug]</code></td><td class="val" data-l="Wartość"><code>[false]</code> <span class="kv m">przełącznik</span></td><td data-l="Znaczenie"><span class="ph">[true = także komunikaty DEBUG frameworku]</span></td><td data-l="Używany w"><code>[main.py:54]</code></td></tr>
@@ -323,7 +325,7 @@ td.val code{background:var(--soft);padding:1px 5px}
   <a href="#sciezki"><em>3 · szczegóły</em><b>Ścieżki procesu</b><span>Wszystkie możliwe ścieżki jako listy kroków: główna, alternatywne, błędy.</span></a>
   <a href="#struktura"><em>4 · orientacja</em><b>Struktura projektu</b><span>Drzewo plików z opisami po najechaniu, zależności między modułami.</span></a>
   <a href="#zmiany"><em>5 · zadanie</em><b>Zmiany i rozszerzenia</b><span>Przepisy: nowa strona, nowy format pliku wsadowego, zmiana reguły.</span></a>
-  <a href="#bledy"><em>6 · awaria</em><b>Błędy i naprawa</b><span>Objawy, przyczyny, gdzie szukać i jak naprawić.</span></a>
+  <a href="#bledy"><em>6 · awaria</em><b>Błędy i naprawa</b><span>Objawy, przyczyny, gdzie szukać i jak naprawić; ryzykowne miejsca w kodzie i konfiguracji.</span></a>
   <a href="#deweloper"><em>7 · kod</em><b>Dla dewelopera</b><span>Architektura w pięciu zdaniach, kolejność czytania kodu, konwencje.</span></a>
  </div>
 
@@ -337,7 +339,7 @@ td.val code{background:var(--soft);padding:1px 5px}
  </div>
 
  <h2>Wymagania i dostępy</h2>
- <p class="note">Wszystko, czego robot potrzebuje poza samym kodem. Wartości haseł i kluczy nigdy nie trafiają do przewodnika, tylko nazwy zmiennych i miejsca, gdzie należy je ustawić.</p>
+ <p class="note">Wszystko, czego robot potrzebuje poza samym kodem. Hasła ze zmiennych środowiskowych: tylko nazwy zmiennych i miejsce, gdzie je ustawić. Hasło wpisane wprost w plik albo w kod: pokazane w metryczce i w „Ryzykownych miejscach”. Pliki sekretów (certyfikaty, klucze, .env): tylko metadane, treści nie analizowano.</p>
  <div class="scroll"><table class="stack">
   <thead><tr><th>Obszar</th><th>Wymaganie</th><th>Szczegóły</th></tr></thead>
   <tbody>
@@ -370,7 +372,9 @@ pip install -r requirements.txt</pre></div></li>
    <div class="cb"><pre>[Environment]::SetEnvironmentVariable("[NAZWA_ZMIENNEJ]", "&lt;wartość&gt;", "User")</pre></div></li>
   <li><b>Konfiguracja</b><span class="ph">[które klucze w pliku konfiguracji sprawdzić lub zmienić, np. adresy aplikacji, ścieżki plików]</span></li>
   <li><b>Uruchomienie</b>
-   <div class="cb"><pre>[polecenie uruchomienia, np. python main.py]</pre></div></li>
+   <span class="ph">[czym uruchamiany: plik startowy albo .bat; gdy .bat - kolejność kroków z pliku]</span>
+   <div class="cb"><pre>[polecenie uruchomienia, np. run.bat albo python main.py]</pre></div>
+   <p class="note"><span class="ph">[np. run.bat: przechodzi do katalogu robota, uruchamia przetwarzanie.py, a gdy zakończy się bez błędu - raport.py]</span></p></li>
  </ol>
 
  <h2>Jak sprawdzić, że działa</h2>
@@ -535,6 +539,17 @@ pip install -r requirements.txt</pre></div></li>
    <tr><td data-l="Objaw"><span class="ph">[np. KeyError przy odczycie wiersza]</span></td><td data-l="Przyczyna"><span class="ph">[np. zmienione nagłówki w pliku Excel]</span></td><td data-l="Gdzie szukać"><code>[…]</code></td><td data-l="Jak naprawić"><span class="ph">[…]</span></td></tr>
   </tbody>
  </table></div>
+ <h2>Ryzykowne miejsca</h2>
+ <p class="note">Miejsca w kodzie i konfiguracji, które najłatwiej zepsuć albo które łamią dobre praktyki. Jednostki dłuższe niż próg z configu (<code>analysis.long_unit_lines</code>) i ich długość wylicza narzędzie z kodu; hasła wpisane wprost i komentarze dopisuje agent.</p>
+ <div class="scroll"><table class="stack">
+  <thead><tr><th>Miejsce</th><th>Plik i linie</th><th>Rodzaj</th><th>Dlaczego ryzykowne</th></tr></thead>
+  <tbody>
+   <tr><td data-l="Miejsce"><code>[run]</code></td><td data-l="Plik i linie"><code>[przetwarzanie.py:41-411]</code></td><td data-l="Rodzaj"><span class="kv r">długa jednostka</span> <span class="ph">[371 linii]</span></td><td data-l="Dlaczego ryzykowne"><span class="ph">[np. cały proces w jednej funkcji, wiele zagnieżdżonych warunków - zmiana w jednym miejscu łatwo psuje inne]</span></td></tr>
+   <tr><td data-l="Miejsce"><code>[password]</code></td><td data-l="Plik i linie"><code>[config.yml:12]</code></td><td data-l="Rodzaj"><span class="kv r">hasło w pliku</span></td><td data-l="Dlaczego ryzykowne"><span class="ph">[hasło wpisane wprost trafia do repozytorium i do każdej kopii robota - przenieś je do zmiennej środowiskowej]</span></td></tr>
+   <tr><td data-l="Miejsce"><code>[INPUT_DIR]</code></td><td data-l="Plik i linie"><code>[przetwarzanie.py:9]</code></td><td data-l="Rodzaj"><span class="kv m">inne</span></td><td data-l="Dlaczego ryzykowne"><span class="ph">[np. ścieżka względna - robot działa tylko uruchomiony z własnego katalogu]</span> <span class="unc">wywnioskowane</span></td></tr>
+  </tbody>
+ </table></div>
+
  <h2>Znane ograniczenia i pułapki</h2>
  <ul class="ul">
   <li><span class="warn">[pułapka]</span> <span class="ph">[np. wylogowanie poza blokiem finally - po błędzie sesja zostaje otwarta]</span></li>
