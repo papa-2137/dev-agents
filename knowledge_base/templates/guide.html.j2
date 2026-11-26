@@ -2,8 +2,10 @@
     Dane przygotowuje render.py: project_name, project_root, generated_at, nav (zakładki do menu), tabs (zakładki
     z nagłówkiem, lead i sekcjami w kolejności z guide_template.yaml), cards (karty „jak czytać”), node_numbers
     (id klocka diagramu → numer), path_kind_labels (rodzaj ścieżki → napis), css, js.
-    Każda sekcja ma state: content (blok z treścią), missing („nie wynika z kodu”) albo pending (typ bloku
-    dochodzi w kolejnym kroku planu). Escapowanie jest zawsze włączone - treść od agentów jest tekstem. -#}
+    Każda sekcja ma state: content (blok z treścią), missing (zdanie missing_text, domyślnie „nie wynika z kodu”)
+    albo pending (typ bloku dochodzi w kolejnym kroku planu). Dane z faktów kodu: tree (drzewo plików), code_text
+    (treść bloku kodu, np. plików zależności), rows (wiersze tabeli; komórka ma opcjonalnie code i badge).
+    Escapowanie jest zawsze włączone - treść od agentów jest tekstem. -#}
 {%- macro block_text(block) -%}
 {%- for paragraph in block.paragraphs %}
  <p>{{ paragraph }}</p>
@@ -54,7 +56,7 @@
   <thead><tr>{% for column in columns %}<th>{{ column }}</th>{% endfor %}</tr></thead>
   <tbody>
 {%- for row in rows %}
-   <tr>{% for cell in row %}<td data-l="{{ cell.label }}">{{ cell.text }}{% if cell.uncertain %} <span class="unc">wywnioskowane</span>{% endif %}</td>{% endfor %}</tr>
+   <tr>{% for cell in row %}<td data-l="{{ cell.label }}">{% if cell.badge %}<span class="kv {{ cell.badge_color }}">{{ cell.badge }}</span> {% endif %}{% if cell.code %}<code>{{ cell.text }}</code>{% else %}{{ cell.text }}{% endif %}{% if cell.uncertain %} <span class="unc">wywnioskowane</span>{% endif %}</td>{% endfor %}</tr>
 {%- endfor %}
   </tbody>
  </table></div>
@@ -156,6 +158,37 @@
  </details>
 {%- endmacro -%}
 
+{%- macro tree_marker(marker) -%}
+{%- if marker %}<i class="mk{% if marker != "code" %} {{ marker }}{% endif %}"></i>{% endif -%}
+{%- endmacro -%}
+
+{%- macro tree_nodes(children) -%}
+ <ul class="tr">
+{%- for node in children %}
+  <li><button class="it{% if node.is_dir %} dir{% endif %}" data-w="{{ node.what }}" data-r="{{ node.role_text }}">{{ tree_marker(node.marker) }}{{ node.name }}</button>
+{%- if node.children %}
+{{ tree_nodes(node.children) }}
+{%- endif %}</li>
+{%- endfor %}
+ </ul>
+{%- endmacro -%}
+
+{%- macro block_tree(tree) -%}
+ <div class="legend">
+  <span><i class="mk fill"></i>punkt wejścia</span>
+  <span><i class="mk"></i>kod robota</span>
+  <span><i class="mk cfg"></i>konfiguracja</span>
+  <span><i class="mk sec"></i>sekret: tylko metadane</span>
+ </div>
+{%- if tree.skipped_count %}
+ <p class="note">Pominięto {{ tree.skipped_count }} plików frameworku skopiowanego do projektu ({{ tree.skipped_frameworks | join(", ") }}).</p>
+{%- endif %}
+ <div class="grp">
+  <button class="it dir" data-w="{{ tree.root.what }}" data-r="{{ tree.root.role_text }}">{{ tree.root.name }}</button>
+{{ tree_nodes(tree.children) }}
+ </div>
+{%- endmacro -%}
+
 {%- macro block_cards(cards) -%}
  <p class="note">Zacznij od tej zakładki: po niej uruchomisz robota. Potem diagram przepływu: po nim opowiesz, co robot robi. Resztę czytaj, gdy masz konkretne zadanie.</p>
  <div class="cards">
@@ -201,10 +234,8 @@
 {%- endfor %}
 {% for section in tab.sections %}
  <h2 id="s-{{ section.id }}">{{ section.title }}</h2>
-{%- if section.state == "missing" and section.type == "config" %}
- <p class="note">Robot nie ma konfiguracji - nie wynika z kodu.</p>
-{%- elif section.state == "missing" %}
- <p class="note">Nie wynika z kodu.</p>
+{%- if section.state == "missing" %}
+ <p class="note">{{ section.missing_text }}</p>
 {%- elif section.state == "pending" %}
  <p class="note"><span class="ph">[blok typu {{ section.type }}: dochodzi w kolejnym kroku planu]</span></p>
 {%- elif section.type == "text" %}
@@ -218,7 +249,9 @@
 {%- elif section.type == "steps" %}
 {{ block_steps(section.block) }}
 {%- elif section.type == "code" %}
- {{ code_box(section.block.code) }}
+ {{ code_box(section.code_text) }}
+{%- elif section.type == "tree" %}
+{{ block_tree(section.tree) }}
 {%- elif section.type == "table" %}
 {{ block_table(section.columns, section.rows) }}
 {%- elif section.type == "glossary" %}

@@ -71,7 +71,9 @@ tabs:
         type: code
         source: scanner
         required: true
-        instruction: Treść plików zależności robota (rola dependency) przepisana bez zmian z mapy projektu.
+        instruction: >-
+          Treść plików zależności robota (rola dependency) przepisana bez zmian z mapy projektu; przy kilku plikach
+          każdy z nagłówkiem "# --- ścieżka ---". Bez pliku zależności sekcja mówi, że robot go nie ma. Pisarz nic nie pisze.
       - id: instalacja
         title: Instalacja i uruchomienie
         type: steps
@@ -136,7 +138,10 @@ tabs:
         type: tree
         source: scanner
         required: true
-        instruction: Pliki i katalogi z mapy projektu z rolami; sekrety tylko jako metadane; opisy po najechaniu od pisarza.
+        instruction: >-
+          Drzewo plików z mapy projektu: znacznik roli, rozmiar i funkcje z liniami liczy kod; sekrety tylko jako
+          metadane (nazwa i rozmiar). Pliki frameworku skopiowane do projektu są pominięte. Opcjonalnie pisarz zwraca
+          wiersze [ścieżka, czym jest, rola w projekcie] - opis pisarza ma pierwszeństwo przed opisem z faktów kodu.
       - id: graf_zaleznosci
         title: Zależności między modułami
         type: dependency_graph
@@ -192,8 +197,10 @@ tabs:
         required: true
         columns: [Miejsce, Plik i linie, Rodzaj, Dlaczego ryzykowne]
         instruction: >-
-          Jednostki dłuższe niż analysis.long_unit_lines (z mapy projektu: nazwa, plik:linie, długość) oraz hasła
-          wpisane wprost i inne ryzykowne miejsca wskazane przez pisarza; komentarz „dlaczego ryzykowne” od pisarza.
+          Kod wskazuje hasła wpisane wprost (z metryczki) i jednostki dłuższe niż analysis.long_unit_lines (nazwa,
+          plik:linie, długość). Pisarz zwraca wiersze [Miejsce, Plik i linie, Rodzaj, Dlaczego ryzykowne]: wiersz o tym
+          samym Miejscu i Pliku i liniach co wskazany przez kod dodaje komentarz „dlaczego ryzykowne”, pozostałe wiersze
+          to dodatkowe miejsca, których kod nie widzi (np. ścieżka względna zależna od katalogu uruchomienia).
           Komórkę wywnioskowaną z kodu, a niezapisaną w nim wprost, zakończ znacznikiem [wywnioskowane].
       - id: ograniczenia
         title: Znane ograniczenia i pułapki

@@ -166,7 +166,7 @@ class ConfigItem(pydantic.BaseModel):
     """
 
     file: str = pydantic.Field(default="", description="Plik konfiguracyjny, np. config.yml; puste, gdy ustawienie jest stałą w kodzie.")
-    location: str = pydantic.Field(default="", description="Dla stałej w kodzie: plik i linia, np. przetwarzanie.py:14.")
+    location: str = pydantic.Field(default="", description="Plik i linia, np. przetwarzanie.py:14: dla stałej w kodzie zawsze; dla wpisu z pliku konfiguracyjnego tylko przy haśle wpisanym wprost (np. config.yml:12), inaczej puste.")
     group: str = pydantic.Field(default="", description="Sekcja pliku konfiguracyjnego, np. parabank; puste, gdy brak.")
     key: str = pydantic.Field(description="Nazwa klucza albo stałej, np. url, INPUT_DIR.")
     value: str = pydantic.Field(description="Wartość przepisana dosłownie z pliku albo kodu.")

@@ -9,8 +9,12 @@ opcjonalna bez treści) - i wypełnia szablon Jinja2 guide.html.j2. CSS i JS z k
 Typy bloków: text, list, io, cards (karty „jak czytać” z kart zakładek w szablonie), steps (kroki z kodem do
 skopiowania), code, table (kolumny z szablonu), glossary, paths (numery klocków diagramu jak w kolejności
 flow.nodes, odnośnik do zakładki Przepływ), recipes, config (metryczka: kafelki po rodzaju wpisu i tabela
-„Pełna konfiguracja”; hasło wpisane wprost z czerwonym znacznikiem). Pozostałe typy (tree, flow, dependency_graph)
-dochodzą w kolejnych krokach - do tego czasu sekcja pokazuje widoczny znacznik „dochodzi w kolejnym kroku planu”.
+„Pełna konfiguracja”; hasło wpisane wprost z czerwonym znacznikiem), tree (drzewo plików z opisami po najechaniu).
+Pozostałe typy (flow, dependency_graph) dochodzą w kolejnych krokach - do tego czasu sekcja pokazuje widoczny znacznik
+„dochodzi w kolejnym kroku planu”.
+Fakty z kodu zamiast odpowiedzi modelu (guide_facts.py): sekcja typu code ze źródłem scanner (zależności) to treść
+plików zależności z mapy projektu; tabela ze źródłem code (ryzykowne miejsca) to długie jednostki i hasła wpisane
+wprost, a wiersze pisarza dodają komentarz i inne miejsca; drzewo bierze fakty z mapy, opisy pisarza mają pierwszeństwo.
 Komórka tabeli zakończona znacznikiem „[wywnioskowane]” wyświetla się bez znacznika, z oznaczeniem
 „wywnioskowane” (informacja z analizy kodu, niezapisana w nim wprost).
 
@@ -27,7 +31,8 @@ Test ręczny (z katalogu głównego repo):
         zapisuje przewodnik z przykładową treścią robota 02 (metryczka ze stałych w kodzie, jak w robocie bez pliku
         konfiguracyjnego) do guide_test.html w katalogu głównym repo (stała nazwa, nadpisywany przy każdym uruchomieniu,
         w .gitignore - otwórz plik w przeglądarce), wypisuje ścieżkę i liczby kontrolne; dodatkowo sprawdza w pamięci
-        metryczkę bez wpisów (zdanie o braku konfiguracji)
+        metryczkę bez wpisów (zdanie o braku konfiguracji) oraz przewodniki robotów 01 i 02 bez zapisu plików
+        (robot 01: tylko liczby; brak robota - przypadek pomijany)
     python -m dev_agents.render plik
         to samo, ale metryczka z przykładowego pliku config.yml jak w makiecie (sekcje, hasło wpisane wprost,
         zmienna środowiskowa, stała w kodzie)
@@ -38,10 +43,11 @@ import os
 import jinja2
 
 import dev_agents.guide_content as _content
+import dev_agents.guide_facts as _facts
 import dev_agents.guide_template as _template
 import dev_agents.schemas as _schemas
 
-_READY_TYPES = ["text", "list", "io", "cards", "steps", "code", "table", "glossary", "paths", "recipes", "config"]
+_READY_TYPES = ["text", "list", "io", "cards", "steps", "code", "table", "glossary", "paths", "recipes", "config", "tree"]
 _CONTENT_FIELDS = {
     "text": "paragraphs",
     "list": "items",
@@ -52,6 +58,19 @@ _CONTENT_FIELDS = {
     "paths": "paths",
     "recipes": "recipes",
     "config": "config_items",
+    "tree": "rows",
+}
+_MISSING_TEXT = "Nie wynika z kodu."
+_MISSING_TEXTS = {
+    "config": "Robot nie ma konfiguracji - nie wynika z kodu.",
+    "dependencies": "Robot nie ma pliku zależności (requirements.txt ani pyproject.toml).",
+}
+_RISKY_BADGE_COLORS = {"długa jednostka": "m", "hasło w pliku": "r", "hasło w kodzie": "r"}
+_RISKY_CODE_COLUMN = 1
+_RISKY_REASONS = {
+    "długa jednostka": "Długa jednostka kodu: trudno ją przeczytać i zmienić bez pomyłki.",
+    "hasło w pliku": "Hasło wpisane wprost w plik: trafia do repozytorium i kopii zapasowych.",
+    "hasło w kodzie": "Hasło wpisane wprost w kod: trafia do repozytorium i kopii zapasowych.",
 }
 _UNCERTAIN_MARK = "[wywnioskowane]"
 _PATH_KIND_LABELS = {"main": "sukces", "alternative": "alternatywna", "error": "awaryjna"}
@@ -113,12 +132,13 @@ def _cell_view(
     text: str,
     label: str,
 ) -> dict:
-    """Zwraca dane komórki tabeli: tekst bez znacznika „[wywnioskowane]”, etykietę kolumny i flagę uncertain.
+    """Zwraca dane komórki tabeli: tekst bez znacznika „[wywnioskowane]”, etykietę kolumny, flagę uncertain oraz
+    pola code (tekst jako kod) i badge (znacznik przed tekstem) ustawiane przez wołającego.
 
     Po co: pisarz oznacza wywnioskowaną komórkę znacznikiem na końcu tekstu (komórka to zwykły napis), a przewodnik
     pokazuje zamiast niego oznaczenie „wywnioskowane” jak w makiecie.
     """
-    widok = {"text": text, "label": label, "uncertain": False}
+    widok = {"text": text, "label": label, "uncertain": False, "code": False, "badge": "", "badge_color": ""}
     bez_spacji = text.rstrip()
     if bez_spacji.endswith(_UNCERTAIN_MARK):
         widok["text"] = bez_spacji[: -len(_UNCERTAIN_MARK)].rstrip()
@@ -126,22 +146,36 @@ def _cell_view(
     return widok
 
 
+def _column_label(
+    columns: list[str],
+    number: int,
+) -> str:
+    """Zwraca etykietę kolumny o danym numerze albo "" (gdy szablon ma mniej kolumn niż komórek).
+
+    Po co: nadmiarowa komórka wiersza nie przewraca renderera.
+    """
+    etykieta = ""
+    if number < len(columns):
+        etykieta = columns[number]
+    return etykieta
+
+
 def _table_rows(
-    section: _template.TemplateSection,
-    block: _content.GuideBlock,
+    rows: list[list[str]],
+    columns: list[str],
+    code_column: int,
 ) -> list[list[dict]]:
-    """Zwraca wiersze tabeli jako listy komórek z etykietą kolumny z szablonu (pusta dla nadmiarowej komórki).
+    """Zwraca wiersze tabeli jako listy komórek z etykietą kolumny z szablonu; komórki kolumny code_column jako kod (-1 = brak).
 
     Po co: etykieta kolumny w każdej komórce (atrybut data-l) układa tabelę w karty na telefonie, jak w makiecie.
     """
     wiersze = []
-    for wiersz in block.rows:
+    for wiersz in rows:
         komorki = []
         for numer, tekst in enumerate(wiersz):
-            etykieta = ""
-            if numer < len(section.columns):
-                etykieta = section.columns[numer]
-            komorki.append(_cell_view(tekst, etykieta))
+            komorka = _cell_view(tekst, _column_label(columns, numer))
+            komorka["code"] = numer == code_column
+            komorki.append(komorka)
         wiersze.append(komorki)
     return wiersze
 
@@ -157,21 +191,6 @@ def _node_numbers(
     for numer, klocek in enumerate(flow.nodes, start=1):
         numery[klocek.id] = numer
     return numery
-
-
-def _config_password_mark(
-    item: _content.ConfigItem,
-) -> str:
-    """Zwraca napis czerwonego znacznika hasła: „hasło w pliku”, „hasło w kodzie” albo "" (gdy to nie hasło wprost).
-
-    Po co: hasło wpisane wprost jest pokazane dosłownie i wyraźnie oznaczone (decyzja użytkownika: niczego nie ukrywamy).
-    """
-    znacznik = ""
-    if item.plain_password:
-        znacznik = "hasło w kodzie"
-        if item.file:
-            znacznik = "hasło w pliku"
-    return znacznik
 
 
 def _config_entry(
@@ -197,7 +216,7 @@ def _config_entry(
         "value": item.value,
         "meaning": item.meaning,
         "uncertain": not item.certain,
-        "password": _config_password_mark(item),
+        "password": _facts.password_mark(item),
         "badge_text": odznaka[0],
         "badge_color": odznaka[1],
         "places": miejsca,
@@ -282,11 +301,99 @@ def _config_view(
     return widok
 
 
+def _all_config_items(
+    blocks: dict[str, _content.GuideBlock],
+) -> list[_content.ConfigItem]:
+    """Zwraca wszystkie wpisy metryczki ze wszystkich bloków treści.
+
+    Po co: „Ryzykowne miejsca” biorą hasła wpisane wprost z metryczki, bez względu na zakładkę, w której ją opisano.
+    """
+    wpisy = []
+    for blok in blocks.values():
+        for wpis in blok.config_items:
+            wpisy.append(wpis)
+    return wpisy
+
+
+def _risky_fact_cells(
+    fact: dict,
+    columns: list[str],
+) -> list[dict]:
+    """Zwraca komórki wiersza ryzykownego miejsca z faktów kodu: miejsce, plik i linie (kod), rodzaj ze znacznikiem, powód.
+
+    Po co: powód to komentarz pisarza, a gdy go brak - zdanie domyślne dla rodzaju; fakty (linie, długość) zawsze z kodu.
+    """
+    powod = fact["comment"]
+    if not powod:
+        powod = _RISKY_REASONS[fact["badge"]]
+    miejsce = _cell_view(fact["place"], _column_label(columns, 0))
+    plik = _cell_view(fact["where"], _column_label(columns, 1))
+    plik["code"] = True
+    rodzaj = _cell_view(fact["detail"], _column_label(columns, 2))
+    rodzaj["badge"] = fact["badge"]
+    rodzaj["badge_color"] = _RISKY_BADGE_COLORS[fact["badge"]]
+    uzasadnienie = _cell_view(powod, _column_label(columns, 3))
+    komorki = [miejsce, plik, rodzaj, uzasadnienie]
+    return komorki
+
+
+def _risky_view(
+    section: _template.TemplateSection,
+    block: _content.GuideBlock,
+    project_map: _schemas.ProjectMap,
+    config_items: list[_content.ConfigItem],
+    long_unit_lines: int,
+) -> list[list[dict]]:
+    """Zwraca wiersze tabeli ryzykownych miejsc: z faktów kodu (hasła, długie jednostki), potem dodatkowe wiersze pisarza.
+
+    Po co: kod wskazuje miejsca, pisarz dopisuje tylko komentarz i miejsca, których kod nie widzi.
+    """
+    fakty, dodatkowe = _facts.risky_rows(project_map, config_items, long_unit_lines, block.rows)
+    wiersze = []
+    for fakt in fakty:
+        wiersze.append(_risky_fact_cells(fakt, section.columns))
+    for wiersz in _table_rows(dodatkowe, section.columns, _RISKY_CODE_COLUMN):
+        wiersze.append(wiersz)
+    return wiersze
+
+
+def _fact_view(
+    section: _template.TemplateSection,
+    block: _content.GuideBlock,
+    project_map: _schemas.ProjectMap,
+    config_items: list[_content.ConfigItem],
+    long_unit_lines: int,
+) -> dict:
+    """Zwraca dane sekcji liczone z faktów kodu (drzewo, zależności, ryzykowne miejsca) albo {} dla pozostałych sekcji.
+
+    Po co: pewne fakty (pliki, treść pliku zależności, linie i długości funkcji, hasło wprost) pochodzą z kodu, nie z modelu;
+    klucz has_content mówi, czy sekcja ma co pokazać, a missing_text - co napisać, gdy nie ma.
+    """
+    widok = {}
+    if section.type == "tree":
+        drzewo = _facts.build_tree(project_map, block.rows)
+        widok = {"tree": drzewo, "has_content": drzewo["file_count"] > 0}
+    if section.type == "code" and section.source == "scanner":
+        tekst = _facts.dependency_text(project_map)
+        widok = {"code_text": tekst, "has_content": bool(tekst), "missing_text": _MISSING_TEXTS["dependencies"]}
+    if section.type == "table" and section.source == "code":
+        wiersze = _risky_view(section, block, project_map, config_items, long_unit_lines)
+        brak = (
+            f"Nie znaleziono ryzykownych miejsc: żadna jednostka kodu nie przekracza {long_unit_lines} linii, "
+            "a w metryczce nie ma haseł wpisanych wprost."
+        )
+        widok = {"rows": wiersze, "has_content": bool(wiersze), "missing_text": brak}
+    return widok
+
+
 def _section_view(
     section: _template.TemplateSection,
     block: _content.GuideBlock,
+    project_map: _schemas.ProjectMap,
+    config_items: list[_content.ConfigItem],
+    long_unit_lines: int,
 ) -> dict | None:
-    """Zwraca dane sekcji dla szablonu HTML (id, tytuł, typ, stan, blok) albo None, gdy sekcję pominąć.
+    """Zwraca dane sekcji dla szablonu HTML (id, tytuł, typ, stan, blok i dane z faktów) albo None, gdy sekcję pominąć.
 
     Po co: jedno miejsce decyzji „treść / nie wynika z kodu / dochodzi w kolejnym kroku / pomiń”.
     """
@@ -297,14 +404,24 @@ def _section_view(
         "block": block,
         "state": "content",
         "columns": section.columns,
-        "rows": _table_rows(section, block),
+        "rows": _table_rows(block.rows, section.columns, -1),
         "config": None,
+        "tree": None,
+        "code_text": block.code,
+        "missing_text": _MISSING_TEXTS.get(section.type, _MISSING_TEXT),
     }
     if section.type == "config":
         widok["config"] = _config_view(block)
+    fakty = _fact_view(section, block, project_map, config_items, long_unit_lines)
+    czy_tresc = True
+    if fakty:
+        czy_tresc = fakty.pop("has_content")
+        widok.update(fakty)
+    elif section.type in _READY_TYPES and section.type != "cards":
+        czy_tresc = _has_content(section, block)
     if section.type not in _READY_TYPES:
         widok["state"] = "pending"
-    elif section.type != "cards" and not _has_content(section, block):
+    elif not czy_tresc:
         if not section.required:
             return None
         widok["state"] = "missing"
@@ -315,11 +432,14 @@ def _tab_view(
     tab: _template.TemplateTab,
     blocks: dict[str, _content.GuideBlock],
     project_name: str,
+    project_map: _schemas.ProjectMap,
+    long_unit_lines: int,
 ) -> dict:
     """Zwraca dane zakładki dla szablonu HTML: id, nagłówek, akapity lead i widoki sekcji.
 
     Po co: nagłówek opisu robota („nazwa: jedno zdanie”) i lead liczone w Pythonie, szablon tylko wyświetla.
     """
+    wpisy_konfiguracji = _all_config_items(blocks)
     naglowek = tab.title
     lead = []
     if tab.lead:
@@ -334,7 +454,8 @@ def _tab_view(
         sekcje = sekcje[1:]
     widoki = []
     for sekcja in sekcje:
-        widok = _section_view(sekcja, blocks.get(sekcja.id, _content.GuideBlock(section_id=sekcja.id)))
+        blok = blocks.get(sekcja.id, _content.GuideBlock(section_id=sekcja.id))
+        widok = _section_view(sekcja, blok, project_map, wpisy_konfiguracji, long_unit_lines)
         if widok is not None:
             widoki.append(widok)
     widok_zakladki = {"id": tab.id, "heading": naglowek, "lead": lead, "sections": widoki}
@@ -364,10 +485,12 @@ def render_guide(
     project_map: _schemas.ProjectMap,
     templates_dir: str,
     generated_at: str,
+    long_unit_lines: int,
 ) -> str:
     """Zwraca kompletny HTML przewodnika z CSS i JS wstawionymi do środka pliku.
 
-    Po co: jedna funkcja zamienia treść na plik guide.html - wołający tylko zapisuje wynik.
+    Po co: jedna funkcja zamienia treść na plik guide.html - wołający tylko zapisuje wynik. long_unit_lines to próg
+    z config.yaml (analysis.long_unit_lines) dla tabeli „Ryzykowne miejsca”.
     """
     szablon = _template.sections_for_technology(template, project_map.technology)
     bloki = _blocks_by_section(content)
@@ -375,7 +498,7 @@ def render_guide(
     menu = []
     karty = []
     for zakladka in szablon.tabs:
-        zakladki.append(_tab_view(zakladka, bloki, content.project_name))
+        zakladki.append(_tab_view(zakladka, bloki, content.project_name, project_map, long_unit_lines))
         menu.append({"id": zakladka.id, "title": zakladka.title})
         karty.append({"id": zakladka.id, "label": zakladka.card_label, "title": zakladka.title, "text": zakladka.card_text})
     with open(os.path.join(templates_dir, "guide.css"), encoding="utf-8") as plik:
@@ -462,7 +585,7 @@ if __name__ == "__main__":
             _content.ConfigItem(file="config.yml", group="parabank", key="url", value="https://parabank.parasoft.com/parabank/", kind="system", meaning="adres aplikacji bankowej", used_in=["main.py:139"]),
             _content.ConfigItem(file="config.yml", group="parabank", key="username", value="robot", kind="account", meaning="login robota w ParaBank", used_in=["main.py:142"]),
             _content.ConfigItem(file="config.yml", group="parabank", key="password_env", value="FAKE_PASSWD", kind="env_var", meaning="nazwa zmiennej z hasłem do ParaBank; brak zmiennej zatrzymuje robota", used_in=["main.py:135", "main.py:137"]),
-            _content.ConfigItem(file="config.yml", group="parabank", key="password", value="Haslo123!", kind="account", plain_password=True, meaning="przykład: hasło wpisane wprost w plik", used_in=["main.py:140"]),
+            _content.ConfigItem(file="config.yml", location="config.yml:12", group="parabank", key="password", value="Haslo123!", kind="account", plain_password=True, meaning="przykład: hasło wpisane wprost w plik", used_in=["main.py:140"]),
             _content.ConfigItem(location="przetwarzanie.py:14", key="URL", value="https://api.example.test/zamowienia", kind="system", meaning="adres API; stała w kodzie, nie w pliku konfiguracyjnym"),
             _content.ConfigItem(file="config.yml", group="logger", key="logs_dir", value="logs", kind="log", meaning="katalog dziennych logów CSV", used_in=["main.py:54"]),
             _content.ConfigItem(file="config.yml", group="logger", key="debug", value="false", kind="switch", meaning="true = także komunikaty DEBUG frameworku", used_in=["main.py:54"]),
@@ -507,7 +630,6 @@ if __name__ == "__main__":
                         ["Konta i hasła", "zmienna środowiskowa ROBOT02_PASS", "przetwarzanie.py:22; potrzebna tylko przy WYSYLKA_DO_API = True"],
                     ],
                 ),
-                _content.GuideBlock(section_id="zaleznosci", code="openpyxl\nrequests"),
                 _content.GuideBlock(
                     section_id="instalacja",
                     steps=[
@@ -619,7 +741,8 @@ if __name__ == "__main__":
                 _content.GuideBlock(
                     section_id="ryzykowne_miejsca",
                     rows=[
-                        ["run", "przetwarzanie.py:41-411", "długa jednostka (371 linii)", "cały proces w jednej funkcji - dane przykładowe, w kroku 35 z mapy projektu"],
+                        ["run", "przetwarzanie.py:41-411", "długa jednostka", "cały proces w jednej funkcji: odczyt, sprawdzenie, rabaty i zapis [wywnioskowane]"],
+                        ["URL", "przetwarzanie.py:14", "adres w kodzie", "adres API wpisany w kod - zmiana wymaga edycji pliku i ponownego uruchomienia"],
                     ],
                 ),
             ],
@@ -631,7 +754,19 @@ if __name__ == "__main__":
                 _content.GuideBlock(section_id="konwencje", items=["Stałe na górze pliku przetwarzanie.py - wszystkie ustawienia w kodzie.", "Test escapowania: <script>alert('x')</script> ma być widoczne jako tekst."]),
             ],
         )
-        zakladki = [sciezki, zmiany, bledy, deweloper]
+        struktura = _content.GuideTab(
+            tab_id="struktura",
+            blocks=[
+                _content.GuideBlock(
+                    section_id="drzewo",
+                    rows=[
+                        ["przetwarzanie.py", "Główny skrypt robota", "Cały proces: odczyt plików CSV, sprawdzenie, rabaty, zapis wyników"],
+                        ["run.bat", "Plik uruchamiający", "Uruchamia przetwarzanie.py, a po sukcesie raport.py"],
+                    ],
+                ),
+            ],
+        )
+        zakladki = [sciezki, struktura, zmiany, bledy, deweloper]
         return zakladki
 
     def _example_content(
@@ -663,15 +798,37 @@ if __name__ == "__main__":
         mapa = _schemas.ProjectMap(project_name="02_robot_bez_frameworku", root=robot_02, technology="python", entrypoints=[], files=[], code_units=[])
         return mapa
 
+    def _section_html(
+        html: str,
+        section_id: str,
+    ) -> str:
+        """Zwraca fragment HTML od nagłówka sekcji o podanym id do następnego nagłówka h2 (albo do końca zakładki).
+
+        Po co: liczniki tabel i drzewa liczone tylko w jednej sekcji.
+        """
+        poczatek = html.find(f'<h2 id="s-{section_id}">')
+        fragment = ""
+        if poczatek >= 0:
+            koniec = html.find("<h2 ", poczatek + 1)
+            if koniec < 0:
+                koniec = html.find("</section>", poczatek)
+            fragment = html[poczatek:koniec]
+        return fragment
+
     def _summary(
         html: str,
     ) -> dict:
         """Zwraca liczby do szybkiego sprawdzenia pliku: zakładki, sekcje h2, odwołania do internetu, bloki kodu,
-        oznaczenia „wywnioskowane” w tabelach, odnośniki do klocków, znaczniki kolejnych kroków, escapowanie <script>
-        oraz liczby z metryczki (kafelki, grupy i wiersze tabeli, czerwone znaczniki hasła wprost, zdanie o braku konfiguracji).
+        oznaczenia „wywnioskowane” w tabelach, odnośniki do klocków, znaczniki kolejnych kroków, escapowanie <script>,
+        liczby z metryczki (kafelki, grupy i wiersze tabeli, hasła wprost, zdanie o braku konfiguracji) oraz
+        liczby z drzewa, zależności i ryzykownych miejsc (wiersze, znaczniki, zdania o braku).
 
         Po co: szybkie sprawdzenie pliku bez otwierania przeglądarki.
         """
+        ryzykowne = _section_html(html, "ryzykowne_miejsca")
+        hasla_ryzykowne = len(re.findall(r'<td data-l="Rodzaj"><span class="kv r">hasło w (?:pliku|kodzie)</span>', ryzykowne))
+        hasla_razem = len(re.findall(r'<span class="kv r">hasło w (?:pliku|kodzie)</span>', html))
+        drzewo = _section_html(html, "drzewo")
         wynik = {
             "zakładek": len(re.findall(r'<section class="tab"', html)),
             "sekcji (h2)": len(re.findall(r"<h2 ", html)),
@@ -684,8 +841,15 @@ if __name__ == "__main__":
             "metryczka: kafelków": html.count("<div><h3>"),
             "metryczka: grup w tabeli": html.count('<tr class="csec">'),
             "metryczka: wierszy w tabeli": html.count('<td class="val"'),
-            "metryczka: znaczników hasła wprost": len(re.findall(r'<span class="kv r">hasło w (?:pliku|kodzie)</span>', html)),
+            "metryczka: znaczników hasła wprost": hasla_razem - hasla_ryzykowne,
             "metryczka: zdanie o braku konfiguracji": "Robot nie ma konfiguracji - nie wynika z kodu." in html,
+            "drzewo: przycisków z opisem (z korzeniem)": drzewo.count('<button class="it'),
+            "drzewo: opisów pisarza": drzewo.count('data-w="Główny skrypt robota"') + drzewo.count('data-w="Plik uruchamiający"'),
+            "zależności: zdanie o braku pliku": "Robot nie ma pliku zależności" in html,
+            "ryzykowne: wierszy": ryzykowne.count('<td data-l="Miejsce">'),
+            "ryzykowne: długich jednostek": ryzykowne.count('<span class="kv m">długa jednostka</span>'),
+            "ryzykowne: haseł wprost": hasla_ryzykowne,
+            "ryzykowne: komentarzy pisarza": ryzykowne.count("cały proces w jednej funkcji") + ryzykowne.count("wpisany w kod - zmiana"),
         }
         return wynik
 
@@ -702,14 +866,56 @@ if __name__ == "__main__":
         szablon = _template.load_template(app_config.paths.guide_template)
         mapa = _example_project_map(repo_dir, app_config)
         tresc = _example_content(config_items, config_sentence)
-        html = render_guide(tresc, szablon, mapa, os.path.dirname(app_config.paths.guide_template), "2026-11-26 20:00 (test)")
+        html = render_guide(tresc, szablon, mapa, os.path.dirname(app_config.paths.guide_template), "2026-11-26 20:00 (test)", app_config.analysis.long_unit_lines)
         return html
+
+    def _render_robot_in_memory(
+        repo_dir: str,
+        app_config: _config.AppConfig,
+        robot_name: str,
+        long_unit_lines: int,
+    ) -> str | None:
+        """Renderuje w pamięci przewodnik robota testowego bez treści od pisarza i zwraca HTML (None, gdy robota nie ma).
+
+        Po co: drzewo, zależności i ryzykowne miejsca z prawdziwych robotów (też robota 01, tylko do odczytu); nic nie jest
+        zapisywane na dysk.
+        """
+        katalog = os.path.normpath(os.path.join(repo_dir, "..", "..", "tests", robot_name))
+        html = None
+        if os.path.isdir(katalog):
+            mapa = _scanner.build_project_map(katalog, app_config.scan)
+            szablon = _template.load_template(app_config.paths.guide_template)
+            tresc = _content.GuideContent(project_name=robot_name, flow=_content.FlowGraph(nodes=[], edges=[]), tabs=[])
+            html = render_guide(tresc, szablon, mapa, os.path.dirname(app_config.paths.guide_template), "test", long_unit_lines)
+        return html
+
+    def _print_robot_counts(
+        repo_dir: str,
+        app_config: _config.AppConfig,
+        robot_name: str,
+        long_unit_lines: int,
+    ) -> None:
+        """Wypisuje liczby z przewodnika robota (bez treści od pisarza): przyciski drzewa, zależności i ryzykowne miejsca.
+
+        Po co: sprawdzenie sekcji z faktów kodu na prawdziwych robotach, bez zapisu plików.
+        """
+        html = _render_robot_in_memory(repo_dir, app_config, robot_name, long_unit_lines)
+        if html is None:
+            print(f"{robot_name}: pominięto (brak robota testowego obok repo)")
+            return
+        wynik = _summary(html)
+        print(
+            f"{robot_name} (próg {long_unit_lines} linii): drzewo - przycisków {wynik['drzewo: przycisków z opisem (z korzeniem)']}, "
+            f"zdanie o braku pliku zależności: {wynik['zależności: zdanie o braku pliku']}, "
+            f"ryzykowne - wierszy {wynik['ryzykowne: wierszy']}, długich jednostek {wynik['ryzykowne: długich jednostek']}"
+        )
 
     def manual_test():
         """Renderuje przykładowy przewodnik robota 02 do guide_test.html w katalogu głównym repo i wypisuje podsumowanie.
 
         Po co: widoczny przewodnik do obejrzenia w przeglądarce; wariant metryczki z argumentu: brak = stałe w kodzie,
-        „plik” = przykładowy config.yml; dodatkowo sprawdzenie w pamięci metryczki bez wpisów.
+        „plik” = przykładowy config.yml; dodatkowo sprawdzenie w pamięci metryczki bez wpisów oraz przewodników
+        robotów 01 i 02 (bez zapisu plików, bez treści od pisarza).
         """
         repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         app_config = _config.load_config(os.path.join(repo_dir, "config.yaml"))
@@ -727,6 +933,11 @@ if __name__ == "__main__":
             print(f"  {nazwa}: {wartosc}")
         pusta = _summary(_render_example(repo_dir, app_config, [], ""))
         print(f"Metryczka bez wpisów (w pamięci): zdanie o braku konfiguracji: {pusta['metryczka: zdanie o braku konfiguracji']}, kafelków: {pusta['metryczka: kafelków']}")
-        print("Otwórz plik w przeglądarce: metryczka (kafelki, rozwijana tabela), tabele, kroki z Kopiuj, pojęcia, ścieżki, przepisy.")
+        print("Roboty testowe w pamięci (bez zapisu plików):")
+        limit = app_config.analysis.long_unit_lines
+        _print_robot_counts(repo_dir, app_config, "02_robot_bez_frameworku", limit)
+        _print_robot_counts(repo_dir, app_config, "01_rpa_challange_roboforge", limit)
+        _print_robot_counts(repo_dir, app_config, "01_rpa_challange_roboforge", 15)
+        print("Otwórz plik w przeglądarce: metryczka, drzewo (najedź na plik), zależności, ryzykowne miejsca, tabele, kroki z Kopiuj, pojęcia, ścieżki, przepisy.")
 
     manual_test()

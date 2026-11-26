@@ -75,3 +75,8 @@ scan:
 flow:
   max_nodes: 30
   max_decisions: 8
+
+# Analiza robota (bez modelu): progi, według których kod wskazuje ryzykowne miejsca w przewodniku.
+analysis:
+  # Jednostka kodu (funkcja, klasa) dłuższa niż tyle linii trafia do tabeli „Ryzykowne miejsca”.
+  long_unit_lines: 100

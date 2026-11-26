@@ -2,8 +2,8 @@
 
 Co robi: wczytuje config.yaml, zamienia go na obiekty Pythona (podpowiedzi w edytorze, dostęp przez
 atrybuty, np. app_config.llm.profiles["small"].model), sprawdza, czy każdy agent wskazuje istniejący
-profil modelu, czy metoda structured output w każdym profilu i role plików w sekcji `scan` są znane i czy pliki wiedzy frameworków i szablon przewodnika istnieją, a ścieżki z sekcji `paths`
-zamienia na bezwzględne.
+profil modelu, czy metoda structured output w każdym profilu i role plików w sekcji `scan` są znane, czy pliki wiedzy frameworków i szablon przewodnika istnieją i czy próg
+z sekcji `analysis` jest dodatni, a ścieżki z sekcji `paths` zamienia na bezwzględne.
 
 Dlaczego istnieje: to jedyne wejście do ustawień narzędzia. Pozostałe moduły dostają już sprawdzony,
 typowany obiekt zamiast surowego słownika z YAML-a, a błędy w configu (literówka w nazwie profilu albo
@@ -19,7 +19,7 @@ Rola: moduł używany przez punkt wejścia programu i przez warstwy, które potr
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.config
 Najpierw wypisuje wczytany config jako JSON (ścieżki w `paths` mają być bezwzględne), potem komunikaty
-błędów dla ośmiu celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
+błędów dla dziewięciu celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
 """
 
 import os
@@ -110,6 +110,15 @@ class FlowConfig(BaseModel):
     max_decisions: int  # więcej decyzji → ostrzeżenie
 
 
+class AnalysisConfig(BaseModel):
+    """Sekcja `analysis`: progi, według których kod (bez modelu) wskazuje ryzykowne miejsca w robocie.
+
+    Po co: próg „długiej funkcji” zespół ustawia w configu, bez zmian w kodzie.
+    """
+
+    long_unit_lines: int  # jednostka (funkcja, klasa) dłuższa niż tyle linii → wiersz w „Ryzykownych miejscach”
+
+
 class AppConfig(BaseModel):
     """Cały config.yaml.
 
@@ -120,6 +129,7 @@ class AppConfig(BaseModel):
     paths: PathsConfig
     scan: ScanConfig
     flow: FlowConfig
+    analysis: AnalysisConfig
 
 
 # --- Sprawdzenia i przetwarzanie ---
@@ -219,6 +229,18 @@ def _check_guide_template(
         raise ValueError(komunikat_bledu)
 
 
+def _check_analysis(
+    app_config: AppConfig,
+) -> None:
+    """Sprawdza, czy analysis.long_unit_lines jest dodatni; przy błędzie rzuca ValueError.
+
+    Po co: próg 0 albo ujemny oznaczałby „każda funkcja jest długa” i zalałby tabelę ryzykownych miejsc.
+    """
+    if app_config.analysis.long_unit_lines < 1:
+        komunikat_bledu = f"analysis.long_unit_lines musi być dodatni, jest: {app_config.analysis.long_unit_lines}"
+        raise ValueError(komunikat_bledu)
+
+
 def _resolve_paths(
     paths: PathsConfig,
     config_dir: str,
@@ -252,6 +274,7 @@ def _build_config(
     _check_structured_output_methods(app_config)
     _check_role_names(app_config)
     _check_text_roles(app_config)
+    _check_analysis(app_config)
     _resolve_paths(app_config.paths, config_dir)
     _check_framework_knowledge(app_config)
     _check_guide_template(app_config)
@@ -318,7 +341,7 @@ if __name__ == "__main__":
             _print_error(title, blad)
 
     def manual_test():
-        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla ośmiu zepsutych kopii.
+        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla dziewięciu zepsutych kopii.
 
         Po co: szybkie sprawdzenie, czy config się wczytuje, ścieżki są bezwzględne, a błędy w configu
         dają czytelne komunikaty.
@@ -362,5 +385,9 @@ if __name__ == "__main__":
         zly_szablon = copy.deepcopy(raw_config)
         zly_szablon["paths"]["guide_template"] = "knowledge_base/templates/guide_templat.yaml"
         _try_broken_config("Brak pliku szablonu przewodnika ('guide_templat.yaml')", zly_szablon, repo_dir)
+
+        zly_prog = copy.deepcopy(raw_config)
+        zly_prog["analysis"]["long_unit_lines"] = 0
+        _try_broken_config("Próg analysis.long_unit_lines równy 0", zly_prog, repo_dir)
 
     manual_test()
