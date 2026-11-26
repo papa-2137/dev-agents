@@ -93,7 +93,10 @@ tabs:
         type: glossary
         source: llm
         required: false
-        instruction: Słownik pojęć biznesowych i technicznych użytych w przewodniku, z krótką definicją.
+        instruction: >-
+          Słownik pojęć biznesowych i technicznych użytych w przewodniku, z krótką definicją. Termin zapisz dokładnie w
+          formie, w jakiej pada w tekście przewodnika (dopasowanie jest dokładne, bez odmiany, bez względu na wielkość
+          liter): każde wystąpienie terminu w akapitach, listach, krokach i komórkach tabel dostaje dymek z definicją.
 
   - id: przeplyw
     title: Przepływ działania
@@ -149,7 +152,10 @@ tabs:
         type: dependency_graph
         source: scanner
         required: true
-        instruction: Graf z ProjectMap.dependency_edges, warstwy od punktów wejścia.
+        instruction: >-
+          Graf liczy kod z ProjectMap.dependency_edges i entrypoints (warstwy od punktów wejścia, strzałka: moduł importuje
+          moduł); węzłami są punkty wejścia i moduły z powiązaniami, pliki bez powiązań są tylko wymienione pod grafem.
+          Robot bez importów między modułami dostaje zdanie zamiast rysunku. Pisarz niczego nie zwraca.
 
   - id: zmiany
     title: Zmiany i rozszerzenia
@@ -235,7 +241,11 @@ tabs:
         type: list
         source: scanner
         required: true
-        instruction: Pliki w kolejności z ProjectMap.reading_order; jedno zdanie opisu każdego pliku od pisarza.
+        instruction: >-
+          Lista plików i ich kolejność pochodzą z ProjectMap.reading_order (od punktu wejścia w głąb); pisarz zwraca w items
+          tylko zdania w formacie „ścieżka: jedno zdanie, dlaczego czytać ten plik w tym miejscu” (ścieżka dokładnie jak w
+          kolejności czytania, jedna pozycja na plik). Plik bez zdania pojawia się samą nazwą, a pozycja bez pasującej
+          ścieżki trafia na koniec listy w całości.
       - id: konwencje
         title: Konwencje w kodzie
         type: list

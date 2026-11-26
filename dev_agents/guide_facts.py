@@ -1,10 +1,13 @@
-"""Fakty z mapy projektu dla bloków przewodnika: drzewo plików, zależności do skopiowania, ryzykowne miejsca.
+"""Fakty z mapy projektu dla bloków przewodnika: drzewo plików, zależności do skopiowania, ryzykowne miejsca,
+graf zależności modułów i kolejność czytania kodu.
 
-Co robi: z ProjectMap (skaner) i wpisów metryczki wylicza dane trzech bloków, które kod zna bez modelu:
+Co robi: z ProjectMap (skaner) i wpisów metryczki wylicza dane pięciu bloków, które kod zna bez modelu:
 build_tree() - drzewo katalogów i plików ze znacznikiem roli i opisem po najechaniu (z faktów: rola, rozmiar,
 funkcje z zakresem linii; opis od pisarza ma pierwszeństwo), dependency_text() - treść plików zależności bez
 zmian, risky_rows() - jednostki dłuższe niż próg i hasła wpisane wprost, z komentarzem pisarza dopasowanym po
-dwóch pierwszych komórkach wiersza. Zwraca same napisy i słowniki, bez HTML - widoki robi render.py.
+dwóch pierwszych komórkach wiersza, dependency_graph_data() - węzły (punkty wejścia i moduły z krawędziami) i
+krawędzie grafu zależności, reading_items() - pliki w kolejności czytania z opcjonalnym zdaniem pisarza
+(„plik: zdanie”). Zwraca same napisy i słowniki, bez HTML - widoki robi render.py.
 
 Dlaczego istnieje: pewne fakty (długość funkcji, linie, rozmiar, hasło wpisane wprost) mają pochodzić z kodu, a nie
 z odpowiedzi modelu; pisarz dopisuje tylko to, czego kod nie wie (czym jest plik, dlaczego miejsce jest ryzykowne).
@@ -18,7 +21,8 @@ Test ręczny (z katalogu głównego repo):
     python -m dev_agents.guide_facts
         drzewo, zależności i ryzykowne miejsca robotów testowych 01 i 02 (tylko odczyt, nic nie jest zapisywane;
         brak robota - przypadek pomijany) oraz mapa zbudowana w pamięci: pliki frameworku, dwa pliki zależności,
-        opis od pisarza, komentarz do ryzykownego miejsca i wiersz dodatkowy
+        opis od pisarza, komentarz do ryzykownego miejsca i wiersz dodatkowy; graf zależności (węzły, krawędzie,
+        pliki bez powiązań) i kolejność czytania (z zdaniami pisarza i pozycją dodatkową)
 """
 
 import dev_agents.guide_content as _content
@@ -43,6 +47,7 @@ _MARKERS = {
 }
 _MAX_UNITS_IN_TIP = 6
 _LONG_UNIT_BADGE = "długa jednostka"
+_ITEM_SEPARATOR = ": "
 
 
 # --- Hasło wpisane wprost ---
@@ -382,6 +387,99 @@ def risky_rows(
     return wynik
 
 
+# --- Graf zależności i kolejność czytania ---
+
+
+def _graph_node_paths(
+    project_map: _schemas.ProjectMap,
+) -> list[str]:
+    """Zwraca ścieżki węzłów grafu: punkty wejścia i pliki z krawędzi, w kolejności czytania (reszta na końcu).
+
+    Po co: graf pokazuje tylko to, co ma powiązania albo jest punktem wejścia - pliki bez powiązań zaśmiecałyby
+    warstwę 1 i wyglądały jak zależność, której nie ma.
+    """
+    potrzebne = list(project_map.entrypoints)
+    for krawedz in project_map.dependency_edges:
+        for sciezka in krawedz:
+            if sciezka not in potrzebne:
+                potrzebne.append(sciezka)
+    uporzadkowane = []
+    for sciezka in project_map.reading_order:
+        if sciezka in potrzebne:
+            uporzadkowane.append(sciezka)
+    for sciezka in potrzebne:
+        if sciezka not in uporzadkowane:
+            uporzadkowane.append(sciezka)
+    return uporzadkowane
+
+
+def dependency_graph_data(
+    project_map: _schemas.ProjectMap,
+) -> dict:
+    """Zwraca {nodes: [{id, entry}], edges: [[plik, plik, z którego korzysta]], isolated: [pliki bez powiązań]}.
+
+    Po co: dane dla skryptu rysującego graf zależności (format z makiety) i zdanie o plikach bez powiązań; wszystko
+    z mapy projektu, bez modelu. Plik bez powiązań to plik źródłowy robota, który nie jest węzłem grafu.
+    """
+    sciezki = _graph_node_paths(project_map)
+    wezly = []
+    for sciezka in sciezki:
+        wezly.append({"id": sciezka, "entry": sciezka in project_map.entrypoints})
+    krawedzie = []
+    for krawedz in project_map.dependency_edges:
+        krawedzie.append([krawedz[0], krawedz[1]])
+    bez_powiazan = []
+    for plik in project_map.source_files:
+        if plik.path not in sciezki:
+            bez_powiazan.append(plik.path)
+    dane = {"nodes": wezly, "edges": krawedzie, "isolated": bez_powiazan}
+    return dane
+
+
+def _split_reading_item(
+    item: str,
+) -> tuple[str, str]:
+    """Rozdziela pozycję pisarza „plik: zdanie” na (ścieżka, zdanie); bez separatora zwraca ("", cały tekst).
+
+    Po co: zdanie „dlaczego w tej kolejności” pisarz dopisuje do pliku z kolejności czytania; ścieżkę oczyszczamy
+    z odwrotnych apostrofów i spacji.
+    """
+    sciezka = ""
+    zdanie = item.strip()
+    if _ITEM_SEPARATOR in item:
+        przed, po = item.split(_ITEM_SEPARATOR, 1)
+        sciezka = przed.strip().strip("`").strip()
+        zdanie = po.strip()
+    wynik = (sciezka, zdanie)
+    return wynik
+
+
+def reading_items(
+    project_map: _schemas.ProjectMap,
+    writer_items: list[str],
+) -> list[dict]:
+    """Zwraca pozycje kolejności czytania [{path, text}]: pliki z reading_order i zdanie pisarza, potem pozycje dodatkowe.
+
+    Po co: kolejność i lista plików pochodzą z kodu (od punktu wejścia w głąb), pisarz dopisuje tylko zdanie „dlaczego
+    w tym miejscu” w formacie „plik: zdanie”; pozycja pisarza z plikiem spoza kolejności, bez ścieżki albo druga dla
+    tego samego pliku trafia na koniec w całości, z pustą ścieżką (informacja pisarza nie ginie, nic nie jest obcinane).
+    """
+    zdania = {}
+    dodatkowe = []
+    for pozycja in writer_items:
+        sciezka, zdanie = _split_reading_item(pozycja)
+        if sciezka in project_map.reading_order and sciezka not in zdania:
+            zdania[sciezka] = zdanie
+        else:
+            dodatkowe.append({"path": "", "text": pozycja.strip()})
+    wynik = []
+    for sciezka in project_map.reading_order:
+        wynik.append({"path": sciezka, "text": zdania.get(sciezka, "")})
+    for pozycja in dodatkowe:
+        wynik.append(pozycja)
+    return wynik
+
+
 # --- Test ręczny ---
 
 if __name__ == "__main__":
@@ -410,8 +508,9 @@ if __name__ == "__main__":
         long_unit_lines: int,
         tree_rows: list[list[str]],
         risky_writer_rows: list[list[str]],
+        reading_writer_items: list[str] | None = None,
     ) -> None:
-        """Wypisuje drzewo, zależności i ryzykowne miejsca dla jednej mapy projektu.
+        """Wypisuje drzewo, zależności, ryzykowne miejsca, graf zależności i kolejność czytania dla jednej mapy.
 
         Po co: wspólny wydruk przypadków testowych.
         """
@@ -433,6 +532,22 @@ if __name__ == "__main__":
             print(f"  {wiersz['place']} | {wiersz['where']} | {opis} | komentarz: {wiersz['comment'] or '(brak)'}")
         for wiersz in dodatkowe:
             print(f"  [pisarz] {' | '.join(wiersz)}")
+        graf = dependency_graph_data(project_map)
+        print(f"Graf zależności: węzły {len(graf['nodes'])}, krawędzie {len(graf['edges'])}, pliki bez powiązań {graf['isolated']}")
+        for wezel in graf["nodes"]:
+            dopisek = ""
+            if wezel["entry"]:
+                dopisek = " (punkt wejścia)"
+            print(f"  węzeł {wezel['id']}{dopisek}")
+        for krawedz in graf["edges"]:
+            print(f"  krawędź {krawedz[0]} -> {krawedz[1]}")
+        zdania_pisarza = reading_writer_items
+        if zdania_pisarza is None:
+            zdania_pisarza = []
+        pozycje = reading_items(project_map, zdania_pisarza)
+        print(f"Kolejność czytania: {len(pozycje)} pozycji (zdania pisarza: {len(zdania_pisarza)})")
+        for numer, pozycja in enumerate(pozycje, 1):
+            print(f"  {numer}. {pozycja['path'] or '(bez pliku)'} | {pozycja['text'] or '(bez zdania)'}")
 
     def _robot_map(
         repo_dir: str,
@@ -478,7 +593,12 @@ if __name__ == "__main__":
                     units=[_schemas.SourceUnit(name="run", start_line=10, end_line=210), _schemas.SourceUnit(name="log", start_line=212, end_line=220)],
                     references=_schemas.References(files=[], packages=[]),
                 ),
+                _schemas.SourceFile(path="src/page.py", units=[], references=_schemas.References(files=[], packages=[])),
+                _schemas.SourceFile(path="src/util.py", units=[], references=_schemas.References(files=[], packages=[])),
+                _schemas.SourceFile(path="src/__init__.py", units=[], references=_schemas.References(files=[], packages=[])),
             ],
+            dependency_edges=[["main.py", "src/page.py"], ["src/page.py", "src/util.py"]],
+            reading_order=["main.py", "src/page.py", "src/util.py", "src/__init__.py"],
         )
         return mapa
 
@@ -507,6 +627,15 @@ if __name__ == "__main__":
                 ["run", "main.py:10-210", "długa jednostka", "cały proces w jednej funkcji"],
                 ["password", "config.yml:12", "hasło w pliku", "hasło wpisane wprost"],
                 ["INPUT_DIR", "main.py:9", "inne", "ścieżka względna"],
+            ],
+            [
+                "main.py: tu zaczyna się proces, więc od niego",
+                "`src/page.py`: obsługa strony, z której korzysta punkt wejścia",
+                "src/util.py: pomocnicze funkcje, czytane na końcu",
+                "src/util.py: drugie zdanie dla tego samego pliku idzie na koniec jako dodatkowe",
+                "src/stary.py: pliku nie ma w kolejności czytania",
+                "zdanie bez ścieżki",
+                "Uwaga: dwukropek bez ścieżki nie obcina tekstu",
             ],
         )
 

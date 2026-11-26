@@ -5,25 +5,30 @@
     Każda sekcja ma state: content (blok z treścią), missing (zdanie missing_text, domyślnie „nie wynika z kodu”)
     albo pending (typ bloku dochodzi w kolejnym kroku planu). Dane z faktów kodu: tree (drzewo plików), code_text
     (treść bloku kodu, np. plików zależności), rows (wiersze tabeli; komórka ma opcjonalnie code i badge),
-    flow (data: dane diagramu dla skryptu rysującego albo None, problems: lista problemów diagramu).
+    flow (data: dane diagramu dla skryptu rysującego albo None, problems: lista problemów diagramu),
+    graph (data: węzły i krawędzie grafu zależności dla skryptu rysującego albo None, isolated: pliki bez powiązań do
+    wymienienia pod grafem, isolated_count: ich liczba razem), reading (entries: pliki kolejności czytania ze zdaniem
+    pisarza, has_reasons: czy któryś plik ma zdanie).
+    Filtr terms (glossary.py) oznacza w tekście terminy ze słowniczka (span.tm z data-t i data-d dla dymku) i zwraca
+    bezpieczny HTML; stosujemy go tylko do tekstu od agentów, nie do kodu, nazw plików ani wartości konfiguracji.
     Escapowanie jest zawsze włączone - treść od agentów jest tekstem. -#}
 {%- macro block_text(block) -%}
 {%- for paragraph in block.paragraphs %}
- <p>{{ paragraph }}</p>
+ <p>{{ paragraph | terms }}</p>
 {%- endfor %}
 {%- endmacro -%}
 
 {%- macro block_list(block) -%}
  <ul class="ul">
 {%- for item in block.items %}
-  <li>{{ item }}</li>
+  <li>{{ item | terms }}</li>
 {%- endfor %}
  </ul>
 {%- endmacro -%}
 
 {%- macro io_items(items) -%}
 {%- for item in items %}
-<p class="note"><code>{{ item.name }}</code>{% if item.description %} - {{ item.description }}{% endif %}{% if item.location %} <span class="src"><code>{{ item.location }}</code></span>{% endif %}</p>
+<p class="note"><code>{{ item.name }}</code>{% if item.description %} - {{ item.description | terms }}{% endif %}{% if item.location %} <span class="src"><code>{{ item.location }}</code></span>{% endif %}</p>
 {%- endfor %}
 {%- endmacro -%}
 
@@ -44,7 +49,7 @@
 {%- macro block_steps(block) -%}
  <ol class="road">
 {%- for step in block.steps %}
-  <li><b>{{ step.title }}</b>{% if step.text %}<span>{{ step.text }}</span>{% endif %}
+  <li><b>{{ step.title }}</b>{% if step.text %}<span>{{ step.text | terms }}</span>{% endif %}
 {%- if step.code %}
    {{ code_box(step.code) }}
 {%- endif %}</li>
@@ -57,7 +62,7 @@
   <thead><tr>{% for column in columns %}<th>{{ column }}</th>{% endfor %}</tr></thead>
   <tbody>
 {%- for row in rows %}
-   <tr>{% for cell in row %}<td data-l="{{ cell.label }}">{% if cell.badge %}<span class="kv {{ cell.badge_color }}">{{ cell.badge }}</span> {% endif %}{% if cell.code %}<code>{{ cell.text }}</code>{% else %}{{ cell.text }}{% endif %}{% if cell.uncertain %} <span class="unc">wywnioskowane</span>{% endif %}</td>{% endfor %}</tr>
+   <tr>{% for cell in row %}<td data-l="{{ cell.label }}">{% if cell.badge %}<span class="kv {{ cell.badge_color }}">{{ cell.badge }}</span> {% endif %}{% if cell.code %}<code>{{ cell.text }}</code>{% else %}{{ cell.text | terms }}{% endif %}{% if cell.uncertain %} <span class="unc">wywnioskowane</span>{% endif %}</td>{% endfor %}</tr>
 {%- endfor %}
   </tbody>
  </table></div>
@@ -78,7 +83,7 @@
    <h3>{{ path.name }} <span class="tagr"{% if path.kind == "main" %} style="color:var(--ink);border-color:var(--ink)"{% endif %}>{{ kind_labels[path.kind] }}</span></h3>
    <ol class="pl">
 {%- for step in path.steps %}
-    <li>{{ step.text }}{% if step.node_id in node_numbers %} <a class="ref" href="#przeplyw">{{ node_numbers[step.node_id] }}</a>{% endif %}</li>
+    <li>{{ step.text | terms }}{% if step.node_id in node_numbers %} <a class="ref" href="#przeplyw">{{ node_numbers[step.node_id] }}</a>{% endif %}</li>
 {%- endfor %}
    </ol>
   </div>
@@ -90,13 +95,13 @@
 {%- for recipe in block.recipes %}
  <div class="recipe">
   <h2>{{ recipe.title }}</h2>
-  <p class="when">Kiedy: {{ recipe.when }}</p>
+  <p class="when">Kiedy: {{ recipe.when | terms }}</p>
 {%- if recipe.files %}
   <div class="files">{% for file in recipe.files %}<span class="c{% if file.is_new %} new{% endif %}" title="{{ file.change }}">{{ file.path }}</span>{% endfor %}</div>
 {%- endif %}
   <ol class="road">
 {%- for step in recipe.steps %}
-   <li>{{ step }}</li>
+   <li>{{ step | terms }}</li>
 {%- endfor %}
   </ol>
  </div>
@@ -221,6 +226,31 @@
 {%- endif %}
 {%- endmacro -%}
 
+{%- macro block_deps(graph) -%}
+ <p class="note">Wyliczone z importów, bez modelu. Strzałka: moduł importuje moduł.</p>
+ <div class="legend">
+  <span><i class="mk fill"></i>punkt wejścia</span>
+  <span><i class="mk"></i>moduł robota</span>
+ </div>
+ <div class="depfig"><svg id="deps" role="img" aria-label="Graf zależności modułów"></svg></div>
+{%- if graph.isolated_count %}
+ <p class="note">Pliki bez powiązań z innymi plikami robota: {{ graph.isolated_count }} ({% for path in graph.isolated %}<code>{{ path }}</code>{% if not loop.last %}, {% endif %}{% endfor %}{% if graph.isolated_count > graph.isolated | length %} i {{ graph.isolated_count - graph.isolated | length }} innych{% endif %}).</p>
+{%- endif %}
+{%- endmacro -%}
+
+{%- macro block_reading(reading) -%}
+ <p class="note">Kolejność wyliczona z importów (od punktu wejścia w głąb).{% if reading.has_reasons %} Zdanie przy pliku wyjaśnia, dlaczego czytać go w tym miejscu.{% endif %}</p>
+ <ol class="road">
+{%- for item in reading.entries %}
+{%- if item.path %}
+  <li><b><code>{{ item.path }}</code></b>{% if item.text %}<span>{{ item.text | terms }}</span>{% endif %}</li>
+{%- else %}
+  <li><span>{{ item.text | terms }}</span></li>
+{%- endif %}
+{%- endfor %}
+ </ol>
+{%- endmacro -%}
+
 {%- macro block_cards(cards) -%}
  <p class="note">Zacznij od tej zakładki: po niej uruchomisz robota. Potem diagram przepływu: po nim opowiesz, co robot robi. Resztę czytaj, gdy masz konkretne zadanie.</p>
  <div class="cards">
@@ -262,7 +292,7 @@
 <section class="tab" id="{{ tab.id }}"{% if not loop.first %} hidden{% endif %}>
  <h1>{{ tab.heading }}</h1>
 {%- for paragraph in tab.lead %}
- <p class="lead">{{ paragraph }}</p>
+ <p class="lead">{{ paragraph | terms }}</p>
 {%- endfor %}
 {% for section in tab.sections %}
 {%- if section.type != "flow" %}
@@ -274,6 +304,8 @@
  <p class="note"><span class="ph">[blok typu {{ section.type }}: dochodzi w kolejnym kroku planu]</span></p>
 {%- elif section.type == "text" %}
 {{ block_text(section.block) }}
+{%- elif section.type == "list" and section.reading %}
+{{ block_reading(section.reading) }}
 {%- elif section.type == "list" %}
 {{ block_list(section.block) }}
 {%- elif section.type == "io" %}
@@ -288,6 +320,8 @@
 {{ block_tree(section.tree) }}
 {%- elif section.type == "flow" %}
 {{ block_flow(section.flow) }}
+{%- elif section.type == "dependency_graph" %}
+{{ block_deps(section.graph) }}
 {%- elif section.type == "table" %}
 {{ block_table(section.columns, section.rows) }}
 {%- elif section.type == "glossary" %}
@@ -306,6 +340,8 @@
 
 {%- for tab in tabs %}{% for section in tab.sections %}{% if section.type == "flow" and section.flow and section.flow.data %}
 <script type="application/json" id="flow-data">{{ section.flow.data | tojson }}</script>
+{%- endif %}{% if section.type == "dependency_graph" and section.graph and section.graph.data %}
+<script type="application/json" id="deps-data">{{ section.graph.data | tojson }}</script>
 {%- endif %}{% endfor %}{% endfor %}
 <script>
 {{ js | safe }}

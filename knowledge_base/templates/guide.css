@@ -178,6 +178,9 @@ g[data-go]:focus-visible rect,g[data-go]:focus-visible polygon{stroke:var(--red)
 .n-entry{fill:var(--ink);stroke:var(--ink);stroke-width:1.5}
 .t-mod{fill:var(--ink);font:13px var(--mono)}
 .t-entry{fill:var(--bg);font:600 13px var(--mono)}
+.tm{border-bottom:1.5px dotted var(--ink);cursor:help}
+.tm:hover,.tm.on{background:var(--soft);border-bottom-style:solid}
+.tm:focus-visible{outline:3px solid var(--red);outline-offset:2px}
 /* rozszerzenia */
 .files{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 18px}
 .recipe{border-top:1.5px solid var(--ink);margin-top:56px;padding-top:4px}

@@ -11,11 +11,15 @@ skopiowania), code, table (kolumny z szablonu), glossary, paths (numery klocków
 flow.nodes, odnośnik do zakładki Przepływ), recipes, config (metryczka: kafelki po rodzaju wpisu i tabela
 „Pełna konfiguracja”; hasło wpisane wprost z czerwonym znacznikiem), tree (drzewo plików z opisami po najechaniu),
 flow (diagram przepływu rysowany w przeglądarce z danych JSON; diagram, który nie przechodzi validate_flow, nie jest
-rysowany - sekcja pokazuje listę problemów). Pozostały typ (dependency_graph) dochodzi w kolejnym kroku - do tego czasu
-sekcja pokazuje widoczny znacznik „dochodzi w kolejnym kroku planu”.
+rysowany - sekcja pokazuje listę problemów), dependency_graph (graf zależności modułów rysowany w przeglądarce z
+krawędzi w mapie projektu; robot bez importów między modułami dostaje zdanie zamiast rysunku, pliki bez powiązań są
+tylko wymienione pod grafem). Typ spoza listy gotowych typów pokazuje widoczny znacznik „dochodzi w kolejnym kroku planu”.
 Fakty z kodu zamiast odpowiedzi modelu (guide_facts.py): sekcja typu code ze źródłem scanner (zależności) to treść
 plików zależności z mapy projektu; tabela ze źródłem code (ryzykowne miejsca) to długie jednostki i hasła wpisane
-wprost, a wiersze pisarza dodają komentarz i inne miejsca; drzewo bierze fakty z mapy, opisy pisarza mają pierwszeństwo.
+wprost, a wiersze pisarza dodają komentarz i inne miejsca; drzewo bierze fakty z mapy, opisy pisarza mają pierwszeństwo;
+lista ze źródłem scanner (kolejność czytania) to pliki z reading_order, a pisarz dopisuje zdanie w formacie „plik: zdanie”.
+Terminy ze słowniczka (typ glossary) są w wybranych tekstach (akapity, listy, kroki, opisy wejść i wyjść, komórki tabel
+poza kodem, zdania w kolejności czytania) oznaczane filtrem szablonu „terms” (glossary.py) i dostają dymek z definicją.
 Komórka tabeli zakończona znacznikiem „[wywnioskowane]” wyświetla się bez znacznika, z oznaczeniem
 „wywnioskowane” (informacja z analizy kodu, niezapisana w nim wprost).
 
@@ -42,10 +46,17 @@ Test ręczny (z katalogu głównego repo):
         skryptu rysującego są zgodne z makietą (brak pliku makiety - diagram domyślny z komunikatem)
     python -m dev_agents.render duzy
         to samo, ale sztuczny diagram z 28 klocków (trzy decyzje, dwa objazdy, pętla, długi ogon)
+    python -m dev_agents.render robot01
+        zamiast przykładu robota 02 zapisuje do guide_test.html przewodnik z prawdziwej mapy robota 01 (tylko odczyt):
+        graf zależności (main.py i sześć modułów), plik bez powiązań pod grafem, kolejność czytania ze zdaniami testowymi
+        i terminy słowniczka, w tym nazwy klas z terminem wewnątrz słowa (nieoznaczane); bez robota - przykład robota 02
+Test sprawdza też graf zależności (robot 02 bez importów: zdanie zamiast rysunku; robot 01: dane grafu i kolejność
+czytania; mapa w pamięci z plikiem bez powiązań) oraz oznaczanie terminów słowniczka w tekście przewodnika.
 Diagram domyślny (robot 02, 7 klocków) ma opis z tekstem </script>, klocek wywnioskowany i start bez modułu; test
 sprawdza też w pamięci diagram zepsuty (lista problemów zamiast rysunku) i diagram bez klocków (zdanie o braku).
 """
 
+import functools
 import os
 
 import jinja2
@@ -53,12 +64,15 @@ import pydantic
 
 import dev_agents.config as _config
 import dev_agents.flow as _flow
+import dev_agents.glossary as _glossary
 import dev_agents.guide_content as _content
 import dev_agents.guide_facts as _facts
 import dev_agents.guide_template as _template
 import dev_agents.schemas as _schemas
 
-_READY_TYPES = ["text", "list", "io", "cards", "steps", "code", "table", "glossary", "paths", "recipes", "config", "tree", "flow"]
+_READY_TYPES = [
+    "text", "list", "io", "cards", "steps", "code", "table", "glossary", "paths", "recipes", "config", "tree", "flow", "dependency_graph",
+]
 _CONTENT_FIELDS = {
     "text": "paragraphs",
     "list": "items",
@@ -76,7 +90,10 @@ _MISSING_TEXTS = {
     "config": "Robot nie ma konfiguracji - nie wynika z kodu.",
     "flow": "Brak diagramu przepływu: nie powstał żaden klocek.",
     "dependencies": "Robot nie ma pliku zależności (requirements.txt ani pyproject.toml).",
+    "reading": "Skaner nie znalazł plików źródłowych robota - nie ma czego czytać.",
+    "graph_no_edges": "Moduły robota nie importują się nawzajem, więc nie ma czego rysować.",
 }
+_MAX_ISOLATED_SHOWN = 10
 _RISKY_BADGE_COLORS = {"długa jednostka": "m", "hasło w pliku": "r", "hasło w kodzie": "r"}
 _RISKY_CODE_COLUMN = 1
 _RISKY_REASONS = {
@@ -139,6 +156,21 @@ def _blocks_by_section(
         for blok in zakladka.blocks:
             bloki[blok.section_id] = blok
     return bloki
+
+
+def _all_glossary_terms(
+    blocks: dict[str, _content.GuideBlock],
+) -> list[_content.GlossaryTerm]:
+    """Zwraca wszystkie terminy słowniczka ze wszystkich bloków treści, w kolejności bloków.
+
+    Po co: filtr „terms” oznacza w tekście przewodnika terminy ze słowniczka bez względu na to, w której zakładce
+    pisarz je zwrócił.
+    """
+    pojecia = []
+    for blok in blocks.values():
+        for pojecie in blok.terms:
+            pojecia.append(pojecie)
+    return pojecia
 
 
 def _has_content(
@@ -398,15 +430,63 @@ def _flow_view(
     return widok
 
 
+def _graph_missing_text(
+    project_map: _schemas.ProjectMap,
+) -> str:
+    """Zwraca zdanie zamiast grafu: moduły się nie importują, plus lista punktów wejścia (jeśli są).
+
+    Po co: robot bez importów między własnymi plikami (np. robot 02) nie ma czego rysować, a deweloper ma zobaczyć,
+    od których plików zaczyna się czytanie.
+    """
+    zdanie = _MISSING_TEXTS["graph_no_edges"]
+    if project_map.entrypoints:
+        zdanie = f"{zdanie} Punkty wejścia: {', '.join(project_map.entrypoints)}."
+    return zdanie
+
+
+def _graph_view(
+    facts: _Facts,
+) -> dict:
+    """Zwraca dane sekcji grafu: {data: węzły i krawędzie dla skryptu rysującego albo None, isolated, isolated_count}.
+
+    Po co: graf rysuje się tylko, gdy ma krawędzie; pliki bez powiązań nie są węzłami - szablon wymienia do
+    _MAX_ISOLATED_SHOWN z nich pod grafem (reszta jako liczba), żeby nic nie zniknęło bez śladu.
+    """
+    dane = _facts.dependency_graph_data(facts.project_map)
+    widok = {"data": None, "isolated": dane["isolated"][:_MAX_ISOLATED_SHOWN], "isolated_count": len(dane["isolated"])}
+    if dane["edges"]:
+        widok["data"] = {"nodes": dane["nodes"], "edges": dane["edges"]}
+    return widok
+
+
+def _reading_view(
+    facts: _Facts,
+    block: _content.GuideBlock,
+) -> dict:
+    """Zwraca dane kolejności czytania: {entries: [{path, text}], has_reasons: czy jakiś plik ma zdanie pisarza}.
+
+    Po co: lista plików i ich kolejność z kodu, zdanie „dlaczego tu” od pisarza (format „plik: zdanie”) - szablon
+    dopisuje wyjaśnienie pod nagłówkiem tylko wtedy, gdy jakieś zdanie jest.
+    """
+    pozycje = _facts.reading_items(facts.project_map, block.items)
+    ze_zdaniem = False
+    for pozycja in pozycje:
+        if pozycja["path"] and pozycja["text"]:
+            ze_zdaniem = True
+    widok = {"entries": pozycje, "has_reasons": ze_zdaniem}
+    return widok
+
+
 def _fact_view(
     section: _template.TemplateSection,
     block: _content.GuideBlock,
     facts: _Facts,
 ) -> dict:
-    """Zwraca dane sekcji liczone z faktów kodu (drzewo, zależności, ryzykowne miejsca, diagram) albo {} dla pozostałych.
+    """Zwraca dane sekcji liczone z faktów kodu (drzewo, zależności, ryzykowne miejsca, diagram, graf, kolejność czytania) albo {}.
 
-    Po co: pewne fakty (pliki, treść pliku zależności, linie i długości funkcji, hasło wprost, układ diagramu) pochodzą
-    z kodu, nie z modelu; klucz has_content mówi, czy sekcja ma co pokazać, a missing_text - co napisać, gdy nie ma.
+    Po co: pewne fakty (pliki, treść pliku zależności, linie i długości funkcji, hasło wprost, układ diagramu, krawędzie
+    importów, kolejność czytania) pochodzą z kodu, nie z modelu; klucz has_content mówi, czy sekcja ma co pokazać, a
+    missing_text - co napisać, gdy nie ma.
     """
     widok = {}
     if section.type == "tree":
@@ -424,6 +504,12 @@ def _fact_view(
         widok = {"rows": wiersze, "has_content": bool(wiersze), "missing_text": brak}
     if section.type == "flow":
         widok = {"flow": _flow_view(facts), "has_content": bool(facts.flow.nodes)}
+    if section.type == "dependency_graph":
+        graf = _graph_view(facts)
+        widok = {"graph": graf, "has_content": graf["data"] is not None, "missing_text": _graph_missing_text(facts.project_map)}
+    if section.type == "list" and section.source == "scanner":
+        czytanie = _reading_view(facts, block)
+        widok = {"reading": czytanie, "has_content": bool(czytanie["entries"]), "missing_text": _MISSING_TEXTS["reading"]}
     return widok
 
 
@@ -447,6 +533,8 @@ def _section_view(
         "config": None,
         "tree": None,
         "flow": None,
+        "graph": None,
+        "reading": None,
         "code_text": block.code,
         "missing_text": _MISSING_TEXTS.get(section.type, _MISSING_TEXT),
     }
@@ -553,6 +641,7 @@ def render_guide(
     with open(os.path.join(templates_dir, "guide.js"), encoding="utf-8") as plik:
         js = plik.read()
     srodowisko = jinja2.Environment(loader=jinja2.FileSystemLoader(templates_dir), autoescape=True)
+    srodowisko.filters["terms"] = functools.partial(_glossary.mark_terms, index=_glossary.build_index(_all_glossary_terms(bloki)))
     html = srodowisko.get_template("guide.html.j2").render(
         project_name=content.project_name,
         project_root=project_map.root,
@@ -871,6 +960,8 @@ if __name__ == "__main__":
                     items=[
                         "W dane/wyjscie pojawia się plik wyniki_RRRRMMDD.json z bieżącą datą.",
                         "Katalog dane/wejscie jest pusty, a przetworzone pliki leżą w dane/archiwum.",
+                        "Plik odrzucony (zły nagłówek) leży w dane/odrzucone, a nie w dane/archiwum.",
+                        "Klient VIP ma rabat 10%, a rabaty dla VIPów liczy ten sam kod (VIPX nie jest terminem).",
                     ],
                 ),
                 _content.GuideBlock(
@@ -978,6 +1069,14 @@ if __name__ == "__main__":
             tab_id="deweloper",
             blocks=[
                 _content.GuideBlock(section_id="warstwy", rows=[["przetwarzanie.py", "cały proces: odczyt, sprawdzenie, rabaty, zapis"], ["raport.py", "raport Excel z wyników"]]),
+                _content.GuideBlock(
+                    section_id="kolejnosc_czytania",
+                    items=[
+                        "przetwarzanie.py: tu zaczyna się proces i jest cała logika zamówień (rabaty dla klienta VIP też), więc czytaj go pierwszy",
+                        "raport.py: raport Excel składa się z wyników, dlatego czytaj go po przetwarzaniu",
+                        "Uwaga dodatkowa: pozycja bez pliku, test <script>alert('x')</script> ma być tekstem",
+                    ],
+                ),
                 _content.GuideBlock(section_id="konwencje", items=["Stałe na górze pliku przetwarzanie.py - wszystkie ustawienia w kodzie.", "Test escapowania: <script>alert('x')</script> ma być widoczne jako tekst."]),
             ],
         )
@@ -1056,6 +1155,86 @@ if __name__ == "__main__":
             dane = json.loads(trafienie.group(1))
         return dane
 
+    def _deps_json(
+        html: str,
+    ) -> dict | None:
+        """Zwraca dane grafu zależności wstawione do strony (blok deps-data) jako słownik albo None, gdy bloku nie ma.
+
+        Po co: liczniki testu liczą węzły i krawędzie z danych, które dostanie skrypt rysujący graf.
+        """
+        trafienie = re.search(r'id="deps-data">(.*?)</script>', html, re.S)
+        dane = None
+        if trafienie:
+            dane = json.loads(trafienie.group(1))
+        return dane
+
+    def _robot_01_content() -> _content.GuideContent:
+        """Składa krótką treść testową robota 01: opis i słowniczek z terminami oraz zdania w kolejności czytania.
+
+        Po co: wariant robot01 pokazuje graf i kolejność czytania z prawdziwej mapy robota 01 (tylko odczyt); zdania są
+        testowe (nazwy klas i funkcji z drzewa robota), terminy „ParaBank” i „Worker” sprawdzają, że nazwy klas
+        zawierające je wewnątrz słowa (ParaBankPage, MinimalWebWorker) nie są oznaczane.
+        """
+        przeglad = _content.GuideTab(
+            tab_id="przeglad",
+            blocks=[
+                _content.GuideBlock(
+                    section_id="opis_robota",
+                    paragraphs=[
+                        "robot testowy 01: formularz wyzwania RPA i saldo z ParaBank",
+                        "Zdanie testowe: robot loguje się do ParaBank i zapisuje stan konta; Worker przetwarza jeden element naraz.",
+                    ],
+                ),
+                _content.GuideBlock(
+                    section_id="pojecia",
+                    terms=[
+                        _content.GlossaryTerm(term="ParaBank", definition="Przykładowy bank internetowy, w którym robot sprawdza saldo."),
+                        _content.GlossaryTerm(term="Worker", definition="Klasa robota, która obsługuje proces od inicjalizacji do końca."),
+                    ],
+                ),
+            ],
+        )
+        deweloper = _content.GuideTab(
+            tab_id="deweloper",
+            blocks=[
+                _content.GuideBlock(
+                    section_id="kolejnosc_czytania",
+                    items=[
+                        "main.py: tu zaczyna się czytanie, klasa MinimalWebWorker spina proces robota",
+                        "src/parabank_page.py: klasa ParaBankPage z logowaniem i odczytem salda",
+                        "src/nie_istnieje.py: plik spoza kolejności czytania ma trafić na koniec w całości",
+                    ],
+                ),
+            ],
+        )
+        tresc = _content.GuideContent(project_name="01_rpa_challange_roboforge", flow=_content.FlowGraph(nodes=[], edges=[]), tabs=[przeglad, deweloper])
+        return tresc
+
+    def _render_robot_01_guide(
+        repo_dir: str,
+        app_config: _config.AppConfig,
+    ) -> str | None:
+        """Renderuje przewodnik z prawdziwej mapy robota 01 i krótką treścią testową; None, gdy robota nie ma.
+
+        Po co: graf zależności (6 krawędzi z main.py), plik bez powiązań i kolejność czytania na prawdziwych danych;
+        robot 01 jest tylko do odczytu - nic się w nim nie zapisuje (plik wynikowy trafia do repo).
+        """
+        katalog = os.path.normpath(os.path.join(repo_dir, "..", "..", "tests", "01_rpa_challange_roboforge"))
+        html = None
+        if os.path.isdir(katalog):
+            mapa = _scanner.build_project_map(katalog, app_config.scan)
+            szablon = _template.load_template(app_config.paths.guide_template)
+            html = render_guide(
+                _robot_01_content(),
+                szablon,
+                mapa,
+                os.path.dirname(app_config.paths.guide_template),
+                "2026-11-26 20:00 (test)",
+                app_config.analysis.long_unit_lines,
+                app_config.flow,
+            )
+        return html
+
     def _summary(
         html: str,
     ) -> dict:
@@ -1064,10 +1243,25 @@ if __name__ == "__main__":
         liczby z metryczki (kafelki, grupy i wiersze tabeli, hasła wprost, zdanie o braku konfiguracji) oraz
         liczby z drzewa, zależności i ryzykownych miejsc (wiersze, znaczniki, zdania o braku) oraz z diagramu (rysunek,
         klocki w danych, klocki wywnioskowane, funkcje, kafelki według rodzaju, nagłówek i kontener wierszy „Krok po kroku”,
-        bezpieczeństwo JSON, lista problemów albo zdanie o braku klocków).
+        bezpieczeństwo JSON, lista problemów albo zdanie o braku klocków) oraz z grafu zależności (rysunek, węzły i
+        krawędzie w danych, zdanie zamiast rysunku, zdanie o plikach bez powiązań), kolejności czytania (pozycje, zdania
+        pisarza, pozycje dodatkowe) i słowniczka (oznaczenia w tekście i w samym słowniku, brak oznaczeń wewnątrz słów).
 
         Po co: szybkie sprawdzenie pliku bez otwierania przeglądarki.
         """
+        dane_grafu = _deps_json(html)
+        graf_wezly = 0
+        graf_krawedzie = 0
+        if dane_grafu:
+            graf_wezly = len(dane_grafu["nodes"])
+            graf_krawedzie = len(dane_grafu["edges"])
+        czytanie = _section_html(html, "kolejnosc_czytania")
+        slownik = _section_html(html, "pojecia")
+        terminy = sorted(set(re.findall(r'<span class="tm" tabindex="0" data-t="([^"]*)"', html)))
+        terminy_przy_literze = 0
+        for sasiedztwo in re.finditer(r'(.?)<span class="tm"[^>]*>[^<]*</span>(.?)', html):
+            if sasiedztwo.group(1).isalnum() or sasiedztwo.group(2).isalnum():
+                terminy_przy_literze = terminy_przy_literze + 1
         dane_diagramu = _flow_json(html)
         klocki = 0
         wywnioskowane = 0
@@ -1118,6 +1312,18 @@ if __name__ == "__main__":
             "diagram: JSON bez surowego </script> z opisu": "</script><b>" not in html,
             "diagram: lista problemów zamiast rysunku": "nie został narysowany" in html,
             "diagram: zdanie o braku klocków": "Brak diagramu przepływu" in html,
+            "graf: rysunków SVG": html.count('<svg id="deps"'),
+            "graf: węzłów / krawędzi w danych": f"{graf_wezly} / {graf_krawedzie}",
+            "graf: zdanie zamiast rysunku": "nie importują się nawzajem" in html,
+            "graf: zdanie o plikach bez powiązań": "Pliki bez powiązań z innymi plikami robota" in html,
+            "czytanie: pozycji na liście": czytanie.count("<li>"),
+            "czytanie: pozycji ze zdaniem pisarza": len(re.findall(r"<li><b><code>[^<]*</code></b><span>", czytanie)),
+            "czytanie: pozycji dodatkowych (bez pliku)": czytanie.count("<li><span>"),
+            "słowniczek: oznaczeń w tekście": html.count('<span class="tm"'),
+            "słowniczek: różne terminy w tekście": ", ".join(terminy),
+            "słowniczek: oznaczeń w samym słowniku": slownik.count('class="tm"'),
+            "słowniczek: tekst testowy z terminem wewnątrz słowa": "VIPów" in html or "ParaBankPage" in html,
+            "słowniczek: żaden oznaczony termin nie sąsiaduje z literą": terminy_przy_literze == 0,
         }
         return wynik
 
@@ -1184,7 +1390,10 @@ if __name__ == "__main__":
         print(
             f"{robot_name} (próg {long_unit_lines} linii): drzewo - przycisków {wynik['drzewo: przycisków z opisem (z korzeniem)']}, "
             f"zdanie o braku pliku zależności: {wynik['zależności: zdanie o braku pliku']}, "
-            f"ryzykowne - wierszy {wynik['ryzykowne: wierszy']}, długich jednostek {wynik['ryzykowne: długich jednostek']}"
+            f"ryzykowne - wierszy {wynik['ryzykowne: wierszy']}, długich jednostek {wynik['ryzykowne: długich jednostek']}, "
+            f"graf - rysunków {wynik['graf: rysunków SVG']}, węzłów / krawędzi {wynik['graf: węzłów / krawędzi w danych']}, "
+            f"zdanie zamiast rysunku: {wynik['graf: zdanie zamiast rysunku']}, zdanie o plikach bez powiązań: {wynik['graf: zdanie o plikach bez powiązań']}, "
+            f"czytanie - pozycji {wynik['czytanie: pozycji na liście']}"
         )
 
     def _variant(
@@ -1237,7 +1446,8 @@ if __name__ == "__main__":
     def manual_test():
         """Renderuje przykładowy przewodnik robota 02 do guide_test.html w katalogu głównym repo i wypisuje podsumowanie.
 
-        Po co: widoczny przewodnik do obejrzenia w przeglądarce; wariant z argumentu (plik, makieta, duzy - patrz _variant);
+        Po co: widoczny przewodnik do obejrzenia w przeglądarce; wariant z argumentu (plik, makieta, duzy - patrz _variant;
+        robot01 - graf i kolejność czytania z prawdziwej mapy robota 01);
         dodatkowo sprawdzenie w pamięci metryczki bez wpisów, zepsutego diagramu, diagramu bez klocków oraz przewodników
         robotów 01 i 02 (bez zapisu plików, bez treści od pisarza).
         """
@@ -1248,6 +1458,12 @@ if __name__ == "__main__":
             wariant = sys.argv[1]
         wpisy, zdanie, diagram, komunikat = _variant(repo_dir, wariant)
         html = _render_example(repo_dir, app_config, wpisy, zdanie, diagram)
+        if wariant == "robot01":
+            html_robota = _render_robot_01_guide(repo_dir, app_config)
+            komunikat = "Wariant robot01: brak robota testowego obok repo - zapisano przykład robota 02"
+            if html_robota is not None:
+                html = html_robota
+                komunikat = "Wariant robot01: przewodnik z prawdziwej mapy robota 01 (tylko odczyt) i krótką treścią testową"
         sciezka = os.path.join(repo_dir, "guide_test.html")
         with open(sciezka, "w", encoding="utf-8") as plik:
             plik.write(html)

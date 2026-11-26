@@ -1,6 +1,7 @@
 /* Skrypt przewodnika dev-agents - przeniesiony z zaakceptowanej makiety dev_log/guide_mockup.html: router zakładek,
-   podpowiedzi, przyciski „Kopiuj”, diagram przepływu, wiersze „krok po kroku” i graf zależności. Renderer wstawia
-   ten plik do <script> w guide.html; dane diagramu i grafu (flow-data, deps-data) są opcjonalne. */
+   podpowiedzi (drzewo plików, diagram, terminy ze słowniczka), przyciski „Kopiuj”, diagram przepływu, wiersze
+   „krok po kroku” i graf zależności. Renderer wstawia ten plik do <script> w guide.html; dane diagramu i grafu
+   (flow-data, deps-data) są opcjonalne. */
 {
  const reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
  const esc=s=>String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -18,20 +19,25 @@
   requestAnimationFrame(()=>{drawFlow();drawDeps();if(target)target.scrollIntoView({block:'start'});else window.scrollTo(0,0)});
  };
  /* ---------- podpowiedzi ---------- */
- const tip=document.getElementById('tip');let pinned=null;
+ const tip=document.getElementById('tip');let pinned=null,pinShow=null;
  const place=el=>{tip.hidden=false;const r=el.getBoundingClientRect(),tw=tip.offsetWidth,th=tip.offsetHeight;let x=r.left,y=r.bottom+8;if(x+tw>innerWidth-12)x=innerWidth-tw-12;if(x<12)x=12;if(y+th>innerHeight-12)y=r.top-th-8;if(y<12)y=12;tip.style.left=x+'px';tip.style.top=y+'px'};
- function hideTip(force){if(pinned&&!force)return;if(pinned)pinned.classList.remove('on');pinned=null;tip.classList.remove('pin');tip.hidden=true}
+ function hideTip(force){if(pinned&&!force)return;if(pinned)pinned.classList.remove('on');pinned=null;pinShow=null;tip.classList.remove('pin');tip.hidden=true}
  const showItem=el=>{const n=el.cloneNode(true);n.querySelectorAll('i').forEach(i=>i.remove());tip.innerHTML='<b>'+esc(n.textContent.trim())+'</b><p><span>Czym jest</span>'+esc(el.dataset.w)+'</p><p><span>Rola w projekcie</span>'+esc(el.dataset.r)+'</p>';place(el)};
- document.querySelectorAll('.it[data-w]').forEach(el=>{
-  el.addEventListener('mouseenter',()=>{if(!pinned)showItem(el)});
+ /* termin ze słowniczka w tekście: span.tm z data-t (termin) i data-d (definicja), oba z renderera */
+ const showTerm=el=>{tip.innerHTML='<b>'+esc(el.dataset.t)+'</b><p><span>Pojęcie</span>'+esc(el.dataset.d)+'</p>';place(el)};
+ const bindTip=(el,show)=>{
+  el.addEventListener('mouseenter',()=>{if(!pinned)show(el)});
   el.addEventListener('mouseleave',()=>{if(!pinned)hideTip()});
-  el.addEventListener('focus',()=>{if(!pinned)showItem(el)});
+  el.addEventListener('focus',()=>{if(!pinned)show(el)});
   el.addEventListener('blur',()=>{if(!pinned)hideTip()});
-  el.addEventListener('click',ev=>{ev.stopPropagation();if(pinned===el){hideTip(true);return}if(pinned)pinned.classList.remove('on');pinned=el;el.classList.add('on');showItem(el);tip.classList.add('pin')});
- });
+  el.addEventListener('click',ev=>{ev.stopPropagation();if(pinned===el){hideTip(true);return}if(pinned)pinned.classList.remove('on');pinned=el;pinShow=show;el.classList.add('on');show(el);tip.classList.add('pin')});
+  if(el.tagName!=='BUTTON')el.addEventListener('keydown',ev=>{if(ev.key==='Enter'||ev.key===' '){ev.preventDefault();el.click()}});
+ };
+ document.querySelectorAll('.it[data-w]').forEach(el=>bindTip(el,showItem));
+ document.querySelectorAll('.tm').forEach(el=>bindTip(el,showTerm));
  document.addEventListener('click',ev=>{if(pinned&&!tip.contains(ev.target))hideTip(true)});
  document.addEventListener('keydown',ev=>{if(ev.key==='Escape')hideTip(true)});
- window.addEventListener('scroll',()=>{if(pinned&&pinned.classList)showItem(pinned);else hideTip()},{passive:true});
+ window.addEventListener('scroll',()=>{if(pinned&&pinShow)pinShow(pinned);else hideTip()},{passive:true});
  /* ---------- przyciski kopiowania ---------- */
  document.querySelectorAll('.cb').forEach(box=>{const b=document.createElement('button');b.className='cp';b.type='button';b.textContent='Kopiuj';
   b.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(box.querySelector('pre').textContent);b.textContent='Skopiowano'}catch(e){b.textContent='Zaznacz i skopiuj'}setTimeout(()=>{b.textContent='Kopiuj'},1600)});box.appendChild(b)});
@@ -106,24 +112,29 @@
  }).join('');
  const flowRows=document.getElementById('flowrows');if(flowRows)flowRows.innerHTML=rowsHtml;
  /* ---------- graf zależności ---------- */
- /* dane grafu zależności wstawia renderer (krok 38); bez nich graf się nie rysuje */
+ /* dane grafu (węzły i krawędzie liczone z importów) wstawia renderer; bez nich graf się nie rysuje */
  const depsEl=document.getElementById('deps-data');
  const deps=depsEl?JSON.parse(depsEl.textContent):{nodes:[],edges:[]};
  const dsvg=document.getElementById('deps')||document.createElementNS('http://www.w3.org/2000/svg','svg');
  function drawDeps(){
   if(!deps.nodes.length||dsvg.closest('.tab').hidden)return;
   const W=dsvg.clientWidth||dsvg.parentNode.clientWidth;if(!W)return;
-  const depth={};const entry=deps.nodes.find(n=>n.entry);depth[entry.id]=0;
-  for(let k=0;k<deps.nodes.length;k++)deps.edges.forEach(([a,b])=>{if(depth[a]!=null&&(depth[b]==null||depth[b]<depth[a]+1)&&depth[a]+1<deps.nodes.length)depth[b]=depth[a]+1});
+  /* warstwy: punkty wejścia i moduły, których nikt nie importuje, w warstwie 0; reszta wg najdłuższej ścieżki */
+  const depth={},fixed={},hasIn={};
+  deps.edges.forEach(([a,b])=>{hasIn[b]=true});
+  deps.nodes.forEach(n=>{if(n.entry||!hasIn[n.id]){depth[n.id]=0;fixed[n.id]=true}});
+  for(let k=0;k<deps.nodes.length;k++)deps.edges.forEach(([a,b])=>{if(!fixed[b]&&depth[a]!=null&&(depth[b]==null||depth[b]<depth[a]+1)&&depth[a]+1<deps.nodes.length)depth[b]=depth[a]+1});
   deps.nodes.forEach(n=>{if(depth[n.id]==null)depth[n.id]=1});
   const layers={};deps.nodes.forEach(n=>{(layers[depth[n.id]]=layers[depth[n.id]]||[]).push(n)});
   const L=Object.keys(layers).length,maxN=Math.max(...Object.values(layers).map(l=>l.length));
   const rowH=40,H=Math.max(120,maxN*rowH+30);dsvg.setAttribute('viewBox',`0 0 ${W} ${H}`);dsvg.style.height=H+'px';
-  const longest=Math.max(...deps.nodes.map(n=>n.id.split('/').pop().length)),bw=Math.min(longest*8+20,(W-20)/L-36),bh=28,pos={};
+  const longest=Math.max(...deps.nodes.map(n=>n.id.split('/').pop().length)),bw=Math.max(70,Math.min(longest*8+20,(W-20)/L-36)),bh=28,pos={};
+  const maxCh=Math.max(4,Math.floor((bw-10)/7.8));
   Object.entries(layers).forEach(([d,l])=>{l.forEach((n,i)=>{pos[n.id]={x:10+bw/2+d*((W-20-bw)/Math.max(1,L-1)),y:(H-(l.length-1)*rowH)/2+i*rowH}})});
   let e='',s='';
-  deps.edges.forEach(([a,b])=>{const p=pos[a],q=pos[b],mx=(p.x+q.x)/2;e+=`<path class="edge" marker-end="url(#ah2)" d="M${p.x+bw/2},${p.y}C${mx},${p.y} ${mx},${q.y} ${q.x-bw/2-2},${q.y}"/>`});
-  deps.nodes.forEach(n=>{const p=pos[n.id],label=n.id.split('/').pop();s+=`<rect x="${p.x-bw/2}" y="${p.y-bh/2}" width="${bw}" height="${bh}" rx="2" class="${n.entry?'n-entry':'n-mod'}"/><text x="${p.x}" y="${p.y}" class="${n.entry?'t-entry':'t-mod'}">${esc(label)}</text>`});
+  deps.edges.forEach(([a,b])=>{const p=pos[a],q=pos[b];if(!p||!q)return;const mx=(p.x+q.x)/2;e+=`<path class="edge" marker-end="url(#ah2)" d="M${p.x+bw/2},${p.y}C${mx},${p.y} ${mx},${q.y} ${q.x-bw/2-2},${q.y}"/>`});
+  /* nazwa pliku w prostokącie (skrócona, gdy się nie mieści); pełna ścieżka w <title> po najechaniu */
+  deps.nodes.forEach(n=>{const p=pos[n.id],base=n.id.split('/').pop(),label=base.length>maxCh?base.slice(0,maxCh-1)+'…':base;s+=`<g><title>${esc(n.id)}</title><rect x="${p.x-bw/2}" y="${p.y-bh/2}" width="${bw}" height="${bh}" rx="2" class="${n.entry?'n-entry':'n-mod'}"/><text x="${p.x}" y="${p.y}" class="${n.entry?'t-entry':'t-mod'}">${esc(label)}</text></g>`});
   dsvg.innerHTML='<defs><marker id="ah2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#111"/></marker></defs>'+e+s;
  }
  new ResizeObserver(()=>{drawFlow();drawDeps()}).observe(document.querySelector('main'));
