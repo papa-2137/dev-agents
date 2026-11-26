@@ -12,12 +12,14 @@ Co robi:
       robota (scan.frameworks.packages), więc działa też dla frameworku zainstalowanego poza projektem (np. w venv),
     - build_project_map() składa całą mapę projektu (ProjectMap): technologia, pliki z rolami, punkty wejścia,
       dla każdego pliku źródłowego robota jednostki z zakresami linii i odwołania (SourceFile), jednostki kodu
-      do analizy (jeden plik źródłowy robota = jedna jednostka) i wykryte frameworki.
+      do analizy (jeden plik źródłowy robota = jedna jednostka), wykryte frameworki i pliki tekstowe robota
+      przepisane dosłownie (role z scan.text_roles, do scan.max_text_file_kb).
 
 Dlaczego istnieje: to pierwszy krok mapy projektu - z listy plików korzystają technologia (detect, punkty
 wejścia) i cała mapa, a rola decyduje, co dalej dzieje się z plikiem (kod - do analityków, konfiguracja
 i pliki uruchamiające - jako tekst do agentów, sekret - wyłącznie metadane). Skaner nie otwiera żadnego
-pliku poza plikami źródłowymi, które czyta technologia (units, references).
+pliku sekretu; czyta tylko pliki źródłowe (przez technologię: units, references) i małe pliki o rolach
+z scan.text_roles (zależności, konfiguracja, pliki uruchamiające).
 
 Rola: moduł rdzenia towaru, używany przy budowie mapy projektu.
 
@@ -25,7 +27,8 @@ Test ręczny (z katalogu głównego repo):
     python -m dev_agents.scanner
         skrót mapy robotów testowych 01 i 02 oraz katalogu tymczasowego (katalogi do pominięcia, sekret .env,
         plik binarny, plik nieznanego typu, skopiowany framework z importem requests): tabela ścieżka | rola |
-        rozmiar | framework, punkty wejścia, jednostki i odwołania plików źródłowych, jednostki kodu, frameworki;
+        rozmiar | framework, punkty wejścia, jednostki i odwołania plików źródłowych, jednostki kodu, pliki tekstowe
+        (treść tylko zależności), frameworki;
         config testu ma dodatkowy, sztuczny framework z pakietem requests (nowy framework bez zmian w kodzie)
     python -m dev_agents.scanner <katalog projektu>
         pełna mapa dowolnego projektu jako JSON (config bez zmian)
@@ -35,6 +38,7 @@ import fnmatch
 import os
 
 import dev_agents.config as _config
+import dev_agents.files as _files
 import dev_agents.schemas as _schemas
 import dev_agents.technologies.base as _base
 import dev_agents.technologies.registry as _registry
@@ -231,6 +235,29 @@ def detect_frameworks(
 # --- Mapa projektu ---
 
 
+def _read_text_files(
+    root: str,
+    entries: list[_schemas.FileEntry],
+    scan_config: _config.ScanConfig,
+) -> list[_schemas.TextFile]:
+    """Zwraca pliki robota o rolach z scan.text_roles przepisane dosłownie; pomija pliki frameworku i większe niż limit.
+
+    Po co: zależności, konfiguracja i pliki uruchamiające trafiają do agentów i przewodnika jako tekst
+    przepisany przez kod - bez udziału modelu, więc bez przekłamań.
+
+    Uwaga: pliki sekretów nie mogą tu trafić - config przy starcie dopuszcza w text_roles tylko role
+    z role_patterns (bez secret i source). Plik większy niż max_text_file_kb zostaje tylko wpisem w files.
+    """
+    pliki_tekstowe = []
+    limit_bajtow = scan_config.max_text_file_kb * 1024
+    for wpis in entries:
+        if wpis.role not in scan_config.text_roles or wpis.framework_name or wpis.size_bytes > limit_bajtow:
+            continue
+        tekst = _files.read_text_safe(os.path.join(root, wpis.path))
+        pliki_tekstowe.append(_schemas.TextFile(path=wpis.path, role=wpis.role, text=tekst))
+    return pliki_tekstowe
+
+
 def _source_file(
     root: str,
     path: str,
@@ -256,7 +283,7 @@ def build_project_map(
 
     Po co: jeden obiekt dla dalszych etapów (graf zależności, agenci, zapis project_map.json).
 
-    Uwaga: nierozpoznana technologia to nie błąd - mapa ma technology="" i tylko listę plików; o przerwaniu
+    Uwaga: nierozpoznana technologia to nie błąd - mapa ma technology="", listę plików i pliki tekstowe; o przerwaniu
     pracy decyduje wołający. Pliki frameworku nie trafiają do source_files, code_units ani punktów wejścia.
     """
     katalog = os.path.abspath(root)
@@ -270,6 +297,7 @@ def build_project_map(
         entrypoints=[],
         files=wpisy,
         code_units=[],
+        text_files=_read_text_files(katalog, wpisy, scan_config),
     )
     if technologia is None:
         return mapa
@@ -298,15 +326,20 @@ if __name__ == "__main__":
     def _make_temp_project(
         directory: str,
     ) -> None:
-        """Tworzy projekt tymczasowy: zwykłe pliki, katalogi do pominięcia, sekret .env, plik binarny, plik nieznanego typu i skopiowany framework.
+        """Tworzy projekt tymczasowy: kod, katalogi do pominięcia, sekret .env, plik binarny, plik nieznanego typu, skopiowany framework i pliki tekstowe.
 
         Po co: sprawdzenie pomijania, ról i mapy bez dotykania robotów testowych; plik frameworku importuje
-        requests, a kod robota nie - sztuczny framework z pakietem requests nie może zostać wykryty.
+        requests, a kod robota nie - sztuczny framework z pakietem requests nie może zostać wykryty; duzy.json
+        (101 KB) przekracza limit plików tekstowych, a .env nie może trafić do plików tekstowych.
         """
         tresci = {
             "main.py": "import src.modul\n\nsrc.modul.pomoc()\n",
             "src/modul.py": "def pomoc():\n    return 1\n",
             "roboforge_framework/launcher.py": "import requests\n",
+            ".env": "SEKRET=nie-moze-trafic-do-mapy\n",
+            "config.yml": "adres: https://example.test\nhaslo: wpisane-wprost\n",
+            "requirements.txt": "requests\n",
+            "duzy.json": "x" * (101 * 1024),
         }
         pliki = [
             "main.py",
@@ -320,6 +353,9 @@ if __name__ == "__main__":
             "moje_srodowisko/pyvenv.cfg",
             "moje_srodowisko/Lib/site-packages/obca_paczka.py",
             "roboforge_framework/launcher.py",
+            "config.yml",
+            "requirements.txt",
+            "duzy.json",
         ]
         for sciezka in pliki:
             pelna = os.path.join(directory, sciezka)
@@ -347,9 +383,10 @@ if __name__ == "__main__":
         title: str,
         project_map: _schemas.ProjectMap,
     ) -> None:
-        """Wypisuje skrót mapy: tabelę plików, punkty wejścia, jednostki i odwołania plików źródłowych, jednostki kodu i frameworki.
+        """Wypisuje skrót mapy: pliki, punkty wejścia, jednostki i odwołania plików źródłowych, jednostki kodu, pliki tekstowe i frameworki.
 
-        Po co: czytelny wynik testu zamiast długiego JSON; tylko formatuje gotowe dane.
+        Po co: czytelny wynik testu zamiast długiego JSON; tylko formatuje gotowe dane. Treść wypisuje tylko dla
+        plików zależności - konfiguracja może zawierać hasła, więc w teście tylko liczba linii.
         """
         technologia = project_map.technology
         if not technologia:
@@ -369,6 +406,13 @@ if __name__ == "__main__":
         for jednostka_kodu in project_map.code_units:
             nazwy_jednostek.append(jednostka_kodu.name)
         print(f"  Jednostki kodu ({len(nazwy_jednostek)}): {nazwy_jednostek}")
+        print(f"  Pliki tekstowe ({len(project_map.text_files)}):")
+        for plik_tekstowy in project_map.text_files:
+            linie = plik_tekstowy.text.splitlines()
+            print(f"      {plik_tekstowy.path} ({plik_tekstowy.role}, linii: {len(linie)})")
+            if plik_tekstowy.role == "dependency":
+                for linia in linie:
+                    print(f"          | {linia}")
         print(f"  Frameworki: {project_map.frameworks}\n")
 
     def manual_test():

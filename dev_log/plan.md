@@ -214,7 +214,8 @@ scan:                     # od kroku 18
       paths: ["roboforge_framework/*"]
       packages: ["roboforge"]
       knowledge: frameworks/roboforge.md
-  max_text_file_kb: 50     # od kroku 24, większy plik konfiguracyjny albo uruchamiający - tylko metadane
+  text_roles: [dependency, config, launcher]  # od kroku 23, role plików przepisywanych dosłownie (TextFile)
+  max_text_file_kb: 100    # od kroku 23, większy plik tekstowy - tylko metadane
 
 analysis:                 # od kroku 50
   max_file_size_kb: 100

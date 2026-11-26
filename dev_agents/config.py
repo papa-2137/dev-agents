@@ -19,7 +19,7 @@ Rola: moduł używany przez punkt wejścia programu i przez warstwy, które potr
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.config
 Najpierw wypisuje wczytany config jako JSON (ścieżki w `paths` mają być bezwzględne), potem komunikaty
-błędów dla sześciu celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
+błędów dla siedmiu celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
 """
 
 import os
@@ -94,6 +94,8 @@ class ScanConfig(BaseModel):
     ignore: list[str]  # wzorce nazw plików i katalogów, np. ".git", "*.pyc"
     secret_patterns: list[str]  # wzorce nazw plików sekretów - tylko metadane, nigdy treść
     role_patterns: dict[str, list[str]]  # rola -> wzorce nazw; wygrywa pierwsza pasująca (kolejność z YAML)
+    text_roles: list[str]  # role plików przepisywanych dosłownie do mapy (tylko role z role_patterns)
+    max_text_file_kb: int  # większy plik tekstowy - tylko metadane
     frameworks: dict[str, FrameworkConfig]  # nazwa frameworku -> wpis
 
 
@@ -160,6 +162,21 @@ def _check_role_names(
             raise ValueError(komunikat_bledu)
 
 
+def _check_text_roles(
+    app_config: AppConfig,
+) -> None:
+    """Sprawdza, czy scan.text_roles zawiera tylko role z scan.role_patterns; przy błędzie rzuca ValueError z listą dozwolonych.
+
+    Po co: treść pliku sekretu (rola secret) ani kod (source) nie może trafić do mapy przez wpis w configu,
+    a literówka w roli dałaby po cichu brak plików tekstowych.
+    """
+    dozwolone_role = list(app_config.scan.role_patterns)
+    for rola in app_config.scan.text_roles:
+        if rola not in dozwolone_role:
+            komunikat_bledu = f"Niedozwolona rola '{rola}' w scan.text_roles. Dozwolone: {dozwolone_role}"
+            raise ValueError(komunikat_bledu)
+
+
 def _check_framework_knowledge(
     app_config: AppConfig,
 ) -> None:
@@ -207,6 +224,7 @@ def _build_config(
     _check_agent_profiles(app_config)
     _check_structured_output_methods(app_config)
     _check_role_names(app_config)
+    _check_text_roles(app_config)
     _resolve_paths(app_config.paths, config_dir)
     _check_framework_knowledge(app_config)
     return app_config
@@ -272,7 +290,7 @@ if __name__ == "__main__":
             _print_error(title, blad)
 
     def manual_test():
-        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla sześciu zepsutych kopii.
+        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla siedmiu zepsutych kopii.
 
         Po co: szybkie sprawdzenie, czy config się wczytuje, ścieżki są bezwzględne, a błędy w configu
         dają czytelne komunikaty.
@@ -308,5 +326,9 @@ if __name__ == "__main__":
         zla_wiedza = copy.deepcopy(raw_config)
         zla_wiedza["scan"]["frameworks"]["roboforge"]["knowledge"] = "frameworks/roboforg.md"
         _try_broken_config("Brak pliku wiedzy frameworku ('roboforg.md')", zla_wiedza, repo_dir)
+
+        sekret_jako_tekst = copy.deepcopy(raw_config)
+        sekret_jako_tekst["scan"]["text_roles"].append("secret")
+        _try_broken_config("Rola secret w scan.text_roles", sekret_jako_tekst, repo_dir)
 
     manual_test()

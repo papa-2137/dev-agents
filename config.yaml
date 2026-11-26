@@ -52,6 +52,10 @@ scan:
     docs: ["*.md", "*.rst", "README*", "*.docx", "*.pdf"]
     data: ["*.csv", "*.txt", "*.xlsx", "*.xls", "*.db", "*.sqlite", "*.xml", "*.log"]
     binary: ["*.png", "*.jpg", "*.ico", "*.exe", "*.dll", "*.zip", "*.whl"]
+  # Role plików przepisywanych dosłownie do mapy projektu (dla agentów i przewodnika) - tylko role z role_patterns;
+  # pliki sekretów i kod nigdy. Plik większy niż max_text_file_kb zostaje tylko jako wpis na liście plików.
+  text_roles: ["dependency", "config", "launcher"]
+  max_text_file_kb: 100
   # Frameworki: rozpoznawane po ścieżkach (framework skopiowany do projektu) albo po pakietach importowanych
   # w kodzie (framework zainstalowany, także edytowalnie). knowledge - plik wiedzy dla agentów, względnie do
   # knowledge_base/knowledge/. Nowy framework = nowy wpis + plik wiedzy, bez zmian w kodzie.

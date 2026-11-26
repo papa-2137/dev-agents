@@ -3,15 +3,16 @@
 Co zawiera: opis kształtu danych, które jeden etap produkuje, a następny odbiera. Na tym etapie:
 minimalne fakty o pliku źródłowym podawane przez technologię - jednostki z zakresami linii (SourceUnit),
 odwołania do innych plików i pakietów (References), razem dla jednego pliku (SourceFile) - oraz mapa
-projektu - wynik skanera: pliki z rolami (FileEntry), jednostki kodu do analizy (CodeUnit) i całość (ProjectMap). Kolejne schematy (pliki zależności,
-konfiguracja robota, graf zależności, plan, notatki analityków, diagram przepływu, treść przewodnika,
+projektu - wynik skanera: pliki z rolami (FileEntry), jednostki kodu do analizy (CodeUnit), pliki
+przepisane dosłownie (TextFile: zależności, konfiguracja, pliki uruchamiające) i całość (ProjectMap).
+Kolejne schematy (graf zależności, plan, notatki analityków, diagram przepływu, treść przewodnika,
 recenzja) dochodzą w krokach, które ich potrzebują.
 
 Dlaczego istnieje: jasna umowa między skanerem, technologiami, agentami i rendererem - każdy wie, co
 dostaje i co oddaje. Każdy obiekt da się zapisać do JSON (model_dump_json) i wczytać z powrotem
 (model_validate_json) - tak powstają pliki w dev_agents_doc/ analizowanego projektu (np. project_map.json).
-Mapa projektu zawiera ścieżki i metadane, a nie treść plików - kod czytamy z dysku dopiero przy analizie,
-dzięki czemu stan grafu pozostaje chudy.
+Mapa projektu zawiera ścieżki i metadane, a nie treść kodu - kod czytamy z dysku dopiero przy analizie,
+dzięki czemu stan grafu pozostaje chudy; dosłownie trzymamy tylko małe pliki tekstowe (TextFile).
 
 Uwaga: schematy odpowiedzi modelu (dojdą później) będą miały przy polach Field(description="...") - model
 widzi tylko schemat JSON. Schematy w tym pliku modelowi nie są podawane jako format odpowiedzi, więc mają
@@ -98,14 +99,27 @@ class CodeUnit(pydantic.BaseModel):
     files: list[str]  # ścieżki względne plików jednostki
 
 
+class TextFile(pydantic.BaseModel):
+    """Plik tekstowy robota przepisany dosłownie: ścieżka, rola i treść.
+
+    Po co: pełna lista zależności do skopiowania w przewodniku (W2) oraz konfiguracja i pliki uruchamiające
+    dla agentów (metryczka, uruchomienie, dostępy) - przepisane przez kod, więc bez ryzyka przekłamania.
+
+    Uwaga: które role trafiają tu, ustala scan.text_roles; sekrety i kod nigdy.
+    """
+
+    path: str  # ścieżka względna (separator "/")
+    role: str  # dependency | config | launcher (wg scan.text_roles)
+    text: str  # treść odczytana przez files.read_text_safe (końce linii "\n")
+
+
 class ProjectMap(pydantic.BaseModel):
     """Wynik skanera: co jest w projekcie - pliki z rolami, punkty wejścia, jednostki kodu, fakty o plikach źródłowych i frameworki, bez treści plików.
 
     Po co: jeden obiekt opisujący projekt dla wszystkich dalszych etapów; zapisany jako project_map.json
     pozwala obejrzeć wynik skanera bez wywoływania modelu.
 
-    Uwaga: pliki zależności i pliki konfiguracyjne robota dojdą jako osobne pola w krokach 23-24, razem
-    ze swoimi klasami.
+    Uwaga: treść trzyma tylko dla plików tekstowych (text_files) - kod czyta się z dysku przy analizie.
     """
 
     project_name: str
@@ -114,6 +128,7 @@ class ProjectMap(pydantic.BaseModel):
     entrypoints: list[str]  # ścieżki względne plików startowych
     files: list[FileEntry]
     code_units: list[CodeUnit]  # kod projektu do analizy (bez plików frameworku)
+    text_files: list[TextFile] = []  # zależności, konfiguracja i pliki uruchamiające robota - dosłownie
     source_files: list[SourceFile] = []  # fakty o plikach źródłowych robota (bez plików frameworku)
     frameworks: list[str] = []  # frameworki wykryte po ścieżkach i importach; [] = robot bez frameworku
 
@@ -142,6 +157,10 @@ if __name__ == "__main__":
             CodeUnit(name="przetwarzanie.py", files=["przetwarzanie.py"]),
             CodeUnit(name="raport.py", files=["raport.py"]),
         ]
+        text_files = [
+            TextFile(path="requirements.txt", role="dependency", text="openpyxl\nrequests\n"),
+            TextFile(path="run.bat", role="launcher", text="@echo off\ncd /d %~dp0\npython przetwarzanie.py\n"),
+        ]
         source_files = [
             SourceFile(
                 path="przetwarzanie.py",
@@ -161,6 +180,7 @@ if __name__ == "__main__":
             entrypoints=["przetwarzanie.py", "raport.py"],
             files=files,
             code_units=code_units,
+            text_files=text_files,
             source_files=source_files,
         )
         return przykladowa_mapa

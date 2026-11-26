@@ -163,6 +163,13 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.htm
 - Wybór użytkownika: B + makieta (tabela decyzji).
 - Test użytkownika: OK. Commit `29ec11c`.
 
+### Krok 22. Przenieś z doc-agents: `scanner.py` - `build_project_map()` - ✅
+- `schemas.py`: `SourceFile` (`path`, `units`, `references`) i pole `ProjectMap.source_files`; sekcja faktów o plikach źródłowych przed mapą projektu.
+- `scanner.build_project_map(root, scan_config)`: technologia, pliki z rolami i frameworkami, punkty wejścia (bez plików frameworku), `SourceFile` i `CodeUnit` dla każdego pliku źródłowego robota (jeden plik = jedna jednostka), frameworki; nierozpoznana technologia → mapa z samą listą plików, bez błędu. `project_packages` → wewnętrzne `_project_packages(source_files)` - pakiety tylko z kodu robota.
+- Test w bloku `__main__`: skrót map robotów 01, 02 i katalogu tymczasowego z sztucznym frameworkiem `requests` w configu testu (robot 02 - wykryty bez zmian w kodzie; import w pliku skopiowanego frameworku - nie); tryb `<katalog>` - pełny JSON mapy.
+- Wybór użytkownika: A z poprawką (tabela decyzji).
+- Test użytkownika: OK. Commit `aec330b`.
+
 ---
 
 ## Odstępstwa i decyzje poza planem
@@ -190,3 +197,5 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.htm
 | 2026-11-26 | Krok 19: bez wykrywania plików binarnych po treści (doc-agents: 8 KB i bajt zerowy) - binarne tylko po wzorcach, nieznany plik → `other`; `plan_kroki.md` krok 19 zaktualizowany | Skaner nie otwiera plików; do modelu trafiają tylko pliki o rolach rozpoznanych po wzorcach, więc ryzyko wysłania binarki znika bez dodatkowego kodu; wybór użytkownika (A) |
 | 2026-11-26 | **Bez maskowania haseł:** pliki konfiguracyjne i uruchamiające trafiają do agentów dosłownie; krok 20 (`masking.py`) wycofany, krok 24 i wzmianki o `***` w krokach 26, 31, 35, 47, 50, 55, 56 przepisane; `scan.sensitive_keys` usunięte z planu; `plan.md` (W2, W8, podział pracy, „Konfiguracja robota a sekrety”, struktura), `AGENTS.md` reguła 7. Pliki sekretów (`*.pfx`, `.env*`...) nadal tylko jako metadane | Decyzja użytkownika: hasło wpisane wprost to błąd dewelopera, który ma wyjść w przewodniku (agent wskazuje je jako ryzykowne miejsce), a nie zostać ukryty |
 | 2026-11-26 | Krok 21: pole `knowledge` we wpisie frameworku od razu (`load_config` sprawdza istnienie pliku) + makieta `knowledge_base/knowledge/frameworks/roboforge.md` (rozpoznanie, cykl życia, `BusinessRuleException`, `get_config`; pełna treść w kroku 42) | Decyzja użytkownika (wariant B + makieta): konfiguracja frameworku kompletna od początku, bez późniejszej zmiany schematu |
+| 2026-11-26 | Krok 22: fakty z `units()`/`references()` w nowej klasie `SourceFile` i polu `ProjectMap.source_files` (plan nie określał miejsca); `scanner.project_packages` zamienione na wewnętrzne `_project_packages(source_files)` - pakiety tylko z kodu robota, bez plików frameworku | `FileEntry` zostaje prostym opisem pliku, graf (krok 28) bierze krawędzie wprost z `source_files`; importy wewnątrz skopiowanego frameworku nie mogą fałszywie wykryć innego frameworku; wybór użytkownika (A z poprawką) |
+| 2026-11-26 | Krok 24 połączony z krokiem 23: jeden mechanizm `TextFile` / `ProjectMap.text_files` dla ról z `scan.text_roles` (`dependency`, `config`, `launcher`) z limitem `scan.max_text_file_kb` (100) zamiast osobnych pól `dependency_files` (krok 23) i `text_files` (krok 24); `plan_kroki.md` kroki 23-24 zaktualizowane | Oba kroki robiły to samo (odczyt dosłowny z limitem) - jedna funkcja i jedno pole, nowa rola dla agentów to linijka w configu; wybór użytkownika (B) |

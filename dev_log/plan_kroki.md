@@ -117,18 +117,16 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 22. Przenieś z doc-agents: `scanner.py` - `build_project_map()`**
 - **Funkcja:** kompletna mapa projektu w jednym obiekcie.
-- **Robimy:** złożenie `ProjectMap`: technologia (`registry.detect_technology`), punkty wejścia, pliki, jednostki kodu do analizy (pliki źródłowe spoza frameworku), frameworki, dla każdego pliku źródłowego `units()` i `references()`.
-- **Sprawdzamy:** JSON mapy robotów 01 i 02.
+- **Robimy:** złożenie `ProjectMap`: technologia (`registry.detect_technology`), punkty wejścia (bez plików frameworku), pliki, jednostki kodu do analizy (pliki źródłowe spoza frameworku), frameworki; dla każdego pliku źródłowego robota `units()` i `references()` w nowej klasie `SourceFile` (pole `ProjectMap.source_files`); pakiety do wykrywania frameworków tylko z kodu robota (`_project_packages`). Nierozpoznana technologia - mapa z samą listą plików, bez błędu.
+- **Sprawdzamy:** skrót map robotów 01 i 02 i katalogu tymczasowego (plik skopiowanego frameworku z importem `requests` nie wykrywa sztucznego frameworku z pakietem `requests`, robot 02 - wykrywa); pełny JSON mapy dowolnego katalogu.
 
-**Krok 23. `scanner.py` - pliki zależności (W2)**
-- **Funkcja:** pełna lista zależności robota przepisana dosłownie, do skopiowania z zakładki Przegląd - bez udziału modelu, więc bez ryzyka przekłamania.
-- **Robimy:** pliki o roli `dependency` czytane przez `files.read_text_safe` (UTF-16!) i zapisane dosłownie w `ProjectMap.dependency_files` (ścieżka + tekst). Bez metody technologii - wzorce w `scan.role_patterns`.
-- **Sprawdzamy:** mapa robota 01 zawiera czytelną treść `requirements.txt` z linią `-e git+...roboforge`; robot 02 - `openpyxl`, `requests`.
+**Krok 23. `scanner.py` - pliki zależności, konfiguracyjne i uruchamiające przepisane dosłownie (W2, W8)**
+- **Funkcja:** pełna lista zależności robota do skopiowania z zakładki Przegląd oraz konfiguracja i sposób uruchamiania (np. `run.bat`) jako tekst dla agentów (metryczka, uruchomienie, dostępy) - przepisane przez kod, bez udziału modelu, więc bez ryzyka przekłamania.
+- **Robimy:** `schemas.TextFile` (`path`, `role`, `text`) i pole `ProjectMap.text_files`; w configu `scan.text_roles` (`dependency`, `config`, `launcher`) i `scan.max_text_file_kb` (100), `config.py` dopuszcza w `text_roles` tylko role z `role_patterns` (nigdy `secret` ani `source`); `scanner._read_text_files` czyta pliki robota (bez plików frameworku) przez `files.read_text_safe` (UTF-16!); większy plik - tylko wpis w `files`. Bez parserów, typów wpisów i maskowania - znaczenie kluczy opisują agenci, a hasło wpisane wprost wskazują jako ryzykowne miejsce. Renderer bierze zależności filtrem `role == "dependency"`.
+- **Sprawdzamy:** mapa robota 01 zawiera czytelną treść `requirements.txt` z linią `-e git+...roboforge` i `config.yml`; robot 02 - `requirements.txt` (`openpyxl`, `requests`) i `run.bat`; plik większy niż limit i `.env` poza `text_files`; rola `secret` w `text_roles` → błąd przy starcie.
 
-**Krok 24. `scanner.py` - pliki konfiguracyjne i uruchamiające jako tekst (W2, W8)**
-- **Funkcja:** agenci dostają konfigurację robota i sposób jego uruchamiania (np. `run.bat`) w postaci tekstu - na tej podstawie opisują metryczkę, uruchomienie i dostępy.
-- **Robimy:** pliki o roli `config` i `launcher` (do `scan.max_text_file_kb`) czytane przez `files.read_text_safe` i zapisane dosłownie w `ProjectMap.text_files` (ścieżka, rola, tekst); większy plik - tylko metadane. Bez parserów, typów wpisów i maskowania - znaczenie kluczy opisują agenci, a hasło wpisane wprost wskazują jako ryzykowne miejsce.
-- **Sprawdzamy:** `config.yml` robota 01 i `run.bat` robota 02 w mapie z treścią; plik większy niż limit → tylko metadane; uszkodzony YAML zapisany bez błędu.
+**Krok 24. (połączony z krokiem 23, 2026-11-26) Pliki konfiguracyjne i uruchamiające jako tekst**
+- **Funkcja:** zrealizowana w kroku 23 - ten sam mechanizm (`text_files`, `scan.text_roles`) obejmuje role `config` i `launcher`.
 
 **Krok 25. (wycofany 2026-11-26) Gdzie używane są klucze konfiguracji**
 - **Funkcja:** przejęta przez agentów - analityk wskazuje miejsca użycia kluczy w notatce (plik:linia z kodu z numerami linii, krok 49).
