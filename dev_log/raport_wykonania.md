@@ -12,7 +12,7 @@
 | C - Mapa projektu bez modelu (9-29) | ✅ zakończona (M3) |
 | D - Szablon przewodnika i HTML bez modelu (30-39) | ✅ zakończona (M4) |
 | E - Prompty i baza wiedzy (40-42) | ✅ zakończona |
-| F - Graf i agenci (43-59) | 🟡 w toku (43-47 ✅) |
+| F - Graf i agenci (43-59) | 🟡 w toku (43-48 ✅) |
 | G - Ergonomia (60-63) | ⬜ |
 | H - Miasto (64-68) | ⬜ |
 
@@ -68,6 +68,14 @@ Wpisy kroków 1-29 (fazy A-C) są w archiwum: `dev_log/raport_wykonania_fazy_A-C
 - Test `python -m dev_agents.agents.planner`: 21 sprawdzeń na udawanym modelu (prompt bez kodu i bez ścieżki dysku, z treścią konfiguracji i spisem wiedzy; poprawianie planu z pięcioma błędami; węzeł: `plan.json`, wywołanie modelu, linie postępu), `zgodne z oczekiwaniem: True`; z argumentem `<katalog robota>` prawdziwy model plannera czyta `dev_agents_doc/project_map.json` i wypisuje plan (zapis `plan.json` w katalogu wyników robota).
 - Odstępstwa od planu: poprawianie planu przez kod (plan: sam planner); prompt bez `root`; raport: wpisy fazy E (kroki 40-42) przeniesione do `dev_log/raport_wykonania_fazy_E.md`.
 - Wybory: rekomendowane (tryb pracy fazy F). Test użytkownika: OK (w tym prawdziwy model na robocie 02). Commit `bbb8832`.
+
+### Krok 48. Graf: scan → planner - ✅
+- `dev_agents/graph.py`: graf START → scan → planner → END; węzeł `planner_node` zapisuje `plan.json` i dopisuje `plan` do stanu; docstring i opis testu zaktualizowane.
+- Nowy `dev_agents/fakes.py`: `FakeStructuredModel` (odpowiedź gotowym obiektem schematu albo funkcją od wiadomości, liczniki `calls` i `messages`) i test `python -m dev_agents.fakes` (4 sprawdzenia); test plannera używa wspólnego modelu zamiast własnej kopii.
+- `main.py`: `_run_graph` zwraca (mapa, plan), nowa `_print_plan_summary` wypisuje linię `plan: zadań N, pliki wiedzy: ...` (tylko tryb pełny; `--render-only` bez zmian).
+- Test grafu (`python -m dev_agents.graph`): model plannera podmieniony na udawany (pusty plan, który `complete_plan` uzupełnia o wszystkie jednostki); dla projektu tymczasowego, robota 02 i robota 01 (tylko odczyt) sprawdza: plan obejmuje wszystkie jednostki kodu, `plan.json` w magazynie tymczasowym równa się planowi ze stanu, linie postępu `scan` (2) i `planner` (start, uwagi, koniec z liczbą zadań).
+- Odstępstwa od planu: dodany `fakes.py` (wspólny udawany model dla kolejnych agentów); `plan_kroki.md` krok 48 zaktualizowany.
+- Wybory: rekomendowane (tryb pracy fazy F). Test użytkownika: OK. Commit `578aaaf` (razem z raportem i archiwum fazy E z kroku 47).
 
 ---
 
@@ -125,3 +133,4 @@ Wpisy kroków 1-29 (fazy A-C) są w archiwum: `dev_log/raport_wykonania_fazy_A-C
 | 2026-11-26 | **Tryb pracy do końca fazy F (od kroku 46):** wybory w każdym kroku są zawsze rekomendowane, bez czekania na decyzję użytkownika; inżynier opisuje po fakcie, co zrobił i jakie przyjął warianty (z decyzjami w tabeli), użytkownik robi test i push, po czym zaczyna się następny krok; zmiany planu i odstępstwa nadal wpisywane do raportu i `plan_kroki.md` | Decyzja użytkownika: przyspieszenie fazy F - kolejne wybory prawie zawsze były rekomendowane; użytkownik zachowuje kontrolę przez test, push i możliwość cofnięcia dowolnej decyzji po fakcie |
 | 2026-11-26 | Krok 46: (1) analizujemy wszystkie jednostki z mapy, planner tylko ustala kolejność i wskazówki (bez pola `skipped`), brakujące jednostki dopisze kod w kroku 47; (2) pliki wiedzy w trzech listach (analitycy, autor diagramu, pisarze); (3) bez pola `optional_sections` - pisarz pomija opcjonalną sekcję, gdy nie ma treści; `plan_kroki.md` krok 46 zaktualizowany | (1) decyzja „prosty kod, nawet kosztem tokenów” - jedna zła decyzja modelu nie może usunąć fragmentu robota z przewodnika; (2) analityk nie potrzebuje zasad diagramu, a spis będzie rósł (UiPath, Robot Framework); (3) planner decydowałby, nie widząc notatek analityków, a zasada szablonu już ukrywa pustą sekcję opcjonalną; wybór: rekomendowane (1A, 2A, 3A) |
 | 2026-11-26 | Krok 47: (1) poprawki planu po odpowiedzi modelu robi kod (`complete_plan`), każda zgłoszona jako uwaga w linii postępu: nieznana albo powtórzona jednostka usuwana, pominięta dopisana z pustą wskazówką, plik wiedzy spoza spisu lub powtórzony usuwany; (2) mapa projektu w prompcie bez `root`; (3) test z argumentem woła prawdziwy model i zapisuje `plan.json` w `dev_agents_doc/` robota (robot 01 tylko do odczytu, nie uruchamiać); (4) raport: archiwum fazy E (`raport_wykonania_fazy_E.md`); `plan_kroki.md` krok 47 zaktualizowany | (1) żaden fragment robota nie może zniknąć z przewodnika po cichu (decyzja z kroku 46: analizujemy wszystko), a literówka w nazwie pliku wiedzy ma wyjść od razu; (2) ścieżka dysku (nazwa użytkownika) nie jest modelowi potrzebna; (3) plan na prawdziwym robocie i modelu bez uruchamiania grafu; (4) raport zbliżał się do 48 KB, powyżej którego nie da się go przeczytać jednym odczytem i podmienić kopii na claude.ai; wybór: rekomendowane (tryb pracy fazy F) |
+| 2026-11-26 | Krok 48: (1) wspólny udawany model `FakeStructuredModel` w `dev_agents/fakes.py` zamiast kopii w testach każdego agenta; (2) test grafu woła planner na udawanym modelu z pustym planem (kod uzupełnia wszystkie jednostki), bez sieci i kluczy; (3) `main.py` wypisuje jedną linię o planie po przebiegu, pełny plan jest w `plan.json`; `plan_kroki.md` krok 48 zaktualizowany | (1) analityk, autor diagramu, pisarze i recenzent będą testowani tak samo, jedna klasa zamiast pięciu kopii; (2) test grafu ma być powtarzalny i darmowy, prawdziwy model sprawdza test plannera z argumentem; (3) szybki ślad, że planner zadziałał, bez wypisywania całego planu; wybór: rekomendowane (tryb pracy fazy F) |

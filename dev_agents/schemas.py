@@ -7,8 +7,10 @@ projektu - wynik skanera: pliki z rolami (FileEntry), jednostki kodu do analizy 
 przepisane dosłownie (TextFile: zależności, konfiguracja, pliki uruchamiające) i całość (ProjectMap) - także
 z grafem zależności między plikami robota i kolejnością czytania kodu. Dalej plan - wynik plannera
 (AnalysisTask: jednostka kodu i wskazówka; Plan: podsumowanie, zadania analizy i pliki wiedzy dla analityków,
-autora diagramu i pisarzy). Treść przewodnika i diagram są w guide_content.py. Kolejne schematy (notatki
-analityków, recenzja) dochodzą w krokach, które ich potrzebują.
+autora diagramu i pisarzy) oraz notatka analityka - wynik analizy jednostki kodu i surowiec dla wszystkich
+zakładek (ModuleNote z klasami pomocniczymi NoteAction, NoteRisk, NoteFailure, NoteNetwork, NoteRequirement,
+NoteTerm; dane i ustawienia używają klas DataRef i ConfigItem z guide_content.py). Treść przewodnika i diagram
+są w guide_content.py. Kolejny schemat (recenzja) dochodzi w kroku, który go potrzebuje.
 
 Dlaczego istnieje: jasna umowa między skanerem, technologiami, agentami i rendererem - każdy wie, co
 dostaje i co oddaje. Każdy obiekt da się zapisać do JSON (model_dump_json) i wczytać z powrotem
@@ -16,7 +18,7 @@ dostaje i co oddaje. Każdy obiekt da się zapisać do JSON (model_dump_json) i 
 Mapa projektu zawiera ścieżki i metadane, a nie treść kodu - kod czytamy z dysku dopiero przy analizie,
 dzięki czemu stan grafu pozostaje chudy; dosłownie trzymamy tylko małe pliki tekstowe (TextFile).
 
-Uwaga: schematy odpowiedzi modelu (Plan i AnalysisTask, dalej notatka analityka i recenzja) mają przy polach
+Uwaga: schematy odpowiedzi modelu (Plan i AnalysisTask, ModuleNote i jej klasy pomocnicze, dalej recenzja) mają przy polach
 Field(description="...") - model widzi tylko schemat JSON - i są płaskie, bez wariantów anyOf. Schematy faktów
 o projekcie (SourceUnit ... ProjectMap) modelowi nie są podawane jako format odpowiedzi, więc mają same typy
 i komentarze.
@@ -27,11 +29,18 @@ Test ręczny (z katalogu głównego repo):
     python -m dev_agents.schemas
 Składa ręcznie przykładową mapę robota 02 i przykładowy plan, wypisuje je jako JSON i sprawdza, czy odczyt
 z JSON daje obiekt równy oryginałowi (oczekiwane: True). Dla planu sprawdza też schemat JSON dla modelu:
-brak wariantów anyOf i opis przy każdym polu oraz odrzucenie planu bez wymaganych pól; na końcu
-"zgodne z oczekiwaniem: True".
+brak wariantów anyOf i opis przy każdym polu oraz odrzucenie planu bez wymaganych pól. Dla notatki analityka:
+ręcznie złożona notatka robota 02 (wydruk JSON, odczyt równy oryginałowi), notatka minimalna (tylko nazwa
+jednostki i przeznaczenie - wszystkie listy puste, w tym punkty rozszerzeń), schemat JSON bez anyOf i z opisem
+przy każdym polu, odrzucenie notatki bez przeznaczenia, odrzucenie nieznanego rodzaju czynności i numeru
+kawałka mniejszego niż 1; na końcu "zgodne z oczekiwaniem: True".
 """
 
+import typing
+
 import pydantic
+
+import dev_agents.guide_content as _guide_content
 
 
 # --- Fakty o plikach źródłowych (wynik technologii) ---
@@ -189,6 +198,141 @@ class Plan(pydantic.BaseModel):
     )
 
 
+# --- Notatka analityka (wynik analityka) ---
+
+
+class NoteAction(pydantic.BaseModel):
+    """Jedna czynność robota w jednostce kodu: co robi, w której funkcji i linii, jakie dane czyta i zapisuje.
+
+    Po co: surowiec diagramu przepływu (klocki z funkcją i linią, kafelki danych) i wierszy "Krok po kroku";
+    czynność to jeden rozpoznawalny krok procesu, a nie linia kodu.
+    """
+
+    title: str = pydantic.Field(description="Krótki tytuł czynności językiem biznesowo-technicznym, kilka słów, np. Wczytaj listę plików zamówień.")
+    kind: typing.Literal["step", "system", "decision", "error"] = pydantic.Field(
+        description="Rodzaj: step (zwykły krok), system (kontakt z systemem poza robotem: strona, API, baza, plik na serwerze), decision (rozgałęzienie), error (obsługa błędu)."
+    )
+    function: str = pydantic.Field(default="", description="Funkcja, metoda albo klasa, w której dzieje się czynność, np. run. Puste, gdy kod jest poza funkcją.")
+    line: int = pydantic.Field(default=0, ge=0, description="Numer linii pierwszej instrukcji czynności w pliku jednostki; 0, gdy nie da się wskazać.")
+    description: str = pydantic.Field(default="", description="Jedno-dwa zdania: co robot robi i po co. Puste, gdy tytuł wystarcza.")
+    reads: list[_guide_content.DataRef] = pydantic.Field(default=[], description="Co czynność czyta: pliki, zmienne środowiskowe, systemy, dane w pamięci - każde z rodzajem. Puste, gdy nic.")
+    writes: list[_guide_content.DataRef] = pydantic.Field(default=[], description="Co czynność zapisuje albo zwraca - każde z rodzajem. Puste, gdy nic.")
+    certain: bool = pydantic.Field(default=True, description="False, gdy czynność wywnioskowano, a nie zapisano wprost w kodzie.")
+
+
+class NoteRisk(pydantic.BaseModel):
+    """Trudne miejsce w kodzie: gdzie jest, jakiego rodzaju i dlaczego jest ryzykowne.
+
+    Po co: surowiec tabeli "Ryzykowne miejsca" (kolumny: miejsce, plik i linie, rodzaj, dlaczego ryzykowne).
+    """
+
+    place: str = pydantic.Field(description="Nazwa miejsca: funkcja, stała, selektor albo krótki opis, np. run albo selektor przycisku Zapisz.")
+    location: str = pydantic.Field(description="Plik i linia albo zakres, np. przetwarzanie.py:120-135.")
+    kind: str = pydantic.Field(description="Rodzaj ryzyka w kilku słowach, np. sztywna ścieżka, kruchy selektor, stały czas oczekiwania, brak obsługi błędu, długa funkcja.")
+    reason: str = pydantic.Field(description="Jedno-dwa zdania: dlaczego to ryzykowne i co może się stać.")
+    certain: bool = pydantic.Field(default=True, description="False, gdy ryzyko wywnioskowano, a nie widać go wprost w kodzie.")
+
+
+class NoteFailure(pydantic.BaseModel):
+    """Możliwa awaria: objaw, przyczyna, gdzie szukać i jak naprawić.
+
+    Po co: surowiec tabeli "Typowe awarie" w zakładce Błędy i naprawa.
+    """
+
+    symptom: str = pydantic.Field(description="Objaw widoczny dla operatora albo w logu, np. robot kończy pracę bez raportu.")
+    cause: str = pydantic.Field(description="Prawdopodobna przyczyna wynikająca z kodu.")
+    where: str = pydantic.Field(description="Gdzie szukać: plik i funkcja albo linia, np. raport.py:main:40.")
+    fix: str = pydantic.Field(description="Jak naprawić albo co sprawdzić w pierwszej kolejności.")
+    certain: bool = pydantic.Field(default=True, description="False, gdy awarię wywnioskowano, a kod jej wprost nie obsługuje ani nie opisuje.")
+
+
+class NoteNetwork(pydantic.BaseModel):
+    """Dostęp sieciowy robota: dokąd się łączy i po co.
+
+    Po co: surowiec sekcji "Wymagania i dostępy" - administrator wie, jakie adresy i porty odblokować.
+    """
+
+    target: str = pydantic.Field(description="Adres, nazwa hosta albo nazwa systemu, np. https://api.example.test albo serwer SMTP.")
+    port: str = pydantic.Field(default="", description="Port albo protokół, gdy wynika z kodu, np. 443 albo SMTP 587. Puste, gdy nie wynika.")
+    purpose: str = pydantic.Field(description="Jedno zdanie: po co robot się tam łączy.")
+    location: str = pydantic.Field(default="", description="Plik i linia, w której robot się łączy, np. przetwarzanie.py:300.")
+
+
+class NoteRequirement(pydantic.BaseModel):
+    """Wymaganie uruchomieniowe: czego robot potrzebuje na maszynie, by działać.
+
+    Po co: surowiec sekcji "Wymagania i dostępy" - aplikacje, sterowniki, konta, uprawnienia i zmienne środowiskowe.
+    """
+
+    kind: typing.Literal["application", "driver", "account", "env_var", "permission", "other"] = pydantic.Field(
+        description="Rodzaj: application (zainstalowana aplikacja), driver (sterownik, np. przeglądarki), account (konto lub certyfikat), env_var (zmienna środowiskowa), permission (uprawnienie, dostęp do katalogu), other."
+    )
+    name: str = pydantic.Field(description="Nazwa wymagania, np. Microsoft Excel, chromedriver, ROBOT_PASSWORD.")
+    detail: str = pydantic.Field(default="", description="Jedno zdanie: do czego jest potrzebne albo w jakiej wersji. Puste, gdy nazwa wystarcza.")
+    certain: bool = pydantic.Field(default=True, description="False, gdy wymaganie wywnioskowano, a kod go wprost nie wymienia.")
+
+
+class NoteTerm(pydantic.BaseModel):
+    """Kandydat do słowniczka: termin z kodu i jego krótkie wyjaśnienie.
+
+    Po co: surowiec słowniczka przewodnika - pisarz wybiera z kandydatów wszystkich notatek terminy, które czytelnik
+    może źle zrozumieć.
+    """
+
+    term: str = pydantic.Field(description="Termin dokładnie w takiej formie, w jakiej pojawia się w kodzie albo konfiguracji (słowniczek dopasowuje formę dokładnie).")
+    definition: str = pydantic.Field(description="Wyjaśnienie w jednym zdaniu, zrozumiałe dla opiekuna bez znajomości kodu.")
+
+
+class ModuleNote(pydantic.BaseModel):
+    """Notatka analityka o jednej jednostce kodu: jedyne źródło wiedzy o kodzie dla autora diagramu i pisarzy zakładek.
+
+    Po co: analityk czyta kod jednostki raz i zapisuje wszystko, czego potrzebują kolejne etapy - nikt dalej nie czyta
+    kodu. Wszystkie listy mogą być puste, a pola tekstowe przyjmują zdanie "nie wynika z kodu": schemat nie zmusza
+    modelu do wymyślania. Przy wnioskach, których kod nie mówi wprost, jest flaga pewności (certain=False).
+
+    Uwaga: part i parts służą notatkom składanym z kawałków długiej funkcji (krok 51): part to numer kawałka,
+    parts to liczba kawałków; zwykła notatka ma part=1 i parts=1.
+    """
+
+    unit_name: str = pydantic.Field(description="Nazwa analizowanej jednostki kodu dokładnie tak, jak w zadaniu, np. przetwarzanie.py.")
+    part: int = pydantic.Field(default=1, ge=1, description="Numer kawałka, gdy jednostkę analizowano po kawałkach; 1, gdy w całości.")
+    parts: int = pydantic.Field(default=1, ge=1, description="Liczba kawałków, na które podzielono jednostkę; 1, gdy w całości.")
+    purpose: str = pydantic.Field(description="2-4 zdania zwykłego tekstu: do czego służy jednostka i jaką rolę ma w procesie robota. Jeśli nie wynika z kodu, napisz: nie wynika z kodu.")
+    flow_role: str = pydantic.Field(
+        default="",
+        description="Rola jednostki w przepływie, np. punkt wejścia uruchamiany z run.bat, funkcja wołana przez framework po nazwie, moduł pomocniczy. Puste, gdy nie wynika z kodu.",
+    )
+    automated_application: str = pydantic.Field(
+        default="",
+        description="Aplikacje, strony i systemy, z którymi jednostka pracuje, np. przeglądarka Edge, https://www.rpachallenge.com. Puste, gdy żadnych.",
+    )
+    key_functions: list[str] = pydantic.Field(default=[], description="Najważniejsze funkcje, metody i klasy, każda jako: nazwa:linia - co robi.")
+    actions: list[NoteAction] = pydantic.Field(default=[], description="Czynności robota w jednostce w kolejności wykonania, z funkcją, linią i danymi czytanymi oraz zapisywanymi.")
+    process_steps: list[str] = pydantic.Field(
+        default=[],
+        description="Ten sam przebieg jako krótkie zdania z konkretami (aplikacje, adresy, pola, pliki). Decyzje jako: Jeśli ..., to ...; pętle jako: Dla każdego ...: z krokami wciętymi pod spodem.",
+    )
+    error_handling: list[str] = pydantic.Field(default=[], description="Obsługiwane wyjątki i sytuacje błędne oraz to, co robot wtedy robi (ponowienie, pominięcie, zatrzymanie, zapis do logu).")
+    inputs: list[str] = pydantic.Field(default=[], description="Dane wejściowe jednostki: pliki, arkusze, kolumny, parametry, dane ze stron.")
+    outputs: list[str] = pydantic.Field(default=[], description="Wyniki jednostki: zapisywane pliki, tabele, raporty, logi, dane przekazywane dalej.")
+    settings: list[_guide_content.ConfigItem] = pydantic.Field(
+        default=[],
+        description="Ustawienia używane przez jednostkę: wpisy z plików konfiguracyjnych i stałe w kodzie, wartość dosłownie, z miejscami użycia (plik:linia). Hasło wpisane wprost oznacz plain_password=True.",
+    )
+    network: list[NoteNetwork] = pydantic.Field(default=[], description="Adresy, porty i systemy, z którymi jednostka się łączy. Puste, gdy żadnych.")
+    requirements: list[NoteRequirement] = pydantic.Field(default=[], description="Wymagania uruchomieniowe: aplikacje, sterowniki, konta, uprawnienia, nazwy zmiennych środowiskowych.")
+    external_dependencies: list[str] = pydantic.Field(
+        default=[],
+        description="Biblioteki spoza projektu i biblioteki standardowej, z krótkim: do czego (tylko to, co trzeba zainstalować).",
+    )
+    risky_places: list[NoteRisk] = pydantic.Field(default=[], description="Trudne miejsca: sztywne ścieżki i czasy, kruche selektory, sekrety w kodzie, brak obsługi błędów, niejasny kod.")
+    possible_failures: list[NoteFailure] = pydantic.Field(default=[], description="Możliwe awarie z objawem, przyczyną, miejscem szukania i naprawą.")
+    extension_points: list[str] = pydantic.Field(default=[], description="Punkty rozszerzeń: gdzie dodać nową stronę, nowy format pliku albo nową regułę, każdy jako: miejsce w kodzie - co tam dodać. Puste, gdy kod ich nie ma.")
+    conventions: list[str] = pydantic.Field(default=[], description="Konwencje widoczne w kodzie: nazewnictwo, układ plików, sposób logowania i obsługi błędów, których warto się trzymać.")
+    maintainer_hints: list[str] = pydantic.Field(default=[], description="Wskazówki dla opiekuna: co zmienić przy zmianie strony lub danych, gdzie szukać przyczyny błędu, czego nie ruszać.")
+    glossary_candidates: list[NoteTerm] = pydantic.Field(default=[], description="Kandydaci do słowniczka: terminy, które opiekun może źle zrozumieć. Puste, gdy żadnych.")
+
+
 # --- Test ręczny ---
 
 if __name__ == "__main__":
@@ -291,6 +435,109 @@ if __name__ == "__main__":
         )
         return przykladowy_plan
 
+    def _build_example_note() -> ModuleNote:
+        """Składa ręcznie notatkę analityka o pliku przetwarzanie.py robota 02: czynności, ustawienia, ryzyka, awarie i reszta pól.
+
+        Po co: dane do testu zapisu i odczytu JSON bez uruchamiania analityka (krok 50); notatka ma po jednym
+        przykładzie każdego rodzaju wpisu, w tym hasło wpisane wprost i wniosek z flagą pewności.
+
+        Uwaga: treść jest ułożona ręcznie - prawdziwą notatkę zwraca analityk.
+        """
+        dane_wejsciowe = _guide_content.DataRef(name="dane/wejscie/*.csv", kind="file")
+        dane_wyjsciowe = _guide_content.DataRef(name="dane/wyjscie/wyniki_*.json", kind="file")
+        czynnosci = [
+            NoteAction(title="Wczytaj listę plików zamówień", kind="step", function="run", line=45, reads=[dane_wejsciowe]),
+            NoteAction(title="Nagłówek poprawny?", kind="decision", function="run", line=88),
+            NoteAction(title="Wyślij zamówienia do API", kind="system", function="run", line=300, certain=False),
+            NoteAction(title="Zapisz wyniki", kind="step", function="run", line=380, writes=[dane_wyjsciowe]),
+        ]
+        ustawienia = [
+            _guide_content.ConfigItem(
+                location="przetwarzanie.py:14",
+                key="URL",
+                value="https://api.example.test/zamowienia",
+                kind="system",
+                meaning="Adres API zamówień; stała w kodzie.",
+                used_in=["przetwarzanie.py:300"],
+            ),
+            _guide_content.ConfigItem(
+                location="przetwarzanie.py:15",
+                key="HASLO",
+                value="Haslo123!",
+                kind="account",
+                plain_password=True,
+                meaning="Hasło do API wpisane wprost w kod.",
+                used_in=["przetwarzanie.py:301"],
+            ),
+        ]
+        przykladowa_notatka = ModuleNote(
+            unit_name="przetwarzanie.py",
+            purpose="Wczytuje pliki zamówień z katalogu wejściowego, sprawdza nagłówki, wysyła zamówienia do API i zapisuje wyniki do JSON.",
+            flow_role="Punkt wejścia uruchamiany z run.bat.",
+            automated_application="API zamówień https://api.example.test",
+            key_functions=["run:41 - cała logika robota", "log:31 - zapis linii do logu"],
+            actions=czynnosci,
+            process_steps=["Wczytaj listę plików zamówień.", "Jeśli nagłówek jest błędny, to przenieś plik do odrzuconych.", "Wyślij zamówienia do API."],
+            error_handling=["Błąd odczytu pliku: zapis do logu i przejście do następnego pliku."],
+            inputs=["dane/wejscie/*.csv - zamówienia, nagłówek w pierwszej linii"],
+            outputs=["dane/wyjscie/wyniki_*.json - wyniki przetwarzania"],
+            settings=ustawienia,
+            network=[NoteNetwork(target="https://api.example.test", port="443", purpose="Wysłanie zamówień.", location="przetwarzanie.py:300")],
+            requirements=[NoteRequirement(kind="env_var", name="ROBOT_KATALOG", detail="Katalog roboczy robota.", certain=False)],
+            external_dependencies=["requests - wywołania API"],
+            risky_places=[NoteRisk(place="run", location="przetwarzanie.py:41-411", kind="długa funkcja", reason="Cała logika w jednej funkcji - trudno zmieniać bez ryzyka.")],
+            possible_failures=[
+                NoteFailure(
+                    symptom="Robot kończy pracę bez pliku wyników.",
+                    cause="API nie odpowiada.",
+                    where="przetwarzanie.py:run:300",
+                    fix="Sprawdź dostęp do adresu API.",
+                    certain=False,
+                )
+            ],
+            extension_points=[],
+            conventions=["Komunikaty logu zaczynają się od nazwy etapu."],
+            maintainer_hints=["Zmiana adresu API: stała URL w przetwarzanie.py:14."],
+            glossary_candidates=[NoteTerm(term="odrzucone", definition="Katalog na pliki z błędnym nagłówkiem.")],
+        )
+        return przykladowa_notatka
+
+    def _note_checks(
+        note: ModuleNote,
+    ) -> list[tuple[str, bool]]:
+        """Sprawdza notatkę: odczyt z JSON, notatka minimalna, schemat dla modelu, odrzucenia błędnych danych; zwraca (opis, zgodne).
+
+        Po co: schemat notatki jest duży - test pilnuje, że wszystkie listy mogą być puste, a błędne dane są odrzucane.
+        """
+        minimalna = ModuleNote.model_validate_json('{"unit_name": "raport.py", "purpose": "nie wynika z kodu"}')
+        problemy = _schema_problems(ModuleNote)
+        bez_przeznaczenia = False
+        try:
+            ModuleNote.model_validate_json('{"unit_name": "raport.py"}')
+        except pydantic.ValidationError:
+            bez_przeznaczenia = True
+        zly_rodzaj = False
+        try:
+            NoteAction.model_validate_json('{"title": "x", "kind": "magia"}')
+        except pydantic.ValidationError:
+            zly_rodzaj = True
+        zly_kawalek = False
+        try:
+            ModuleNote.model_validate_json('{"unit_name": "raport.py", "purpose": "x", "part": 0}')
+        except pydantic.ValidationError:
+            zly_kawalek = True
+        puste_listy = minimalna.actions == [] and minimalna.extension_points == [] and minimalna.settings == []
+        wyniki = [
+            ("odczyt notatki z JSON równy oryginałowi", ModuleNote.model_validate_json(note.model_dump_json()) == note),
+            ("notatka z pustymi punktami rozszerzeń przechodzi walidację", note.extension_points == []),
+            ("notatka minimalna: wszystkie listy puste, part=1, parts=1", puste_listy and minimalna.part == 1 and minimalna.parts == 1),
+            (f"schemat ModuleNote bez anyOf i z opisem przy każdym polu (problemy: {problemy})", not problemy),
+            ("notatka bez przeznaczenia odrzucona", bez_przeznaczenia),
+            ("nieznany rodzaj czynności odrzucony", zly_rodzaj),
+            ("numer kawałka mniejszy niż 1 odrzucony", zly_kawalek),
+        ]
+        return wyniki
+
     def _schema_problems(
         model_class,
     ) -> list[str]:
@@ -325,9 +572,9 @@ if __name__ == "__main__":
         return odrzucony
 
     def manual_test():
-        """Składa przykładową mapę robota 02 i przykładowy plan, zapisuje je do JSON, wczytuje z powrotem, sprawdza schemat planu i wypisuje wynik.
+        """Składa przykładową mapę robota 02, plan i notatkę analityka, zapisuje je do JSON, wczytuje z powrotem, sprawdza schematy i wypisuje wynik.
 
-        Po co: potwierdzenie, że mapa projektu i plan przechodzą zapis i odczyt bez utraty danych, a schemat planu nadaje się dla modelu.
+        Po co: potwierdzenie, że mapa projektu, plan i notatka przechodzą zapis i odczyt bez utraty danych, a schematy planu i notatki nadają się dla modelu.
         """
         project_map = _build_example_project_map()
         project_map_json, is_equal = _round_trip(project_map)
@@ -340,7 +587,17 @@ if __name__ == "__main__":
         brakujace_odrzucone = _plan_missing_fields_rejected()
         print(f"\nProblemy schematu JSON klasy Plan (anyOf, pola bez opisu): {problemy_planu}")
         print(f"Plan bez wymaganych pól odrzucony przy odczycie: {brakujace_odrzucone}")
-        zgodne = is_equal and plan_zgodny and not problemy_planu and brakujace_odrzucone
+        notatka = _build_example_note()
+        print("=== ModuleNote (przetwarzanie.py, ułożona ręcznie) ===\n")
+        print(notatka.model_dump_json(indent=2))
+        print()
+        sprawdzenia_notatki = _note_checks(notatka)
+        notatka_zgodna = True
+        for opis, zgodne_sprawdzenie in sprawdzenia_notatki:
+            print(f"  {opis}: {zgodne_sprawdzenie}")
+            if not zgodne_sprawdzenie:
+                notatka_zgodna = False
+        zgodne = is_equal and plan_zgodny and not problemy_planu and brakujace_odrzucone and notatka_zgodna
         print(f"\nzgodne z oczekiwaniem: {zgodne}")
 
     manual_test()
