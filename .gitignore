@@ -163,6 +163,9 @@ venv/
 *.crt
 .env*
 
+# Przewodnik testowy z python -m dev_agents.render (nadpisywany przy każdym uruchomieniu)
+/guide_test.html
+
 # Pliki systemowe Windows i pliki blokad Office
 Thumbs.db
 desktop.ini

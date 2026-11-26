@@ -1,0 +1,103 @@
+{#- Układ przewodnika dev-agents (wzorzec: dev_log/guide_mockup.html).
+    Dane przygotowuje render.py: project_name, project_root, generated_at, nav (zakładki do menu), tabs (zakładki
+    z nagłówkiem, lead i sekcjami w kolejności z guide_template.yaml), cards (karty „jak czytać”), css, js.
+    Każda sekcja ma state: content (blok z treścią), missing („nie wynika z kodu”) albo pending (typ bloku
+    dochodzi w kolejnym kroku planu). Escapowanie jest zawsze włączone - treść od agentów jest tekstem. -#}
+{%- macro block_text(block) -%}
+{%- for paragraph in block.paragraphs %}
+ <p>{{ paragraph }}</p>
+{%- endfor %}
+{%- endmacro -%}
+
+{%- macro block_list(block) -%}
+ <ul class="ul">
+{%- for item in block.items %}
+  <li>{{ item }}</li>
+{%- endfor %}
+ </ul>
+{%- endmacro -%}
+
+{%- macro io_items(items) -%}
+{%- for item in items %}
+<p class="note"><code>{{ item.name }}</code>{% if item.description %} - {{ item.description }}{% endif %}{% if item.location %} <span class="src"><code>{{ item.location }}</code></span>{% endif %}</p>
+{%- endfor %}
+{%- endmacro -%}
+
+{%- macro block_io(block, core_title, core_text) -%}
+ <div class="io">
+  <div class="box"><h3>Wejście</h3>{{ io_items(block.inputs) }}</div>
+  <div class="ar"></div>
+  <div class="core"><b>{{ core_title }}</b><span>{{ core_text }}</span></div>
+  <div class="ar"></div>
+  <div class="box"><h3>Wyjście</h3>{{ io_items(block.outputs) }}</div>
+ </div>
+{%- endmacro -%}
+
+{%- macro block_cards(cards) -%}
+ <p class="note">Zacznij od tej zakładki: po niej uruchomisz robota. Potem diagram przepływu: po nim opowiesz, co robot robi. Resztę czytaj, gdy masz konkretne zadanie.</p>
+ <div class="cards">
+{%- for card in cards %}
+  <a href="#{{ card.id }}"><em>{{ card.label }}</em><b>{{ card.title }}</b><span>{{ card.text }}</span></a>
+{%- endfor %}
+ </div>
+{%- endmacro -%}
+
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ project_name }} - przewodnik dla dewelopera</title>
+<style>
+{{ css | safe }}
+</style>
+</head>
+<body>
+<aside>
+ <div class="brand">{{ project_name }}</div>
+ <div class="sub">Przewodnik dla dewelopera</div>
+ <nav id="nav">
+{%- for tab in nav %}
+  <a href="#{{ tab.id }}"><i></i>{{ tab.title }}</a>
+{%- endfor %}
+ </nav>
+ <div class="meta">
+  <p>Wygenerowano: {{ generated_at }} przez dev-agents.</p>
+  <p>Projekt: <code>{{ project_root }}</code></p>
+  <p>Oznaczenie <span class="unc">wywnioskowane</span> = informacja wynika z analizy kodu, ale nie jest w nim zapisana wprost. Sprawdź przed poleganiem na niej.</p>
+ </div>
+</aside>
+
+<main>
+<div id="tip" hidden></div>
+{% for tab in tabs %}
+<section class="tab" id="{{ tab.id }}"{% if not loop.first %} hidden{% endif %}>
+ <h1>{{ tab.heading }}</h1>
+{%- for paragraph in tab.lead %}
+ <p class="lead">{{ paragraph }}</p>
+{%- endfor %}
+{% for section in tab.sections %}
+ <h2 id="s-{{ section.id }}">{{ section.title }}</h2>
+{%- if section.state == "missing" %}
+ <p class="note">Nie wynika z kodu.</p>
+{%- elif section.state == "pending" %}
+ <p class="note"><span class="ph">[blok typu {{ section.type }}: dochodzi w kolejnym kroku planu]</span></p>
+{%- elif section.type == "text" %}
+{{ block_text(section.block) }}
+{%- elif section.type == "list" %}
+{{ block_list(section.block) }}
+{%- elif section.type == "io" %}
+{{ block_io(section.block, project_name, technology_line) }}
+{%- elif section.type == "cards" %}
+{{ block_cards(cards) }}
+{%- endif %}
+{% endfor %}
+</section>
+{% endfor %}
+</main>
+
+<script>
+{{ js | safe }}
+</script>
+</body>
+</html>
