@@ -12,7 +12,8 @@ Co robi: definiuje RunState - słownik (TypedDict) z polami wspólnymi dla całe
     tab_id       - id zakładki do napisania; wpisuje je do ładunku Send graf (krok 56), nie węzły; czyta writer_node,
     tabs         - zakładki napisane przez pisarzy (wynik węzłów writer, krok 55); pole z reducerem operator.add:
                    każdy pisarz zwraca listę z jedną zakładką, a LangGraph skleja listy w jedną,
-    content      - cała treść przewodnika (wynik węzła assemble, krok 56): diagram i zakładki w kolejności szablonu.
+    content      - cała treść przewodnika (wynik węzła assemble, krok 56): diagram i zakładki w kolejności szablonu,
+    guide_path   - ścieżka zapisanego guide.html (wynik węzła finalize, krok 57).
 Kolejne etapy (diagram, treść przewodnika) dopisują tu swoje pola w swoich krokach.
 
 Dlaczego istnieje: w LangGraph węzeł dostaje stan i zwraca tylko te pola, które zmienia - słownik z polami
@@ -48,3 +49,4 @@ class RunState(typing.TypedDict, total=False):
     tab_id: str
     tabs: typing.Annotated[list[_content.GuideTab], operator.add]
     content: _content.GuideContent
+    guide_path: str

@@ -1,6 +1,6 @@
 """Graf agentów (LangGraph): skan projektu, plan pracy, równoległa analiza jednostek.
 
-Co robi: buduje graf START -> scan -> planner -> (analyst x N, równolegle) -> flow_writer -> plan_tabs -> (writer x M, równolegle) -> assemble -> END. Węzeł scan woła scanner.build_project_map na projekcie ze stanu
+Co robi: buduje graf START -> scan -> planner -> (analyst x N, równolegle) -> flow_writer -> plan_tabs -> (writer x M, równolegle) -> assemble -> finalize -> END. Węzeł scan woła scanner.build_project_map na projekcie ze stanu
 (project_path) z ustawieniami skanowania z kontekstu (runtime.context.config.scan) i dopisuje do stanu
 project_map. Węzeł niczego nie zapisuje na dysku - zapis wyników należy do wołającego (main.py, krok 44).
 Pracę węzła owija Stage z progress.py: linie "scan: start" i "scan: gotowe w X s - wynik" (albo "BŁĄD po X s")
@@ -17,6 +17,7 @@ Po diagramie węzeł plan_tabs (kod, bez modelu) wpisuje do stanu tab_ids: zakł
 krawędź warunkowa dispatch_writers wysyła Send("writer", ładunek z tab_id) na każdą z nich, a węzeł writer
 (agents/writer.py, krok 55) pisze zakładkę i zapisuje tabs/<zakładka>.json. Węzeł assemble (assemble.py, krok 56) czeka
 na wszystkich pisarzy, składa treść przewodnika w kolejności szablonu, sprawdza kompletność i zapisuje guide_content.json.
+Na końcu węzeł finalize (finalize.py, krok 57) renderuje treść do guide.html i dopisuje do stanu guide_path.
 
 Dlaczego istnieje: kolejne etapy (analitycy, autor diagramu, pisarze, recenzent) dołączamy do tego
 szkieletu po jednym - najpierw uczymy się LangGraph na grafie bez modelu. Graf przyjmuje stan (RunState)
@@ -42,7 +43,7 @@ Test ręczny (z katalogu głównego repo; wymaga zainstalowanego langgraph, bez 
         sprawdza linie postępu (scan, planner, analityk dla każdej jednostki, flow_writer: start i koniec z czasem), to, że plan
         obejmuje wszystkie jednostki kodu i trafił do plan.json w magazynie tymczasowym, oraz że notatek jest tyle
         co zadań, każda jednostka ma notatkę w stanie i w notes/<jednostka>.json, a diagram jest spójny i zapisany jako flow.json, a pisarzy było tylu co zakładek z sekcjami dla pisarza (każda zakładka raz, tabs/<zakładka>.json zgodne ze stanem),
-        treść przewodnika ma zakładki w kolejności szablonu i jest zapisana jako guide_content.json; na końcu
+        treść przewodnika ma zakładki w kolejności szablonu i jest zapisana jako guide_content.json, a guide.html z guide_path istnieje w magazynie; na końcu
         "zgodne z oczekiwaniem: True".
         Jeśli w środowisku nie ma zmiennych z kluczem i adresem modeli (nazwy w config.yaml), test ustawia
         atrapy tylko dla tego procesu - prawdziwe modele nie są wołane.
@@ -61,6 +62,7 @@ import dev_agents.agents.writer as _writer
 import dev_agents.assemble as _assemble
 import dev_agents.config as _config
 import dev_agents.context as _context
+import dev_agents.finalize as _finalize
 import dev_agents.progress as _progress
 import dev_agents.guide_template as _template
 import dev_agents.scanner as _scanner
@@ -157,7 +159,7 @@ def run_config(
 
 
 def build_graph():
-    """Buduje i kompiluje graf START -> scan -> planner -> analyst (po jednym na zadanie, równolegle) -> flow_writer -> plan_tabs -> writer (po jednym na zakładkę, równolegle) -> assemble -> END; zwraca graf gotowy do invoke(stan, context=RunContext, config=run_config(...)).
+    """Buduje i kompiluje graf START -> scan -> planner -> analyst (po jednym na zadanie, równolegle) -> flow_writer -> plan_tabs -> writer (po jednym na zakładkę, równolegle) -> assemble -> finalize -> END; zwraca graf gotowy do invoke(stan, context=RunContext, config=run_config(...)).
 
     Po co: jedno miejsce z układem grafu - kolejne kroki planu dopisują tu węzły i krawędzie.
     """
@@ -176,7 +178,9 @@ def build_graph():
     budowniczy.add_conditional_edges("plan_tabs", dispatch_writers, ["writer"])
     budowniczy.add_node("assemble", _assemble.assemble_node)
     budowniczy.add_edge("writer", "assemble")
-    budowniczy.add_edge("assemble", END)
+    budowniczy.add_node("finalize", _finalize.finalize_node)
+    budowniczy.add_edge("assemble", "finalize")
+    budowniczy.add_edge("finalize", END)
     graf = budowniczy.compile()
     return graf
 
@@ -444,6 +448,16 @@ if __name__ == "__main__":
             and len(linie_assemble) == 2
             and "problemów: 0" in linie_assemble[1]
         )
+        sciezka_przewodnika = stan.get("guide_path", "")
+        przewodnik_zgodny = sciezka_przewodnika == context.store.path("guide.html") and os.path.isfile(sciezka_przewodnika)
+        if przewodnik_zgodny:
+            with open(sciezka_przewodnika, encoding="utf-8") as plik:
+                przewodnik_zgodny = mapa.project_name in plik.read()
+        linie_finalize = []
+        for linia_postepu in nowe_linie:
+            if "] finalize: " in linia_postepu:
+                linie_finalize.append(linia_postepu)
+        przewodnik_zgodny = przewodnik_zgodny and len(linie_finalize) == 2 and "] finalize: gotowe w " in linie_finalize[1]
         zgodne = (
             mapa == bezposrednio
             and diagram_zgodny
@@ -451,6 +465,7 @@ if __name__ == "__main__":
             and zakladki_zapisane
             and postep_pisarzy
             and tresc_zgodna
+            and przewodnik_zgodny
             and notatki_zgodne
             and notatki_zapisane
             and postep_analitykow
@@ -480,6 +495,7 @@ if __name__ == "__main__":
             f"  tabs/<zakładka>.json w magazynie == zakładki ze stanu: {zakladki_zapisane}",
             f"  pisarze: start i koniec z czasem dla każdej zakładki: {postep_pisarzy}",
             f"  treść: zakładki w kolejności szablonu, diagram ze stanu, guide_content.json, assemble bez problemów: {tresc_zgodna}",
+            f"  guide.html w magazynie (guide_path), z nazwą projektu, linie postępu finalize: {przewodnik_zgodny}",
         ]
         for linia_postepu in nowe_linie:
             linie.append(f"    {linia_postepu}")
