@@ -111,9 +111,11 @@ class Technology:
         Po co: z importów powstaje graf zależności modułów i kolejność czytania, wykrywanie frameworków
         i sekcja zależności w przewodniku - także dla frameworków spoza plików projektu.
 
-        Wynik: słownik z trzema kluczami (wartości: pełne nazwy, bez powtórzeń, posortowane):
-            "internal" - moduły i pliki z tego projektu (np. "src.report"),
-            "external" - biblioteki i frameworki spoza projektu (np. "selenium.webdriver.common.by"),
+        Wynik: słownik z trzema kluczami (wartości bez powtórzeń, posortowane):
+            "internal" - ŚCIEŻKI WZGLĘDNE plików tego projektu, od których plik zależy (np. "src/report.py",
+                         "Framework/InitAllSettings.xaml") - technologia sama zamienia swoje odwołania na pliki,
+                         dzięki czemu graf zależności w rdzeniu łączy pliki bez wiedzy o technologii,
+            "external" - pełne nazwy bibliotek i frameworków spoza projektu (np. "selenium.webdriver.common.by"),
             "stdlib"   - elementy standardowo dostępne w technologii (w Pythonie biblioteka standardowa,
                          np. "os"); pusta lista, gdy w danej technologii to rozróżnienie nie ma sensu.
         """

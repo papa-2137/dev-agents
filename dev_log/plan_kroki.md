@@ -81,8 +81,8 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 14. Przenieś z doc-agents: `technologies/python.py` - importy**
 - **Funkcja:** podział importów na moduły projektu, biblioteki zewnętrzne i standardowe - źródło grafu zależności i rozpoznawania frameworków.
-- **Robimy:** `imports()` z trzema grupami i pełnymi nazwami modułów.
-- **Sprawdzamy:** importy `main.py` robota (`roboforge` w zewnętrznych, `src.*` w modułach projektu).
+- **Robimy:** `imports()` z trzema grupami: `internal` jako **ścieżki względne plików projektu** (technologia sama zamienia odwołania na pliki - w Pythonie `src.report` → `src/report.py`, w UiPath ścieżka z *Invoke Workflow File*), `external` i `stdlib` jako pełne nazwy modułów; do `stdlib` należą też moduły usunięte z biblioteki standardowej w Pythonie 3.12-3.13 (stała w kodzie). Zdanie o `internal` w kontrakcie `base.py` zaktualizowane.
+- **Sprawdzamy:** importy `Main.py` robota 01 (`roboforge.*` w zewnętrznych, `src/*.py` w plikach projektu); pakiet tymczasowy - import względny, importy w funkcji i w `try`, `telnetlib` w `stdlib`.
 
 **Krok 15. `technologies/python.py` - szkielet sterowania i miary złożoności**
 - **Funkcja:** mapa rozgałęzień długich funkcji i liczby mówiące, gdzie kod jest trudny - liczone przez kod, tanie w tokenach, bez zgadywania. Podstawa obsługi robotów „spaghetti”.
@@ -151,7 +151,7 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 28. `dependencies.py` - graf zależności i kolejność czytania**
 - **Funkcja:** dane do grafu zależności między modułami i szkic kolejności czytania kodu, z importów, bez modelu.
-- **Robimy:** schemat `DependencyGraph` (węzły = moduły projektu, punkt wejścia oznaczony; krawędzie = importy wewnętrzne) w `schemas.py`; kolejność czytania: od punktu wejścia w głąb, cykle bez zawieszenia.
+- **Robimy:** schemat `DependencyGraph` (węzły = pliki projektu, punkt wejścia oznaczony; krawędzie = zależności `internal` z `imports()` technologii - pary ścieżek, bez wiedzy o technologii) w `schemas.py`; kolejność czytania: od punktu wejścia w głąb, cykle bez zawieszenia.
 - **Sprawdzamy:** graf robota (`main.py` → moduły `src/`) i lista kolejności; sztuczny cykl dwóch modułów nie zawiesza obliczeń.
 
 **Krok 29. `main.py` - skan i zapis wyników**

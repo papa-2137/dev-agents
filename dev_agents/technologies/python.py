@@ -1,10 +1,12 @@
 """Obsługa technologii Python: implementacja kontraktu Technology dla projektów w Pythonie.
 
-Co robi: na tym etapie buduje szkielet pliku .py (outline) - spis treści bez ciał funkcji: liczba linii,
-opis modułu, stałe, zmienne modułu, kod wykonywany poza funkcjami, klasy i funkcje z sygnaturami,
-pierwszym akapitem docstringu i zakresem linii. Szkielet pokazuje strukturę także kodu "spaghetti":
-od razu widać funkcję na kilkaset linii albo logikę luzem poza funkcjami. Pozostałe metody kontraktu
-dochodzą w kolejnych krokach.
+Co robi: na tym etapie dla pliku .py buduje:
+    - szkielet (outline) - spis treści bez ciał funkcji: liczba linii, opis modułu, stałe, zmienne modułu,
+      kod wykonywany poza funkcjami, klasy i funkcje z sygnaturami, pierwszym akapitem docstringu i zakresem
+      linii; pokazuje strukturę także kodu "spaghetti" (funkcja na kilkaset linii, logika luzem),
+    - zależności (imports) w trzech grupach: pliki projektu (ścieżki względne - z nich powstaje graf
+      zależności), biblioteki zewnętrzne i biblioteka standardowa (nazwy modułów).
+Pozostałe metody kontraktu dochodzą w kolejnych krokach.
 
 Dlaczego istnieje: cała wiedza o Pythonie siedzi w tym module, a rdzeń towaru woła tylko metody kontraktu
 (AGENTS.md, reguła 7). To jedyny moduł towaru, który importuje `ast` (parser Pythona z biblioteki
@@ -17,15 +19,17 @@ Rola: moduł technologii, używany przez rdzeń towaru przez kontrakt z base.py.
 
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.technologies.python
-        szkielety: robot 01 (Main.py, src/parabank_page.py), robot 02 (przetwarzanie.py), plik ze ścieżką
-        Windows w zwykłym napisie (z liczbą ostrzeżeń - oczekiwane 0) i plik w składni Pythona 2
-        (oczekiwana linia z przyczyną zamiast szkieletu)
+        szkielety i importy: robot 01 (Main.py, src/parabank_page.py), robot 02 (przetwarzanie.py), plik ze
+        ścieżką Windows w zwykłym napisie (z liczbą ostrzeżeń - oczekiwane 0), pakiet tymczasowy z importem
+        względnym, importami w funkcji i w try oraz modułem usuniętym z biblioteki standardowej, plik
+        w składni Pythona 2 (linia z przyczyną zamiast szkieletu, puste grupy importów)
     python -m dev_agents.technologies.python <katalog projektu> <plik względny do katalogu>
-        szkielet jednego, dowolnego pliku
+        szkielet i importy jednego, dowolnego pliku
 """
 
 import ast
 import os
+import sys
 import warnings
 
 import dev_agents.files as _files
@@ -322,6 +326,136 @@ def _syntax_error_outline(
     return opis_bledu
 
 
+# --- Importy ---
+
+
+def _module_file(
+    root: str,
+    module: str,
+) -> str:
+    """Zwraca ścieżkę względną pliku projektu dla pełnej nazwy modułu (np. 'src.report' -> 'src/report.py', pakiet -> '<pakiet>/__init__.py'); "" gdy takiego pliku nie ma.
+
+    Po co: kontrakt każe zwracać zależności wewnętrzne jako ścieżki plików - dzięki temu graf zależności
+    w rdzeniu łączy pliki i nie musi wiedzieć, jak Python zamienia nazwy modułów na pliki.
+
+    Uwaga: pakiet bez __init__.py (namespace package) nie ma pliku - import samego takiego pakietu nie daje
+    ścieżki; importy jego modułów (np. 'src.report') dają.
+    """
+    sciezka_bazowa = "/".join(module.split("."))
+    kandydaci = [sciezka_bazowa + ".py", sciezka_bazowa + "/__init__.py"]
+    for kandydat in kandydaci:
+        if os.path.isfile(os.path.join(root, kandydat)):
+            return kandydat
+    return ""
+
+
+def _is_project_module(
+    root: str,
+    module: str,
+) -> bool:
+    """Sprawdza, czy moduł o podanej pełnej nazwie (np. 'src.report') istnieje w katalogu projektu jako plik .py albo katalog.
+
+    Po co: od tego zależy, czy import trafi do plików projektu, czy do bibliotek.
+
+    Uwaga: nie rozpoznaje modułów instalowanych w trybie edytowalnym (pip install -e) - takie moduły trafiają
+    do bibliotek zewnętrznych.
+    """
+    sciezka_bazowa = os.path.join(root, *module.split("."))
+    czy_istnieje = os.path.isfile(sciezka_bazowa + ".py") or os.path.isdir(sciezka_bazowa)
+    return czy_istnieje
+
+
+def _resolve_relative(
+    path: str,
+    level: int,
+    module: str | None,
+) -> str:
+    """Zamienia import względny na pełną nazwę modułu, np. w src/x.py: 'from .report import y' -> 'src.report'.
+
+    Po co: jednolite, pełne nazwy modułów niezależnie od tego, czy autor kodu pisał importy względne, czy bezwzględne.
+    """
+    czesci_pakietu = []
+    katalog = os.path.dirname(path.replace("\\", "/"))
+    if katalog:
+        czesci_pakietu = katalog.split("/")
+    if level > 1:
+        czesci_pakietu = czesci_pakietu[: len(czesci_pakietu) - (level - 1)]
+    if module:
+        czesci_pakietu = czesci_pakietu + module.split(".")
+    niepuste = []
+    for czesc in czesci_pakietu:
+        if czesc:
+            niepuste.append(czesc)
+    pelna_nazwa = ".".join(niepuste)
+    return pelna_nazwa
+
+
+def _imported_modules(
+    tree: ast.Module,
+    root: str,
+    path: str,
+) -> list[tuple[str, bool]]:
+    """Zbiera wszystkie importy pliku (także wewnątrz funkcji i try/except) jako pary (pełna nazwa modułu, czy względny).
+
+    Po co: stary kod RPA często importuje wewnątrz funkcji albo warunkowo - przejście po całym drzewie łapie
+    te importy. Przy 'from pakiet import nazwa' dokłada '.nazwa' tylko wtedy, gdy to podmoduł istniejący
+    w projekcie (np. 'from src import report' -> 'src.report'); funkcji i klas z importu nie traktuje jak modułów.
+    """
+    moduly = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                moduly.append((alias.name, False))
+        elif isinstance(node, ast.ImportFrom):
+            czy_wzgledny = node.level > 0
+            baza = ""
+            if node.module:
+                baza = node.module
+            if czy_wzgledny:
+                baza = _resolve_relative(path, node.level, node.module)
+            podmoduly_projektu = []
+            for alias in node.names:
+                nazwa = alias.name
+                if baza:
+                    nazwa = f"{baza}.{alias.name}"
+                if _is_project_module(root, nazwa):
+                    podmoduly_projektu.append(nazwa)
+            if len(podmoduly_projektu) > 0:
+                for nazwa in podmoduly_projektu:
+                    moduly.append((nazwa, czy_wzgledny))
+            elif baza:
+                moduly.append((baza, czy_wzgledny))
+    return moduly
+
+
+def _classify_module(
+    root: str,
+    module: str,
+    is_relative: bool,
+) -> str:
+    """Przypisuje moduł do grupy: internal (z projektu), stdlib (biblioteka standardowa) albo external (reszta).
+
+    Po co: podział oddziela prawdziwe zależności do zainstalowania (external) od biblioteki standardowej
+    i od współpracy między plikami projektu - to trafia wprost do przewodnika.
+
+    Uwaga: najpierw sprawdzany jest projekt - własny plik o nazwie modułu standardowego (np. logging.py)
+    przesłania moduł standardowy. Grupę stdlib wyznacza lista Pythona, na którym działa towar, uzupełniona
+    o moduły usunięte w Pythonie 3.12-3.13 - robot działający na starszym Pythonie może ich używać,
+    a nie są to zależności do zainstalowania.
+    """
+    usuniete_ze_stdlib = [
+        "aifc", "asynchat", "asyncore", "audioop", "cgi", "cgitb", "chunk", "crypt", "distutils", "imghdr",
+        "imp", "lib2to3", "mailcap", "msilib", "nis", "nntplib", "ossaudiodev", "pipes", "smtpd", "sndhdr",
+        "spwd", "sunau", "telnetlib", "uu", "xdrlib",
+    ]
+    pakiet_glowny = module.split(".")[0]
+    if is_relative or _is_project_module(root, pakiet_glowny):
+        return "internal"
+    if pakiet_glowny in sys.stdlib_module_names or pakiet_glowny in usuniete_ze_stdlib:
+        return "stdlib"
+    return "external"
+
+
 # --- Technologia ---
 
 
@@ -353,11 +487,47 @@ class PythonTechnology(_base.Technology):
         szkielet = _build_outline(drzewo, len(tekst.splitlines()))
         return szkielet
 
+    def imports(
+        self,
+        root: str,
+        path: str,
+    ) -> dict[str, list[str]]:
+        """Czyta plik .py i zwraca jego zależności: internal - ścieżki względne plików projektu, external i stdlib - nazwy modułów; bez powtórzeń, posortowane.
+
+        Po co: implementacja kontraktu Technology.imports() dla Pythona - z niej powstaje graf zależności,
+        wykrywanie frameworków i sekcja zależności w przewodniku.
+
+        Uwaga: przy błędzie składni zwraca puste grupy (przyczynę pokazuje outline() tego pliku). Nie wykrywa
+        importów dynamicznych (importlib.import_module, __import__) - ich nazwy znane są dopiero po
+        uruchomieniu kodu.
+        """
+        grupy = {"internal": [], "external": [], "stdlib": []}
+        tekst = _files.read_text_safe(os.path.join(root, path))
+        try:
+            drzewo = _parse_python(tekst)
+        except SyntaxError:
+            return grupy
+
+        for modul, czy_wzgledny in _imported_modules(drzewo, root, path):
+            grupa = _classify_module(root, modul, czy_wzgledny)
+            wpis = modul
+            if grupa == "internal":
+                wpis = _module_file(root, modul)
+                if wpis == "":
+                    continue
+            if wpis not in grupy[grupa]:
+                grupy[grupa].append(wpis)
+
+        importy_w_grupach = {}
+        for nazwa_grupy, wpisy in grupy.items():
+            importy_w_grupach[nazwa_grupy] = sorted(wpisy)
+        return importy_w_grupach
+
 
 # --- Test ręczny ---
 
 if __name__ == "__main__":
-    import sys
+    import shutil
     import tempfile
 
     def _outline_with_warning_count(
@@ -398,16 +568,36 @@ if __name__ == "__main__":
     def _write_temp_files(
         directory: str,
     ) -> dict[str, str]:
-        """Zapisuje w katalogu tymczasowym dwa pliki testowe i zwraca ich treść (nazwa pliku -> tekst).
+        """Zapisuje w katalogu tymczasowym pliki testowe i zwraca ich treść (ścieżka względna -> tekst).
 
-        Po co: przypadki ścieżki Windows w zwykłym napisie i składni Pythona 2 bez dokładania plików do repo.
+        Po co: przypadki ścieżki Windows w zwykłym napisie, importów w pakiecie (względny, w funkcji, w try,
+        moduł usunięty z biblioteki standardowej) i składni Pythona 2 - bez dokładania plików do repo.
         """
         tresci = {
             "sciezka_windows.py": 'KATALOG = "C:\\nowy\\folder\\dane"\n\n\ndef start():\n    print(KATALOG + "\\d")\n',
+            "pakiet/__init__.py": "",
+            "pakiet/narzedzia.py": "def pomoc():\n    return 1\n",
+            "pakiet/glowny.py": (
+                "import os\n"
+                "from .narzedzia import pomoc\n"
+                "from . import narzedzia\n"
+                "\n"
+                "try:\n"
+                "    import telnetlib\n"
+                "except ImportError:\n"
+                "    telnetlib = None\n"
+                "\n"
+                "\n"
+                "def wyslij():\n"
+                "    import requests\n"
+                "    return requests\n"
+            ),
             "python2.py": 'import os\n\nprint "start robota"\n',
         }
-        for nazwa, tresc in tresci.items():
-            with open(os.path.join(directory, nazwa), "w", encoding="utf-8") as plik:
+        for sciezka, tresc in tresci.items():
+            pelna_sciezka = os.path.join(directory, sciezka)
+            os.makedirs(os.path.dirname(pelna_sciezka), exist_ok=True)
+            with open(pelna_sciezka, "w", encoding="utf-8") as plik:
                 plik.write(tresc)
         return tresci
 
@@ -427,6 +617,7 @@ if __name__ == "__main__":
             ("robot 01", robot_01, "src/parabank_page.py"),
             ("robot 02", robot_02, "przetwarzanie.py"),
             ("ścieżka Windows w zwykłym napisie", temp_dir, "sciezka_windows.py"),
+            ("pakiet tymczasowy", temp_dir, "pakiet/glowny.py"),
             ("składnia Pythona 2", temp_dir, "python2.py"),
         ]
         return przypadki
@@ -436,29 +627,37 @@ if __name__ == "__main__":
         root: str,
         path: str,
         outline_text: str,
+        imports: dict[str, list[str]],
         warning_count: int,
         plain_warning_count: int,
     ) -> None:
-        """Wypisuje szkielet jednego pliku z nagłówkiem i liczbą ostrzeżeń SyntaxWarning.
+        """Wypisuje szkielet i importy jednego pliku z nagłówkiem oraz liczbą ostrzeżeń SyntaxWarning.
 
         Po co: czytelny wynik testu; tylko formatuje gotowe dane. plain_warning_count < 0 oznacza brak porównania.
         """
         print(f"=== {title}: {os.path.join(root, path)} ===")
         print(outline_text)
+        print("\nImporty:")
+        for grupa, wpisy in imports.items():
+            opis_wpisow = "(brak)"
+            if len(wpisy) > 0:
+                opis_wpisow = ", ".join(wpisy)
+            print(f"  {grupa}: {opis_wpisow}")
         komunikat = f"Ostrzeżenia SyntaxWarning na ekranie: {warning_count}"
         if plain_warning_count >= 0:
             komunikat += f" (zwykłe ast.parse dałoby: {plain_warning_count})"
         print(f"\n{komunikat}\n")
 
     def manual_test():
-        """Z argumentami <katalog> <plik> - szkielet jednego pliku; bez argumentów - szkielety plików robotów testowych i plików tymczasowych.
+        """Z argumentami <katalog> <plik> - szkielet i importy jednego pliku; bez argumentów - plików robotów testowych i plików tymczasowych.
 
-        Po co: sprawdzenie szkieletu na prawdziwym kodzie, wyciszenia SyntaxWarning i obsługi błędu składni.
+        Po co: sprawdzenie szkieletu i importów na prawdziwym kodzie, wyciszenia SyntaxWarning i obsługi błędu składni.
         """
         technology = PythonTechnology()
         if len(sys.argv) == 3:
             szkielet, liczba = _outline_with_warning_count(technology, sys.argv[1], sys.argv[2])
-            _print_case("plik", sys.argv[1], sys.argv[2], szkielet, liczba, -1)
+            importy = technology.imports(sys.argv[1], sys.argv[2])
+            _print_case("plik", sys.argv[1], sys.argv[2], szkielet, importy, liczba, -1)
             return
 
         temp_dir = tempfile.mkdtemp()
@@ -469,13 +668,12 @@ if __name__ == "__main__":
                     print(f"=== {opis}: brak pliku {os.path.join(root, path)} - pomijam ===\n")
                     continue
                 szkielet, liczba = _outline_with_warning_count(technology, root, path)
+                importy = technology.imports(root, path)
                 liczba_bez_wyciszenia = -1
                 if path == "sciezka_windows.py":
                     liczba_bez_wyciszenia = _plain_parse_warning_count(tresci[path])
-                _print_case(opis, root, path, szkielet, liczba, liczba_bez_wyciszenia)
+                _print_case(opis, root, path, szkielet, importy, liczba, liczba_bez_wyciszenia)
         finally:
-            for nazwa in os.listdir(temp_dir):
-                os.remove(os.path.join(temp_dir, nazwa))
-            os.rmdir(temp_dir)
+            shutil.rmtree(temp_dir)
 
     manual_test()
