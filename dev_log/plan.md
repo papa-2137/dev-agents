@@ -109,7 +109,8 @@ dev-agents/
 │   ├── prompts.py                # renderowanie promptów
 │   ├── knowledge.py              # spis i odczyt bazy wiedzy
 │   ├── guide_template.py         # wczytanie i sprawdzenie guide_template.yaml
-│   ├── schemas.py                # mapa projektu, graf zależności, plan, notatka, diagram, treść przewodnika, recenzja
+│   ├── schemas.py                # mapa projektu (z grafem zależności), plan, notatka, recenzja
+│   ├── guide_content.py          # treść przewodnika i diagram przepływu (wyjście agentów, wejście renderera)
 │   ├── scanner.py                # pliki, role, sekrety, frameworki, jednostki i odwołania, zależności, konfiguracja i pliki uruchamiające jako tekst → ProjectMap
 │   ├── dependencies.py           # graf zależności modułów i kolejność czytania (bez modelu)
 │   ├── flow.py                   # sprawdzenie spójności diagramu i wyliczenie układu (bez modelu)
