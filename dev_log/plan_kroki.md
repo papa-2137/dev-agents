@@ -6,7 +6,7 @@ Każdy krok: **Funkcja** (co i po co), **Robimy**, **Sprawdzamy**. Roboty testow
 
 ---
 
-Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy (krok 8) · **M3** mapa projektu, zamaskowana konfiguracja i graf zależności bez modelu (krok 29) · **M4** wygląd przewodnika zatwierdzony na danych bez modelu (krok 39) · **M5** pierwszy pełny przewodnik z modelu (krok 59) · **M6** działa na mieście (krok 68).
+Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy (krok 8) · **M3** mapa projektu, konfiguracja i pliki uruchamiające jako tekst oraz graf zależności bez modelu (krok 29) · **M4** wygląd przewodnika zatwierdzony na danych bez modelu (krok 39) · **M5** pierwszy pełny przewodnik z modelu (krok 59) · **M6** działa na mieście (krok 68).
 
 ### Faza A - Fundament
 
@@ -107,10 +107,8 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 - **Robimy:** `scan.secret_patterns`, `scan.role_patterns` w configu (w tym rola `dependency` - np. `requirements*.txt`, `pyproject.toml`); kod wg technologii (`is_source`); pliki binarne tylko po wzorcach (rola `binary`), plik bez dopasowania → `other` - skaner nie otwiera żadnego pliku; nieznana nazwa roli w configu → błąd przy starcie.
 - **Sprawdzamy:** tabela `ścieżka | rola | rozmiar`; `client.pfx` → `secret`, `config.yml` → `config`, `requirements.txt` → `dependency`; w robocie 02 `run.bat` → `launcher`.
 
-**Krok 20. `masking.py` - maskowanie wartości wrażliwych w tekście**
-- **Funkcja:** hasło wpisane wprost w plik konfiguracyjny albo uruchamiający nigdy nie trafi do modelu ani do przewodnika - jedna prosta funkcja dla wszystkich formatów.
-- **Robimy:** `mask_sensitive(text, patterns)` - maskowanie liniowe: w liniach `klucz: wartość`, `klucz = wartość`, `"klucz": "wartość"`, `set KLUCZ=wartość`, `$env:KLUCZ = "wartość"` wartość klucza pasującego do `scan.sensitive_keys` zamieniana na `***`; klucze kończące się na `_env` nie są maskowane (wartość to nazwa zmiennej środowiskowej, nie hasło); wynik: tekst i liczba zamaskowanych wartości. Bez parserów formatów - plik z błędną składnią też jest maskowany.
-- **Sprawdzamy:** przykłady YAML, JSON, INI, `.bat`, `.ps1` z hasłem → `***`; `password_env: FAKE_PASSWD` bez zmian; linia bez klucza wrażliwego bez zmian.
+**Krok 20. (wycofany 2026-11-26) Maskowanie haseł w tekście**
+- **Funkcja:** wycofana decyzją użytkownika - hasło wpisane wprost w plik konfiguracyjny, uruchamiający albo w kod to błąd dewelopera, który ma być widoczny w przewodniku (agent wskazuje je jako ryzykowne miejsce), a nie ukryty. Pliki sekretów (`*.pfx`, `*.key`, `.env*`...) nadal trafiają do modelu wyłącznie jako metadane.
 
 **Krok 21. `scanner.py` - frameworki po ścieżkach i po pakietach**
 - **Funkcja:** odróżnienie kodu frameworku od kodu robota - także gdy framework jest zainstalowany jako pakiet (np. edytowalnie) i nie leży w projekcie. Rozszerzenie względem doc-agents.
@@ -127,16 +125,16 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 - **Robimy:** pliki o roli `dependency` czytane przez `files.read_text_safe` (UTF-16!) i zapisane dosłownie w `ProjectMap.dependency_files` (ścieżka + tekst). Bez metody technologii - wzorce w `scan.role_patterns`.
 - **Sprawdzamy:** mapa robota 01 zawiera czytelną treść `requirements.txt` z linią `-e git+...roboforge`; robot 02 - `openpyxl`, `requests`.
 
-**Krok 24. `scanner.py` - pliki konfiguracyjne i uruchamiające z maskowaniem (W2, W8)**
-- **Funkcja:** agenci dostają konfigurację robota i sposób jego uruchamiania (np. `run.bat`) w postaci tekstu, z zamaskowanymi hasłami - na tej podstawie opisują metryczkę, uruchomienie i dostępy.
-- **Robimy:** pliki o roli `config` i `launcher` (do `scan.max_text_file_kb`) czytane przez `files.read_text_safe`, maskowane `masking.mask_sensitive` i zapisane w `ProjectMap.text_files` (ścieżka, rola, zamaskowany tekst, liczba zamaskowanych wartości); większy plik - tylko metadane. Bez parserów i typów wpisów - znaczenie kluczy opisują agenci.
-- **Sprawdzamy:** `config.yml` robota 01 w mapie, `password_env: FAKE_PASSWD` widoczne; w kopii robota dopisany `password: abc123` → `password: ***`; `run.bat` robota 02 w mapie z treścią; uszkodzony YAML zapisany i zamaskowany bez błędu.
+**Krok 24. `scanner.py` - pliki konfiguracyjne i uruchamiające jako tekst (W2, W8)**
+- **Funkcja:** agenci dostają konfigurację robota i sposób jego uruchamiania (np. `run.bat`) w postaci tekstu - na tej podstawie opisują metryczkę, uruchomienie i dostępy.
+- **Robimy:** pliki o roli `config` i `launcher` (do `scan.max_text_file_kb`) czytane przez `files.read_text_safe` i zapisane dosłownie w `ProjectMap.text_files` (ścieżka, rola, tekst); większy plik - tylko metadane. Bez parserów, typów wpisów i maskowania - znaczenie kluczy opisują agenci, a hasło wpisane wprost wskazują jako ryzykowne miejsce.
+- **Sprawdzamy:** `config.yml` robota 01 i `run.bat` robota 02 w mapie z treścią; plik większy niż limit → tylko metadane; uszkodzony YAML zapisany bez błędu.
 
 **Krok 25. (wycofany 2026-11-26) Gdzie używane są klucze konfiguracji**
 - **Funkcja:** przejęta przez agentów - analityk wskazuje miejsca użycia kluczy w notatce (plik:linia z kodu z numerami linii, krok 49).
 
 **Krok 26. (wycofany 2026-11-26) Ustawienia zaszyte w kodzie**
-- **Funkcja:** przejęta przez agentów - analityk wypisuje w notatce ustawienia ze stałych w kodzie (adresy, ścieżki, nazwy zmiennych środowiskowych) z plikiem i linią (krok 49); hasło w stałej trafia do modelu, dlatego przewodnik pokazuje je zawsze jako `***` (reguła w promptach i sprawdzenie w `assemble`).
+- **Funkcja:** przejęta przez agentów - analityk wypisuje w notatce ustawienia ze stałych w kodzie (adresy, ścieżki, nazwy zmiennych środowiskowych) z plikiem i linią (krok 49); hasło wpisane wprost w stałą wskazuje jako ryzykowne miejsce.
 
 **Krok 27. `output.py` - wyniki w `dev_agents_doc/` analizowanego projektu**
 - **Funkcja:** bezpieczny zapis wyników w cudzym repozytorium: dokumentacja leży obok kodu, a narzędzie nigdy nie skasuje cudzych plików.
@@ -162,7 +160,7 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 31. `schemas.py` - treść przewodnika i diagram**
 - **Funkcja:** ogólny kształt treści, niezależny od konkretnych sekcji, oraz osobny, ścisły schemat diagramu przepływu.
-- **Robimy:** `FlowNode` (`id`, `kind`: `start`/`end`/`step`/`system`/`decision`, `label` - krótki opis biznesowo-techniczny, `description`, `module`, `functions`, `reads`, `writes`, `certain`), `FlowEdge` (`from`, `to`, `label`, `kind`: `normal`/`branch`/`loop`), `FlowGraph`; `GuideBlock` (`section_id` + pola zależne od typu: `paragraphs`, `items`, `steps`, `rows`, `terms`, `paths`, `recipes`, `code`, `config_items` - wpisy metryczki od modelu: plik albo „w kodzie” z plik:linia, klucz, wartość jak w zamaskowanym tekście, rodzaj - adres, ścieżka, zmienna środowiskowa, konto, przełącznik, inne -, znaczenie, używany w, oznaczenie „wywnioskowane”), `GuideTab`, `GuideContent`; `Field(description=...)` dla modelu.
+- **Robimy:** `FlowNode` (`id`, `kind`: `start`/`end`/`step`/`system`/`decision`, `label` - krótki opis biznesowo-techniczny, `description`, `module`, `functions`, `reads`, `writes`, `certain`), `FlowEdge` (`from`, `to`, `label`, `kind`: `normal`/`branch`/`loop`), `FlowGraph`; `GuideBlock` (`section_id` + pola zależne od typu: `paragraphs`, `items`, `steps`, `rows`, `terms`, `paths`, `recipes`, `code`, `config_items` - wpisy metryczki od modelu: plik albo „w kodzie” z plik:linia, klucz, wartość z pliku albo kodu, rodzaj - adres, ścieżka, zmienna środowiskowa, konto, przełącznik, inne -, znaczenie, używany w, oznaczenie „wywnioskowane”), `GuideTab`, `GuideContent`; `Field(description=...)` dla modelu.
 - **Sprawdzamy:** przykładowa treść i diagram (dane z makiety) złożone ręcznie, wydruk JSON i zgodność po odczycie.
 
 **Krok 32. `flow.py` - spójność i układ diagramu (W1)**
@@ -182,7 +180,7 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 35. `render.py` - bloki: metryczka, drzewo, zależności do skopiowania, ryzykowne miejsca (W2, W6, W8)**
 - **Funkcja:** fakty o projekcie wstawiane przez kod (drzewo, zależności, długość jednostek) i metryczka w stałym układzie.
-- **Robimy:** blok `config` (metryczka jak w makiecie) z `config_items` - w tej fazie na danych przykładowych, w fazie F od pisarza (krok 55): kafelki pogrupowane po rodzaju (systemy zewnętrzne, pliki, konta i zmienne środowiskowe, przełączniki), pod spodem tabela (klucz, wartość, znaczenie, używany w), `***` z czerwonym znacznikiem, „w kodzie” z plikiem i linią; brak konfiguracji → jedno zdanie. Blok `tree` z `ProjectMap` (role, sekrety „tylko metadane”, opisy po najechaniu - zaślepki do fazy F); blok `code` dla plików zależności; tabela „Ryzykowne miejsca” z jednostek dłuższych niż `analysis.long_unit_lines` (nowa sekcja w configu - tu po raz pierwszy potrzebna): jednostka, plik:linie, długość, komentarz (zaślepka - w fazie F od pisarza).
+- **Robimy:** blok `config` (metryczka jak w makiecie) z `config_items` - w tej fazie na danych przykładowych, w fazie F od pisarza (krok 55): kafelki pogrupowane po rodzaju (systemy zewnętrzne, pliki, konta i zmienne środowiskowe, przełączniki), pod spodem tabela (klucz, wartość, znaczenie, używany w), hasło wpisane wprost z czerwonym znacznikiem „hasło w pliku”, „w kodzie” z plikiem i linią; brak konfiguracji → jedno zdanie. Blok `tree` z `ProjectMap` (role, sekrety „tylko metadane”, opisy po najechaniu - zaślepki do fazy F); blok `code` dla plików zależności; tabela „Ryzykowne miejsca” z jednostek dłuższych niż `analysis.long_unit_lines` (nowa sekcja w configu - tu po raz pierwszy potrzebna): jednostka, plik:linie, długość, komentarz (zaślepka - w fazie F od pisarza).
 - **Sprawdzamy:** robot 02: „Ryzykowne miejsca” z `run()`, drzewo z `run.bat`; robot 01: drzewo i `requirements.txt` z prawdziwej `project_map.json` z kroku 29; metryczka z danych przykładowych jak w makiecie; pusta lista wpisów → zdanie o braku konfiguracji.
 
 **Krok 36. Diagram przepływu w HTML (W1, W3)**
@@ -247,7 +245,7 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 47. Agent planner (bez grafu)**
 - **Funkcja:** decyzja, które jednostki kodu analizować, w jakiej kolejności i które pliki wiedzy są potrzebne.
-- **Robimy:** `agents/planner.py` (czysta funkcja `plan()` + węzeł), prompty `planner/*`; planner dostaje mapę projektu: listę plików z rolami, jednostki z zakresami linii, odwołania między plikami, treść plików uruchamiających i konfiguracyjnych (zamaskowaną) - bez kodu źródłowego.
+- **Robimy:** `agents/planner.py` (czysta funkcja `plan()` + węzeł), prompty `planner/*`; planner dostaje mapę projektu: listę plików z rolami, jednostki z zakresami linii, odwołania między plikami, treść plików uruchamiających i konfiguracyjnych - bez kodu źródłowego.
 - **Sprawdzamy:** `python -m dev_agents.agents.planner` czyta `project_map.json` z `dev_agents_doc/` robota i wypisuje plan; dla robota 02 plan zaczyna od `run.bat` → `przetwarzanie.py` → `raport.py`.
 
 **Krok 48. Graf: scan → planner**
@@ -261,7 +259,7 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 - **Sprawdzamy:** ręcznie złożona notatka, wydruk JSON; notatka z pustymi punktami rozszerzeń przechodzi walidację.
 
 **Krok 50. Agent analityk (bez grafu)**
-- **Funkcja:** zrozumienie jednej jednostki kodu: pełny kod z numerami linii + jednostki z zakresami + zamaskowana konfiguracja i pliki uruchamiające + wybrana wiedza → notatka.
+- **Funkcja:** zrozumienie jednej jednostki kodu: pełny kod z numerami linii + jednostki z zakresami + konfiguracja i pliki uruchamiające + wybrana wiedza → notatka.
 - **Robimy:** `agents/analyst.py` przeniesiony z doc-agents i dostosowany do nowej notatki; kod podawany z numerami linii (żeby odwołania w notatce były dokładne); limit `analysis.max_file_size_kb` (większy plik - analiza po kawałkach z kroku 51); prompty `analyst/*`.
 - **Sprawdzamy:** notatka dla `main.py` robota 01: cykl życia Roboforge jako przepływ wołany przez framework, adresy stron w dostępie sieciowym, sensowne punkty rozszerzeń i błędy, odwołania do linii zgodne z kodem, niepewność oznaczona.
 
@@ -287,13 +285,13 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 - **Sprawdzamy:** przebieg tworzy `flow.json`; podgląd postępu pokazuje liczbę klocków i wynik sprawdzenia spójności.
 
 **Krok 55. Agent pisarz zakładki (bez grafu) (W2, W4, W6, W7)**
-- **Funkcja:** treść jednej zakładki: sekcje z `guide_template.yaml`, napisane z notatek, mapy projektu, zamaskowanej konfiguracji i **gotowego diagramu** (ścieżki, błędy i przepisy odwołują się do numerów klocków).
-- **Robimy:** `agents/writer.py` (czysta funkcja `write_tab()` + węzeł); odpowiedź jako `GuideTab`; sekcje `scanner`/`code` wypełnia kod, model tylko sekcje `llm`; pisarz zakładki Przegląd dostaje zamaskowane pliki konfiguracyjne i ustawienia z notatek i zwraca `config_items` (metryczkę) - znaczenie po jednym zdaniu na klucz, z oznaczeniem „wywnioskowane”, gdy nie wynika wprost z kodu lub komentarza; pisarz zakładki Błędy - komentarze do „Ryzykownych miejsc” z trudnych miejsc w notatkach; prompty `writer/*`.
+- **Funkcja:** treść jednej zakładki: sekcje z `guide_template.yaml`, napisane z notatek, mapy projektu, konfiguracji i **gotowego diagramu** (ścieżki, błędy i przepisy odwołują się do numerów klocków).
+- **Robimy:** `agents/writer.py` (czysta funkcja `write_tab()` + węzeł); odpowiedź jako `GuideTab`; sekcje `scanner`/`code` wypełnia kod, model tylko sekcje `llm`; pisarz zakładki Przegląd dostaje pliki konfiguracyjne i ustawienia z notatek i zwraca `config_items` (metryczkę) - znaczenie po jednym zdaniu na klucz, z oznaczeniem „wywnioskowane”, gdy nie wynika wprost z kodu lub komentarza; pisarz zakładki Błędy - komentarze do „Ryzykownych miejsc” z trudnych miejsc w notatkach; prompty `writer/*`.
 - **Sprawdzamy:** zakładki „Przegląd i uruchomienie” i „Ścieżki procesu” z istniejących notatek i `flow.json` - wydruk JSON i podgląd HTML; ścieżki odwołują się do istniejących klocków; każdy klucz metryczki ma znaczenie.
 
 **Krok 56. Graf: równolegli pisarze + składanie treści**
 - **Funkcja:** wszystkie pozostałe zakładki pisane naraz, potem złożone w jedną treść ze sprawdzeniem kompletności.
-- **Robimy:** drugi `Send` (po jednym pisarzu na zakładkę poza Przepływem), zapis `tabs/<zakładka>.json`; węzeł `assemble` (kod): `GuideContent` z diagramem i blokami skanera, braki wymaganych sekcji, odwołania do nieistniejących klocków, wpisy metryczki bez znaczenia, wartość wrażliwa (klucz pasujący do `scan.sensitive_keys`) inna niż `***` → zamaskowana z ostrzeżeniem, `guide_content.json`.
+- **Robimy:** drugi `Send` (po jednym pisarzu na zakładkę poza Przepływem), zapis `tabs/<zakładka>.json`; węzeł `assemble` (kod): `GuideContent` z diagramem i blokami skanera, braki wymaganych sekcji, odwołania do nieistniejących klocków, wpisy metryczki bez znaczenia, `guide_content.json`.
 - **Sprawdzamy:** wszystkie zakładki w `tabs/`, `guide_content.json` kompletny, braki (jeśli są) wypisane.
 
 **Krok 57. Graf: render i finalize**

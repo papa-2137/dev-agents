@@ -11,7 +11,7 @@ Co robi:
 
 Dlaczego istnieje: to pierwszy krok mapy projektu - z listy plików korzystają technologia (detect, punkty
 wejścia) i cała mapa, a rola decyduje, co dalej dzieje się z plikiem (kod - do analityków, konfiguracja
-i pliki uruchamiające - zamaskowane do agentów, sekret - wyłącznie metadane). Skaner nie otwiera żadnego
+i pliki uruchamiające - jako tekst do agentów, sekret - wyłącznie metadane). Skaner nie otwiera żadnego
 pliku - listuje nazwy i rozmiary.
 
 Rola: moduł rdzenia towaru, używany przy budowie mapy projektu.
@@ -142,7 +142,7 @@ def build_file_entries(
     """Zwraca FileEntry (ścieżka, rola, rozmiar w bajtach) dla każdego pliku z listy, w tej samej kolejności.
 
     Po co: z tej listy powstaje mapa projektu - kolejne etapy wiedzą, które pliki są kodem, które wolno czytać
-    (po zamaskowaniu) i które są tylko metadanymi.
+    i które są tylko metadanymi.
 
     Uwaga: framework_name zostaje puste - pliki frameworku oznacza osobny etap skanera.
     """
