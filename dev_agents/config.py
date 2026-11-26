@@ -3,7 +3,7 @@
 Co robi: wczytuje config.yaml, zamienia go na obiekty Pythona (podpowiedzi w edytorze, dostęp przez
 atrybuty, np. app_config.llm.profiles["small"].model), sprawdza, czy każdy agent wskazuje istniejący
 profil modelu, czy metoda structured output w każdym profilu i role plików w sekcji `scan` są znane, czy pliki wiedzy frameworków i szablon przewodnika istnieją i czy próg
-z sekcji `analysis` jest dodatni, a ścieżki z sekcji `paths` zamienia na bezwzględne.
+z sekcji `analysis` są dodatnie, a ścieżki z sekcji `paths` zamienia na bezwzględne.
 
 Dlaczego istnieje: to jedyne wejście do ustawień narzędzia. Pozostałe moduły dostają już sprawdzony,
 typowany obiekt zamiast surowego słownika z YAML-a, a błędy w configu (literówka w nazwie profilu albo
@@ -19,7 +19,7 @@ Rola: moduł używany przez punkt wejścia programu i przez warstwy, które potr
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.config
 Najpierw wypisuje wczytany config jako JSON (ścieżki w `paths` mają być bezwzględne), potem komunikaty
-błędów dla dziewięciu celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
+błędów dla dwunastu celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
 """
 
 import os
@@ -111,12 +111,13 @@ class FlowConfig(BaseModel):
 
 
 class AnalysisConfig(BaseModel):
-    """Sekcja `analysis`: progi, według których kod (bez modelu) wskazuje ryzykowne miejsca w robocie.
+    """Sekcja `analysis`: progi analizy robota - ryzykowne miejsca (bez modelu) i największy plik czytany przez analityka.
 
-    Po co: próg „długiej funkcji” zespół ustawia w configu, bez zmian w kodzie.
+    Po co: progi zespół ustawia w configu, bez zmian w kodzie.
     """
 
     long_unit_lines: int  # jednostka (funkcja, klasa) dłuższa niż tyle linii → wiersz w „Ryzykownych miejscach”
+    max_file_size_kb: int  # plik jednostki większy niż tyle KB nie jest podawany analitykowi w całości (krok 51: po kawałkach)
 
 
 class AppConfig(BaseModel):
@@ -232,12 +233,16 @@ def _check_guide_template(
 def _check_analysis(
     app_config: AppConfig,
 ) -> None:
-    """Sprawdza, czy analysis.long_unit_lines jest dodatni; przy błędzie rzuca ValueError.
+    """Sprawdza, czy analysis.long_unit_lines i analysis.max_file_size_kb są dodatnie; przy błędzie rzuca ValueError.
 
-    Po co: próg 0 albo ujemny oznaczałby „każda funkcja jest długa” i zalałby tabelę ryzykownych miejsc.
+    Po co: próg 0 albo ujemny oznaczałby „każda funkcja jest długa” i zalałby tabelę ryzykownych miejsc, a limit
+    rozmiaru 0 odrzuciłby każdy plik przed analizą.
     """
     if app_config.analysis.long_unit_lines < 1:
         komunikat_bledu = f"analysis.long_unit_lines musi być dodatni, jest: {app_config.analysis.long_unit_lines}"
+        raise ValueError(komunikat_bledu)
+    if app_config.analysis.max_file_size_kb < 1:
+        komunikat_bledu = f"analysis.max_file_size_kb musi być dodatni, jest: {app_config.analysis.max_file_size_kb}"
         raise ValueError(komunikat_bledu)
 
 
@@ -341,7 +346,7 @@ if __name__ == "__main__":
             _print_error(title, blad)
 
     def manual_test():
-        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla dziewięciu zepsutych kopii.
+        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla dwunastu zepsutych kopii.
 
         Po co: szybkie sprawdzenie, czy config się wczytuje, ścieżki są bezwzględne, a błędy w configu
         dają czytelne komunikaty.
@@ -389,5 +394,13 @@ if __name__ == "__main__":
         zly_prog = copy.deepcopy(raw_config)
         zly_prog["analysis"]["long_unit_lines"] = 0
         _try_broken_config("Próg analysis.long_unit_lines równy 0", zly_prog, repo_dir)
+
+        zly_limit = copy.deepcopy(raw_config)
+        zly_limit["analysis"]["max_file_size_kb"] = 0
+        _try_broken_config("Limit analysis.max_file_size_kb równy 0", zly_limit, repo_dir)
+
+        brak_limitu = copy.deepcopy(raw_config)
+        del brak_limitu["analysis"]["max_file_size_kb"]
+        _try_broken_config("Config bez analysis.max_file_size_kb", brak_limitu, repo_dir)
 
     manual_test()

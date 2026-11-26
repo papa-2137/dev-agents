@@ -76,7 +76,9 @@ flow:
   max_nodes: 30
   max_decisions: 8
 
-# Analiza robota (bez modelu): progi, według których kod wskazuje ryzykowne miejsca w przewodniku.
+# Analiza robota: progi, według których kod wskazuje ryzykowne miejsca w przewodniku, i limit czytania pliku przez analityka.
 analysis:
   # Jednostka kodu (funkcja, klasa) dłuższa niż tyle linii trafia do tabeli „Ryzykowne miejsca”.
   long_unit_lines: 100
+  # Plik jednostki większy niż tyle KB nie jest podawany analitykowi w całości (czytanie po kawałkach: krok 51).
+  max_file_size_kb: 100
