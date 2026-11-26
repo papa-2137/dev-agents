@@ -12,7 +12,7 @@
 | C - Mapa projektu bez modelu (9-29) | ✅ zakończona (M3) |
 | D - Szablon przewodnika i HTML bez modelu (30-39) | ✅ zakończona (M4) |
 | E - Prompty i baza wiedzy (40-42) | ✅ zakończona |
-| F - Graf i agenci (43-59) | 🟡 w toku (43-51 ✅) |
+| F - Graf i agenci (43-59) | 🟡 w toku (43-52 ✅) |
 | G - Ergonomia (60-63) | ⬜ |
 | H - Miasto (64-68) | ⬜ |
 
@@ -41,8 +41,13 @@ Wpisy kroków 1-29 (fazy A-C) są w archiwum: `dev_log/raport_wykonania_fazy_A-C
 
 ### Krok 51. Analityk: długie pliki po kawałkach - ✅
 - Nowy `dev_agents/agents/chunks.py` (zwykły kod, własny test): `split_ranges` (cięcie po końcach funkcji i klas z `units()`, bez granicy - w środku z zakładem), `plan_chunks` (krótkie pliki razem, długi plik w kawałkach), `build_previous_summary`, `merge_chunk_notes` (cele połączone, rola z pierwszego niepustego kawałka, listy bez powtórzeń, ustawienia łączą `used_in`). `analyst.analyze_unit` analizuje kawałki po kolei (każdy: dwa wywołania modelu, kod z bezwzględnymi numerami linii, podsumowanie poprzednich kawałków, sekcja `<kawalek>` w `user.md`) i zgłasza postęp "kawałek k/n" przez funkcję `note`. Config: `analysis.chunk_lines` (300) i `chunk_overlap_lines` (10) z walidacją. `common.number_lines` z numeracją od podanej linii, `cut_lines`.
-- Poprawka z testu: tytuły czynności w trybie rozkazującym (opis pola `title` w `NoteAction`; poprawka trafia do następnego commita).
+- Poprawka z testu: tytuły czynności w trybie rozkazującym (opis pola `title` w `NoteAction`; poszła w commicie kroku 52).
 - Wybory: rekomendowane (tryb pracy fazy F). Test użytkownika: OK (robot 01 `main.py` jednym kawałkiem, numery linii zgodne z kodem; robot 02 po kawałkach). Commit `eaa1289`.
+
+### Krok 52. Graf: równolegli analitycy - ✅
+- Graf: `scan -> planner -> analyst x N -> END`. Krawędź warunkowa `graph.dispatch_analysts` wysyła `Send("analyst", {project_map, plan, task})` na każde zadanie planu; węzeł `analyst_node` (w `agents/analyst.py`) woła `analyze_unit` z `Stage.note`, zapisuje `notes/<jednostka>.json` i zwraca `notes` z jedną notatką. Stan: pola `task` i `notes` (reducer `operator.add`). `analysis.max_concurrency` (4, z walidacją) trafia do `invoke` przez `graph.run_config()`; `main.py` wypisuje liczbę notatek.
+- Test grafu na udawanym analitykach: notatek tyle co zadań, każda jednostka raz, `notes/*.json` zgodne ze stanem, start i koniec z czasem każdego analityka (robot 01: 8 równolegle).
+- Wybory: rekomendowane (tryb pracy fazy F). Test użytkownika: OK. Commit `6da5c2b`.
 
 ---
 
@@ -106,3 +111,4 @@ Wpisy kroków 1-29 (fazy A-C) są w archiwum: `dev_log/raport_wykonania_fazy_A-C
 | 2026-11-26 | Krok 50: (1) notatka analityka w dwóch wywołaniach modelu (`NoteFlow` + `NoteDetails`), składana kodem w `ModuleNote`; (2) limit schematu dla modelu 40 pól (zmierzony limit bramki 48); (3) `analysis.max_file_size_kb: 100`; (4) wspólne `agents/common.py`; (5) skrypt `scripts/probe_schema.py` do mierzenia limitów bramki; `plan_kroki.md` kroki 49, 50 zaktualizowane | (1) cała notatka (54 pola) przekracza limit bramki, a przycinanie gubiłoby treść; koszt: kod jednostki idzie do modelu dwa razy; (2) zapas względem pomiaru tylko na profilu small; (3) większy plik analizuje krok 51; (4) jedna logika wiedzy dla wszystkich agentów; (5) pomiar zamiast zgadywania; wybór: rekomendowane (tryb pracy fazy F) |
 | 2026-11-26 | **Do omówienia na koniec fazy F (decyzja użytkownika, teraz brak czasu):** konsekwencje zmian z kroku 50: podwójny koszt tokenów analityka (kod dwa razy), limit 48 pól zmierzony tylko na small (sprawdzić medium), odchudzenie `GuideBlock`/`GuideTab` i ewentualne rozbicie zakładek na wiele wywołań, wpływ na czas i koszt całego przebiegu | Decyzja użytkownika: jedziemy dalej, omówienie po zakończeniu fazy F |
 | 2026-11-26 | Krok 51: (1) podział i składanie kawałków w osobnym `agents/chunks.py`; (2) cięcie po końcach jednostek z `units()` w drugiej połowie kawałka, inaczej w środku z zakładem 10 linii; (3) podsumowanie poprzednich kawałków składa kod z ich notatek (bez dodatkowego wywołania modelu); (4) `analysis.max_file_size_kb` zostaje twardym limitem pliku, o podziale decyduje `analysis.chunk_lines` (300); (5) `analyze_unit` dostaje funkcję `note` do linii postępu; `plan_kroki.md` krok 51 zaktualizowany | (1) analityk bez logiki cięcia i scalania, osobny test; (2) funkcja nie jest urywana, gdy da się ciąć na granicy, a przy funkcji dłuższej niż kawałek kontekst nie ginie; (3) mniej wywołań i kosztu, przewidywalny wynik; (4) dwa różne powody (rozmiar odczytu, długość kawałka); (5) węzeł z kroku 52 poda `Stage.note`; wybór: rekomendowane (tryb pracy fazy F) |
+| 2026-11-26 | Krok 52: (1) węzeł `analyst_node` w `agents/analyst.py` (jak `planner_node`), a krawędź warunkowa i `run_config` w `graph.py`; (2) ładunek `Send` to pola stanu (`task` dodane do `RunState`), bez osobnego schematu wejścia; (3) współbieżność przez `config={"max_concurrency": n}` z `analysis.max_concurrency: 4`; (4) nazwa etapu "analyst <jednostka>"; (5) jedna nieudana jednostka przerywa przebieg (jak każdy błąd węzła); `plan_kroki.md` krok 52 zaktualizowany | (1) logika agenta przy agencie, układ grafu w jednym miejscu; (2) najprostsze i zgodne z wzorcem LangGraph; (3) jedyny sposób ograniczenia równoległości; 4 to zachowawczy start dla bramki (do zmiany w configu); (4) każdy analityk ma osobne linie w podglądzie; (5) żaden fragment robota nie może zniknąć po cichu; wybór: rekomendowane (tryb pracy fazy F) |

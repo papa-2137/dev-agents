@@ -288,8 +288,8 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 53. Agent autor diagramu (bez grafu) (W1)**
 - **Funkcja:** diagram całego procesu od startu do końca, z notatek wszystkich analityków - kręgosłup przewodnika.
-- **Robimy:** `agents/flow_writer.py` (czysta funkcja `write_flow()` + węzeł); odpowiedź jako `FlowGraph`; po odpowiedzi `flow.validate_flow()` - przy problemach albo ostrzeżeniu o rozmiarze jedno ponowne wywołanie z listą problemów w prompcie; prompty `flow_writer/*` z zasadami diagramu z `guide_goals.md`.
-- **Sprawdzamy:** diagramy robotów 01 i 02 z notatek z `dev_agents_doc/notes/` (bez ponownej analizy): spójne według `validate_flow`, diagram robota 02 mieści się w limicie mimo funkcji spaghetti, podgląd HTML zakładki Przepływ; z samego diagramu da się opowiedzieć proces (ocena użytkownika).
+- **Robimy:** `agents/flow_writer.py` (czysta funkcja `write_flow()` + węzeł); odpowiedź jako `FlowGraph`; po odpowiedzi `flow.validate_flow()` - przy problemach albo ostrzeżeniu o rozmiarze jedno ponowne wywołanie z listą problemów w prompcie; prompty `flow_writer/*`; zasady diagramu (`diagram_rules.md`) i wiedza technologii/frameworka idą w `<baza_wiedzy>`; do promptu tylko pola przebiegu notatek (`NoteFlow`), w kolejności zadań planu; ponowienie wybiera lepszą z dwóch wersji (mniej problemów), niespójny diagram jest zwracany z listą problemów, nie przerywa przebiegu; `state.flow`; bez podpinania do grafu (krok 54).
+- **Sprawdzamy:** diagram robota 02 z notatek z `dev_agents_doc/notes/` (bez ponownej analizy; robot 01 dopiero, gdy będzie sposób zapisu wyników poza jego katalogiem - notatki zawierają hasła dosłownie): spójne według `validate_flow`, diagram robota 02 mieści się w limicie mimo funkcji spaghetti, podgląd HTML zakładki Przepływ; z samego diagramu da się opowiedzieć proces (ocena użytkownika).
 
 **Krok 54. Graf: autor diagramu po analitykach**
 - **Funkcja:** diagram jako etap przepływu, zanim powstaną pozostałe zakładki.

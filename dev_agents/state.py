@@ -6,7 +6,8 @@ Co robi: definiuje RunState - słownik (TypedDict) z polami wspólnymi dla całe
     plan         - plan przebiegu (wynik węzła planner),
     task         - zadanie jednego analityka; wpisuje je do ładunku Send graf (graph.dispatch_analysts), nie węzły,
     notes        - notatki analityków (wynik równoległych węzłów analyst); pole z reducerem operator.add:
-                   każdy analityk zwraca listę z jedną notatką, a LangGraph skleja listy w jedną.
+                   każdy analityk zwraca listę z jedną notatką, a LangGraph skleja listy w jedną,
+    flow         - diagram przepływu całego procesu (wynik węzła flow_writer, krok 53).
 Kolejne etapy (diagram, treść przewodnika) dopisują tu swoje pola w swoich krokach.
 
 Dlaczego istnieje: w LangGraph węzeł dostaje stan i zwraca tylko te pola, które zmienia - słownik z polami
@@ -21,6 +22,7 @@ Test ręczny: brak własnego - stan jest sprawdzany w teście grafu (python -m d
 import operator
 import typing
 
+import dev_agents.guide_content as _content
 import dev_agents.schemas as _schemas
 
 
@@ -36,3 +38,4 @@ class RunState(typing.TypedDict, total=False):
     plan: _schemas.Plan
     task: _schemas.AnalysisTask
     notes: typing.Annotated[list[_schemas.ModuleNote], operator.add]
+    flow: _content.FlowGraph
