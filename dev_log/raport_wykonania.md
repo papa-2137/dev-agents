@@ -92,6 +92,12 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.htm
 - Test w bloku `__main__`: pliki tymczasowe UTF-8 bez BOM i z BOM, UTF-16 BE z BOM, cp1250 (tworzone i usuwane w teście), `requirements.txt` robota 01 (tylko ten plik - bez `certs`), `przetwarzanie.py` robota 02.
 - Test użytkownika: wszystkie przypadki z czytelnymi polskimi znakami, robot 01 `utf-16-le (BOM)` z czytelnymi nazwami paczek, robot 02 `utf-8` - OK.
 
+### Krok 11. Przenieś z doc-agents: `schemas.py` - mapa projektu - ✅
+- `dev_agents/schemas.py`: `FileEntry` (`path`, `role`, `size_bytes`, `framework_name` - domyślnie `""` = kod projektu), `CodeUnit` (`name`, `files`), `ProjectMap` (`project_name`, `root`, `technology`, `entrypoints`, `files`, `code_units` i nowe `frameworks: list[str] = []` - frameworki wykryte po importach, `[]` = robot bez frameworku). Same typy i komentarze, bez `Field(description=...)` - to nie są schematy odpowiedzi modelu. Lista ról w docstringu `FileEntry` (`Uwaga:` - `launcher` dochodzi w kroku 20).
+- Odstępstwo od planu (wybór użytkownika A): bez pól `dependency_files` i `config_files` - dochodzą ze swoimi klasami w krokach 23-24 (tabela decyzji).
+- Test w bloku `__main__`: ręcznie złożona mapa robota 02 (7 plików, 2 jednostki kodu, `frameworks=[]`), zapis do JSON i odczyt.
+- Test użytkownika: JSON zgodny z oczekiwanym, `Odczyt z JSON zgodny z oryginałem: True` - OK. Commit wykonany przez użytkownika (wpis do raportu trafia do commita kroku 12).
+
 ---
 
 ## Odstępstwa i decyzje poza planem
@@ -109,3 +115,4 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.htm
 | 2026-11-24 | Nowa reguła stylu (AGENTS.md, Styl kodu pkt 9): każdy parametr definicji funkcji w osobnej linii, także pojedynczy (`self`/`cls` też), przecinek po ostatnim; funkcja bez parametrów w jednej linii. Przeformatowane wszystkie definicje w `main.py`, `dev_agents/config.py`, `dev_agents/llm.py` (bez zmian zachowania). Reguła dopisana też do `dev_log/zasady_pracy.md`, `architecture/02_dev-agents/reguly-kodu.md` (pkt 7) i `development/doc-agents/AGENTS.md` (reguły z 2026-11-24, pkt 6) | Decyzja użytkownika: czytelność sygnatur i czytelne diffy |
 | 2026-11-24 | Krok 10: `read_text_safe` bez BOM czyta najpierw ścisłym UTF-8, potem cp1250, a dopiero na końcu UTF-8 z zamianą błędów (plan: od razu UTF-8 z `errors="replace"`); `plan_kroki.md` krok 10 zaktualizowany | Na mieście będą pliki z polskiego Windows w cp1250 (`.bat`, `.ini`) - bez tego polskie znaki trafiałyby do modelu jako `�`; wybór użytkownika (B) |
 | 2026-11-24 | Krok 11: `ProjectMap` bez pól `dependency_files` i `config_files` - dochodzą razem ze swoimi klasami w krokach 23-24 (plan: pola od razu); `plan_kroki.md` krok 11 zaktualizowany | Bez pustych zaślepek i typów zgadywanych na zapas (AGENTS.md, Sposób pracy pkt 4); nowe pola będą miały wartość domyślną, więc nic się nie zepsuje; wybór użytkownika (A) |
+| 2026-11-26 | Krok 12: w `Technology` tylko sześć przenoszonych metod; nowe metody kontraktu (kroki 15, 23-26, 42) dochodzą w swoich krokach razem z domyślnym zachowaniem i typem wyniku (plan: wszystkie od razu); `plan_kroki.md` krok 12 zaktualizowany | Jak w kroku 11 - bez zaślepek i sygnatur do zmiany; każda metoda powstaje razem z testem; wybór użytkownika (A) |
