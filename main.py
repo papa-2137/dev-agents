@@ -1,17 +1,20 @@
-"""Punkt wejścia towaru (dev-agents): argumenty -> config -> mapa projektu -> zapis w dev_agents_doc/.
+"""Punkt wejścia towaru (dev-agents): argumenty -> config -> graf agentów -> zapis w dev_agents_doc/.
 
-Co robi: odczytuje argumenty wiersza poleceń, wczytuje config.yaml, buduje mapę analizowanego projektu
-(scanner.build_project_map - pliki z rolami, punkty wejścia, jednostki kodu z zakresami linii, frameworki,
-pliki tekstowe, graf zależności i kolejność czytania), zapisuje ją jako dev_agents_doc/project_map.json
-w katalogu projektu i wypisuje krótkie podsumowanie. Z opcją --render-only składa dodatkowo przewodnik bez
-modelu: sekcje z kodu są prawdziwe, sekcje agentów mają zaślepki, diagram jest przykładowy - wynik to
-dev_agents_doc/guide.html (podgląd wyglądu na prawdziwym robocie, bez wydawania tokenów). Kolejne etapy
-(graf agentów) dochodzą tutaj w kolejnych krokach planu.
+Co robi: odczytuje argumenty wiersza poleceń, wczytuje config.yaml i sprawdza szybkim skanem, czy technologia
+projektu jest rozpoznana. Potem zakłada magazyn wyników (dev_agents_doc/) i uruchamia graf agentów
+(graph.build_graph) z kontekstem (context.build_context: modele, spis bazy wiedzy, szablon). Mapa projektu
+(pliki z rolami, punkty wejścia, jednostki kodu z zakresami linii, frameworki, pliki tekstowe, graf zależności
+i kolejność czytania) pochodzi z węzła scan grafu; main.py zapisuje ją jako dev_agents_doc/project_map.json
+i wypisuje krótkie podsumowanie. Z opcją --render-only graf i modele nie są używane: mapa pochodzi z samego
+skanu, a program składa przewodnik bez modelu (sekcje z kodu prawdziwe, sekcje agentów to zaślepki, diagram
+przykładowy) - wynik to dev_agents_doc/guide.html, podgląd wyglądu bez wydawania tokenów i bez kluczy.
+Kolejne etapy (planner, analitycy, pisarze) dochodzą do grafu, a nie tutaj.
 
 Dlaczego istnieje: jedno polecenie uruchamia całe narzędzie. Domyślny config jest szukany obok main.py,
 a nie w bieżącym katalogu, więc program działa tak samo bez względu na to, skąd go uruchomiono
-(np. z katalogu analizowanego robota). Nierozpoznana technologia albo katalog wyników, którego nie wolno
-użyć, kończą program czytelnym komunikatem (kod wyjścia 1), zanim cokolwiek zostanie zapisane.
+(np. z katalogu analizowanego robota). Nierozpoznana technologia, katalog wyników, którego nie wolno użyć,
+albo brak zmiennej środowiskowej z kluczem modelu kończą program czytelnym komunikatem (kod wyjścia 1).
+Szybki skan przed grafem sprawia, że dla nierozpoznanej technologii nie powstaje nawet katalog dev_agents_doc/.
 
 Rola: samodzielny skrypt - nikt go nie importuje; jego uruchomienie jest testem ręcznym.
 
@@ -19,7 +22,9 @@ Uruchomienie z katalogu głównego repo:
     python main.py --project <ścieżka do katalogu robota>
     python main.py --project <ścieżka do katalogu robota> --config <ścieżka do config.yaml>
     python main.py --project <ścieżka do katalogu robota> --render-only
-        dodatkowo zapisuje dev_agents_doc/guide.html (zaślepki zamiast tekstu agentów, bez wywołań modelu)
+        bez grafu i bez kluczy modeli: zapisuje project_map.json i dev_agents_doc/guide.html
+        (zaślepki zamiast tekstu agentów)
+Tryb pełny wymaga zmiennych środowiskowych z kluczem i adresem modeli (nazwy w config.yaml, sekcja llm).
 """
 
 import argparse
@@ -28,6 +33,8 @@ import os
 import sys
 
 import dev_agents.config as _config
+import dev_agents.context as _context
+import dev_agents.graph as _graph
 import dev_agents.guide_placeholders as _placeholders
 import dev_agents.guide_template as _template
 import dev_agents.output as _output
@@ -142,6 +149,31 @@ def _render_placeholder_guide(
     return zapisany_plik
 
 
+# --- Graf agentów ---
+
+
+def _run_graph(
+    project_root: str,
+    app_config: _config.AppConfig,
+    store: _output.RunStore,
+) -> _schemas.ProjectMap:
+    """Buduje kontekst, uruchamia graf agentów na projekcie i zwraca mapę projektu ze stanu końcowego.
+
+    Po co: jedyne miejsce w main.py, które zna graf; kolejne węzły nie zmieniają tej funkcji, bo dochodzą do grafu.
+
+    Uwaga: błąd budowy kontekstu (brak zmiennej środowiskowej z kluczem albo adresem modelu, błędny spis bazy wiedzy
+    lub szablon) kończy program komunikatem z nazwą przyczyny, zanim graf ruszy.
+    """
+    try:
+        kontekst = _context.build_context(app_config, store)
+    except (RuntimeError, ValueError, OSError) as blad:
+        sys.exit(f"BŁĄD: {blad}")
+    graf = _graph.build_graph()
+    stan_koncowy = graf.invoke({"project_path": project_root}, context=kontekst)
+    mapa = stan_koncowy["project_map"]
+    return mapa
+
+
 # --- Uruchomienie ---
 
 
@@ -163,23 +195,29 @@ def _parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    """Uruchamia program: argumenty -> config -> mapa projektu -> zapis project_map.json -> podsumowanie (-> guide.html z --render-only).
+    """Uruchamia program: argumenty -> config -> kontrola technologii -> magazyn -> graf (albo sam skan) -> project_map.json -> podsumowanie.
 
-    Po co: spis treści całego przebiegu; kolejne etapy narzędzia dopisujemy tu jako kolejne wywołania.
+    Po co: spis treści całego przebiegu; kolejne etapy narzędzia dopisujemy do grafu, tutaj zmienia się tylko to, co dotyczy uruchomienia.
 
     Uwaga: nierozpoznana technologia kończy program przed założeniem dev_agents_doc/ - w cudzym katalogu
     nic nie zostaje. Katalog wyników bez znacznika albo brak prawa zapisu - komunikat z output.py.
+    Z --render-only mapa pochodzi z szybkiego skanu (bez grafu i bez modeli); w trybie pełnym graf skanuje
+    projekt jeszcze raz w węźle scan (skan nie woła modelu, więc kosztuje ułamek sekundy).
     """
     args = _parse_args()
     app_config = _config.load_config(args.config)
     _print_header(args.config, app_config)
-    project_map = _scanner.build_project_map(args.project, app_config.scan)
-    if not project_map.technology:
-        sys.exit(f"BŁĄD: nie rozpoznano technologii projektu {project_map.root} - brak kodu obsługiwanej technologii. Nic nie zapisano.")
+    mapa_wstepna = _scanner.build_project_map(args.project, app_config.scan)
+    if not mapa_wstepna.technology:
+        sys.exit(f"BŁĄD: nie rozpoznano technologii projektu {mapa_wstepna.root} - brak kodu obsługiwanej technologii. Nic nie zapisano.")
     try:
-        magazyn = _output.create_run_store(project_map.root)
+        magazyn = _output.create_run_store(mapa_wstepna.root)
     except (ValueError, OSError) as blad:
         sys.exit(f"BŁĄD: {blad}")
+    if args.render_only:
+        project_map = mapa_wstepna
+    else:
+        project_map = _run_graph(mapa_wstepna.root, app_config, magazyn)
     zapisany_plik = magazyn.save_json("project_map.json", project_map)
     _print_scan_summary(project_map, zapisany_plik)
     if args.render_only:
