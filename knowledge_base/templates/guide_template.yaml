@@ -190,7 +190,7 @@ tabs:
     lead: "Najbardziej prawdopodobne awarie wynikające z kodu: jak je rozpoznać, gdzie szukać przyczyny i jak naprawić."
     sections:
       - id: awarie
-        title: Błędy i naprawa
+        title: Typowe awarie
         type: table
         source: llm
         required: true

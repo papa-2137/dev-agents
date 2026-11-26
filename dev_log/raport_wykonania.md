@@ -10,7 +10,7 @@
 | A - Fundament (kroki 1-5) | ✅ zakończona (M1) |
 | B - Dostęp do modelu (6-8) | ✅ zakończona (M2) |
 | C - Mapa projektu bez modelu (9-29) | ✅ zakończona (M3) |
-| D - Szablon przewodnika i HTML bez modelu (30-39) | 🟡 w toku (30-38 ✅) |
+| D - Szablon przewodnika i HTML bez modelu (30-39) | 🟡 w toku (30-39 ✅, M4 po poprawkach wyglądu) |
 | E - Prompty i baza wiedzy (40-42) | ⬜ |
 | F - Graf i agenci (43-59) | ⬜ |
 | G - Ergonomia (60-63) | ⬜ |
@@ -107,6 +107,14 @@ Wpisy kroków 1-29 (fazy A-C) są w archiwum: `dev_log/raport_wykonania_fazy_A-C
 - Testy: `python -m dev_agents.guide_facts`, `... glossary`, `... render` (+ `plik`, `makieta`, `duzy`, `robot01`). W Chrome (Playwright): graf robota 01 (7 węzłów, 6 krawędzi, napisy mieszczą się w prostokątach) przy 1300 i 420 px, siedem przypadków skrajnych (bez punktu wejścia, cykl, wejście importowane, te same nazwy plików, długie nazwy, znaki specjalne, 30 modułów), dymki terminów, brak błędów skryptu.
 - Odstępstwa od planu: źródło zdań w kolejności czytania (plan: „jedno zdanie od pisarza”; wybrano format `plik: zdanie`); dymek tylko dla tekstu renderowanego po stronie serwera (opisy klocków i wiersze „Krok po kroku” budowane w przeglądarce bez oznaczeń); graf nie ma opisu tekstowego dla czytników ekranu (do rozważenia po obejrzeniu prawdziwych przewodników).
 - Wybory użytkownika: 1B, 2A, 3A (tabela decyzji). Test użytkownika: OK. Commit `bfec558`.
+
+### Krok 39. `main.py --render-only` - przewodnik z prawdziwego robota, sekcje agentów jako zaślepki (W3) - ✅
+- Nowy `guide_placeholders.py`: `build_placeholder_content` (sekcje ze źródłem `llm` dostają blok w kształcie typu sekcji: akapity, punkty, kroki, wiersz tabeli z tyloma komórkami, ile kolumn, wejście i wyjście, trzy rodzaje ścieżek, przepis z plikiem nowym i istniejącym, wpisy metryczki dla każdego rodzaju kafelka z wartością „[wartość]”; kolejność czytania: zdania „plik: [dlaczego czytać ten plik w tym miejscu]” dla pierwszych trzech plików; sekcje z faktami kodu bez bloku) i `placeholder_flow` (ogólny diagram przykładowy z „[przykład]” w każdym napisie: start, czynność, kontakt z systemem, decyzja, jedno obejście, jedna pętla, koniec; przechodzi `validate_flow`).
+- `main.py`: argument `--render-only`, `_render_placeholder_guide` (szablon → zaślepki → `render_guide` → `RunStore.save_text("guide.html")`, stopka „podgląd bez modelu”); bez flagi przebieg bez zmian, nierozpoznana technologia nadal kończy program przed zapisem.
+- Testy: `python -m dev_agents.guide_placeholders` (roboty 02 i 01 w pamięci: 17 bloków, 16 sekcji agentów bez brakujących zaślepek, diagram 6 klocków bez problemów, brak „Nie wynika z kodu.”, brak haseł w „Ryzykownych miejscach”), `... robot01` / `robot02` (zapis `guide_test.html`), `python main.py --project <kopia robota 02> --render-only` (bez flagi tylko `project_map.json`, z flagą także `guide.html`, powtórny przebieg czyści i zapisuje od nowa), projekt bez technologii → kod 1 i nic nie zapisano. W Chrome (Playwright): 7 zakładek przy 1300 i 420 px, bez błędów skryptu i bez przepełnienia poziomego.
+- Odstępstwa od planu: metryczka z zaślepkami zamiast prawdziwych wartości (kod nie parsuje plików konfiguracyjnych); diagram ogólny, nie z testu `render.py`; robot 01 tylko w pamięci (`guide_test.html`), zapis `dev_agents_doc/` tylko na robocie 02.
+- Uwagi do wyglądu z oglądania prawdziwych przewodników (do decyzji użytkownika przed fazą E; **M4 po ich rozstrzygnięciu**): (1) długa nazwa projektu ucinana w lewym menu; (2) pierwsza sekcja zakładki „Błędy i naprawa” ma ten sam tytuł co zakładka; (3) komórka „Plik i linie” łamie zapis `plik:linie` w środku; (4) brak wyróżnienia pliku sekretu poza znacznikiem w drzewie; (5) graf zależności bez opisu tekstowego dla czytników ekranu.
+- Wybory użytkownika: rekomendowane (A, A, A). Test użytkownika: OK. Commit `6c00e83`.
 
 ---
 

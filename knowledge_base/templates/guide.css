@@ -7,7 +7,7 @@
 html{scroll-padding-top:24px}
 body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 var(--sans);display:grid;grid-template-columns:260px minmax(0,1fr);min-height:100vh;overflow-x:clip}
 aside{position:sticky;top:0;height:100vh;overflow-y:auto;border-right:1px solid var(--hair);padding:28px 20px}
-aside .brand{font-weight:800;font-size:22px;letter-spacing:-.02em;line-height:1.1}
+aside .brand{font-weight:800;font-size:22px;letter-spacing:-.02em;line-height:1.1;overflow-wrap:anywhere}
 aside .sub{font-size:14px;color:var(--mute);margin:4px 0 24px}
 nav a{display:flex;align-items:center;gap:10px;min-height:44px;padding:6px 10px;color:var(--ink);text-decoration:none;border-radius:3px;font-weight:600;font-size:15px}
 nav a i{flex:none;width:12px;height:12px;border:1.5px solid var(--ink);border-radius:50%}
@@ -26,6 +26,9 @@ p{margin:0 0 12px;max-width:72ch}
 .lead{font-size:clamp(17px,1.6vw,20px);color:var(--mute);margin:12px 0 28px;max-width:64ch}
 .note{font-size:14px;color:var(--mute)}
 code,.mono{font-family:var(--mono);font-size:.92em;overflow-wrap:anywhere}
+code.pth{overflow-wrap:normal}
+.nb{white-space:nowrap}
+.sr{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
 a{color:var(--ink)}
 .ph{color:var(--mute);font-style:italic}
 .unc{display:inline-block;font:600 12px var(--sans);color:var(--mute);border:1.5px dashed var(--mute);border-radius:2px;padding:0 6px;margin-left:6px;vertical-align:2px;font-style:normal}

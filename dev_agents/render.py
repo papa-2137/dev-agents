@@ -60,6 +60,7 @@ import functools
 import os
 
 import jinja2
+import markupsafe
 import pydantic
 
 import dev_agents.config as _config
@@ -94,6 +95,7 @@ _MISSING_TEXTS = {
     "graph_no_edges": "Moduły robota nie importują się nawzajem, więc nie ma czego rysować.",
 }
 _MAX_ISOLATED_SHOWN = 10
+_PATH_SEPARATORS = "/\\"
 _RISKY_BADGE_COLORS = {"długa jednostka": "m", "hasło w pliku": "r", "hasło w kodzie": "r"}
 _RISKY_CODE_COLUMN = 1
 _RISKY_REASONS = {
@@ -444,6 +446,65 @@ def _graph_missing_text(
     return zdanie
 
 
+def _path_breaks(
+    text: str,
+) -> markupsafe.Markup:
+    """Zwraca tekst ścieżki jako HTML z miejscami łamania tylko po / i \\, a ostatni segment (z :liniami) bez łamania.
+
+    Po co: komórka „Plik i linie” nie może łamać zapisu plik:linie w środku; długa ścieżka łamie się po katalogach.
+    Ostatni segment ze spacją (np. polecenie) łamie się zwyczajnie. Tekst jest escapowany znak po znaku.
+    """
+    ostatni = -1
+    for numer, znak in enumerate(text):
+        if znak in _PATH_SEPARATORS:
+            ostatni = numer
+    glowa = text[: ostatni + 1]
+    ogon = text[ostatni + 1 :]
+    kawalki = []
+    for znak in glowa:
+        kawalki.append(markupsafe.escape(znak))
+        if znak in _PATH_SEPARATORS:
+            kawalki.append(markupsafe.Markup("<wbr>"))
+    glowa_html = markupsafe.Markup("").join(kawalki)
+    ogon_html = markupsafe.escape(ogon)
+    if " " not in ogon:
+        ogon_html = markupsafe.Markup('<span class="nb">{}</span>').format(ogon)
+    wynik = glowa_html + ogon_html
+    return wynik
+
+
+def _graph_description(
+    graph: dict,
+) -> list[dict]:
+    """Zwraca opis tekstowy krawędzi grafu [{source, targets}]: plik i lista plików, które importuje (kolejność z danych).
+
+    Po co: rysunek grafu jest niedostępny dla czytnika ekranu; ta sama informacja jako lista zdań, ukryta wizualnie.
+    """
+    opis = []
+    indeks = {}
+    for krawedz in graph["edges"]:
+        zrodlo = krawedz[0]
+        if zrodlo not in indeks:
+            indeks[zrodlo] = len(opis)
+            opis.append({"source": zrodlo, "targets": []})
+        opis[indeks[zrodlo]]["targets"].append(krawedz[1])
+    return opis
+
+
+def _graph_entries(
+    graph: dict,
+) -> list[str]:
+    """Zwraca ścieżki węzłów grafu będących punktami wejścia (kolejność z danych).
+
+    Po co: opis tekstowy grafu zaczyna się od punktów wejścia, jak legenda rysunku.
+    """
+    wejscia = []
+    for wezel in graph["nodes"]:
+        if wezel["entry"]:
+            wejscia.append(wezel["id"])
+    return wejscia
+
+
 def _graph_view(
     facts: _Facts,
 ) -> dict:
@@ -453,7 +514,13 @@ def _graph_view(
     _MAX_ISOLATED_SHOWN z nich pod grafem (reszta jako liczba), żeby nic nie zniknęło bez śladu.
     """
     dane = _facts.dependency_graph_data(facts.project_map)
-    widok = {"data": None, "isolated": dane["isolated"][:_MAX_ISOLATED_SHOWN], "isolated_count": len(dane["isolated"])}
+    widok = {
+        "data": None,
+        "isolated": dane["isolated"][:_MAX_ISOLATED_SHOWN],
+        "isolated_count": len(dane["isolated"]),
+        "description": _graph_description(dane),
+        "entries": _graph_entries(dane),
+    }
     if dane["edges"]:
         widok["data"] = {"nodes": dane["nodes"], "edges": dane["edges"]}
     return widok
@@ -641,6 +708,7 @@ def render_guide(
     with open(os.path.join(templates_dir, "guide.js"), encoding="utf-8") as plik:
         js = plik.read()
     srodowisko = jinja2.Environment(loader=jinja2.FileSystemLoader(templates_dir), autoescape=True)
+    srodowisko.filters["path_breaks"] = _path_breaks
     srodowisko.filters["terms"] = functools.partial(_glossary.mark_terms, index=_glossary.build_index(_all_glossary_terms(bloki)))
     html = srodowisko.get_template("guide.html.j2").render(
         project_name=content.project_name,
@@ -1313,6 +1381,8 @@ if __name__ == "__main__":
             "diagram: lista problemów zamiast rysunku": "nie został narysowany" in html,
             "diagram: zdanie o braku klocków": "Brak diagramu przepływu" in html,
             "graf: rysunków SVG": html.count('<svg id="deps"'),
+            "graf: pozycji opisu tekstowego (czytniki ekranu)": len(re.findall(r"<li>[^<]* importuje: ", html)),
+            "komórki ze ścieżką (code.pth) / z segmentem bez łamania": f"{html.count('<code class=\"pth\">')} / {html.count('<span class=\"nb\">')}",
             "graf: węzłów / krawędzi w danych": f"{graf_wezly} / {graf_krawedzie}",
             "graf: zdanie zamiast rysunku": "nie importują się nawzajem" in html,
             "graf: zdanie o plikach bez powiązań": "Pliki bez powiązań z innymi plikami robota" in html,
@@ -1393,6 +1463,7 @@ if __name__ == "__main__":
             f"ryzykowne - wierszy {wynik['ryzykowne: wierszy']}, długich jednostek {wynik['ryzykowne: długich jednostek']}, "
             f"graf - rysunków {wynik['graf: rysunków SVG']}, węzłów / krawędzi {wynik['graf: węzłów / krawędzi w danych']}, "
             f"zdanie zamiast rysunku: {wynik['graf: zdanie zamiast rysunku']}, zdanie o plikach bez powiązań: {wynik['graf: zdanie o plikach bez powiązań']}, "
+            f"opis tekstowy grafu - pozycji {wynik['graf: pozycji opisu tekstowego (czytniki ekranu)']}, "
             f"czytanie - pozycji {wynik['czytanie: pozycji na liście']}"
         )
 
@@ -1443,6 +1514,27 @@ if __name__ == "__main__":
                 f"lista problemów: {wynik['diagram: lista problemów zamiast rysunku']}, zdanie o braku: {wynik['diagram: zdanie o braku klocków']}"
             )
 
+    def _print_path_cases() -> None:
+        """Wypisuje wyniki _path_breaks dla ścieżek i tekstów skrajnych (w pamięci) i czy są zgodne z oczekiwaniem.
+
+        Po co: łamanie tylko po / i \\, zapis :linie nigdy rozdzielany, polecenie ze spacją łamie się zwyczajnie, znaki
+        specjalne escapowane.
+        """
+        przypadki = [
+            ("src/page.py:12-40", '<wbr>'.join(["src/", "<span class=\"nb\">page.py:12-40</span>"])),
+            ("a\\b\\run.bat:7", 'a\\<wbr>b\\<wbr><span class="nb">run.bat:7</span>'),
+            ("run.bat:7", '<span class="nb">run.bat:7</span>'),
+            ("pip install x", "pip install x"),
+            ("dir/<b>x:1", 'dir/<wbr><span class="nb">&lt;b&gt;x:1</span>'),
+        ]
+        zgodne = True
+        for tekst, oczekiwane in przypadki:
+            wynik = str(_path_breaks(tekst))
+            if wynik != oczekiwane:
+                zgodne = False
+                print(f"  niezgodne: {tekst!r} -> {wynik!r}, oczekiwano {oczekiwane!r}")
+        print(f"Łamanie ścieżek (w pamięci): {len(przypadki)} przypadków, zgodne z oczekiwaniem: {zgodne}")
+
     def manual_test():
         """Renderuje przykładowy przewodnik robota 02 do guide_test.html w katalogu głównym repo i wypisuje podsumowanie.
 
@@ -1475,6 +1567,7 @@ if __name__ == "__main__":
         pusta = _summary(_render_example(repo_dir, app_config, [], "", diagram))
         print(f"Metryczka bez wpisów (w pamięci): zdanie o braku konfiguracji: {pusta['metryczka: zdanie o braku konfiguracji']}, kafelków: {pusta['metryczka: kafelków']}")
         _print_flow_cases(repo_dir, app_config)
+        _print_path_cases()
         print("Roboty testowe w pamięci (bez zapisu plików):")
         limit = app_config.analysis.long_unit_lines
         _print_robot_counts(repo_dir, app_config, "02_robot_bez_frameworku", limit)
