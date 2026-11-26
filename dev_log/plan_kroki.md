@@ -251,9 +251,10 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 - **Sprawdzamy:** ręcznie złożony plan robota 02, wydruk JSON i zgodność po odczycie; schemat JSON klasy `Plan` bez `anyOf` i z opisem przy każdym polu; plan bez `summary` i `tasks` odrzucony przy odczycie.
 
 **Krok 47. Agent planner (bez grafu)**
-- **Funkcja:** decyzja, które jednostki kodu analizować, w jakiej kolejności i które pliki wiedzy są potrzebne.
-- **Robimy:** `agents/planner.py` (czysta funkcja `plan()` + węzeł), prompty `planner/*`; planner dostaje mapę projektu: listę plików z rolami, jednostki z zakresami linii, odwołania między plikami, treść plików uruchamiających i konfiguracyjnych - bez kodu źródłowego.
-- **Sprawdzamy:** `python -m dev_agents.agents.planner` czyta `project_map.json` z `dev_agents_doc/` robota i wypisuje plan; dla robota 02 plan zaczyna od `run.bat` → `przetwarzanie.py` → `raport.py`.
+- **Funkcja:** podsumowanie robota, kolejność i wskazówki dla analityków oraz wiedza dla kolejnych agentów.
+- **Decyzje (rekomendowane, tryb pracy fazy F):** poprawki planu zwykłym kodem po odpowiedzi modelu (`complete_plan`): zadanie z nieznaną jednostką usuwane, powtórzone usuwane, jednostka pominięta przez plannera dopisywana na końcu z pustą wskazówką (analizujemy wszystko), plik wiedzy spoza spisu albo powtórzony usuwany; każda poprawka to uwaga w linii postępu; mapa projektu w prompcie bez pola `root` (ścieżka dysku niepotrzebna modelowi), z dosłowną treścią plików zależności, konfiguracji i uruchamiających, bez kodu źródłowego.
+- **Robimy:** `dev_agents/agents/planner.py` (`build_planner_variables`, `complete_plan`, `create_plan`, `planner_node` w `Stage`, `print_plan`), prompty `prompts/planner/system.md` i `user.md`, pole `plan` w `RunState`; węzeł dołącza do grafu krok 48.
+- **Sprawdzamy:** `python -m dev_agents.agents.planner` bez modelu (prompt bez kodu i bez ścieżki, z treścią konfiguracji i spisem wiedzy; poprawianie planu z pięcioma błędami; węzeł z udawanym modelem: `plan.json`, linie postępu); `python -m dev_agents.agents.planner <katalog robota>` z prawdziwym modelem czyta `dev_agents_doc/project_map.json` i wypisuje plan - dla robota 02 zadania `przetwarzanie.py`, potem `raport.py`, `run.bat` w podsumowaniu jako start, wiedza: `diagram_rules.md` dla autora diagramu i `guide_goals.md` dla pisarzy.
 
 **Krok 48. Graf: scan → planner**
 - **Funkcja:** planner jako etap przepływu.

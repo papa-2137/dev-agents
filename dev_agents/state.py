@@ -2,8 +2,9 @@
 
 Co robi: definiuje RunState - słownik (TypedDict) z polami wspólnymi dla całego przebiegu:
     project_path - ścieżka katalogu analizowanego projektu (wejście grafu),
-    project_map  - mapa projektu z skanera (wynik węzła scan; zawiera też graf zależności i kolejność czytania).
-Kolejne etapy (plan, notatki analityków, diagram, treść przewodnika) dopisują tu swoje pola w swoich krokach.
+    project_map  - mapa projektu z skanera (wynik węzła scan; zawiera też graf zależności i kolejność czytania),
+    plan         - plan przebiegu (wynik węzła planner; do grafu dołącza go krok 48).
+Kolejne etapy (notatki analityków, diagram, treść przewodnika) dopisują tu swoje pola w swoich krokach.
 
 Dlaczego istnieje: w LangGraph węzeł dostaje stan i zwraca tylko te pola, które zmienia - słownik z polami
 opcjonalnymi (total=False) pasuje do tego wprost. Stan trzyma tylko dane, które się zmieniają w trakcie
@@ -28,3 +29,4 @@ class RunState(typing.TypedDict, total=False):
 
     project_path: str
     project_map: _schemas.ProjectMap
+    plan: _schemas.Plan
