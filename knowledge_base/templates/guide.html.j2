@@ -208,6 +208,16 @@
  </div>
  <div class="fig" id="flowfig"><svg id="flow" role="img" aria-label="Diagram przepływu procesu robota"></svg></div>
  <p class="note">Układ (wiersze, kolumny, pętle) wylicza kod z grafu kroków zwróconego przez model i sprawdzonego pod kątem spójności.</p>
+
+ <h2>Krok po kroku</h2>
+ <div class="legend">
+  <span><span class="c f" style="padding:1px 8px">plik</span></span>
+  <span><span class="c env" style="padding:1px 8px">zmienna środ.</span></span>
+  <span><span class="c sys" style="padding:1px 8px">system zewn.</span></span>
+  <span><span class="c" style="padding:1px 8px">dane w pamięci</span></span>
+ </div>
+ <div class="fhead"><span>czyta</span><span>co się dzieje</span><span>zapisuje / zwraca</span></div>
+ <div id="flowrows"></div>
 {%- endif %}
 {%- endmacro -%}
 

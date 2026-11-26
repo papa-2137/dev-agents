@@ -249,14 +249,40 @@ def layout_flow(
 # --- Dane dla skryptu rysującego ---
 
 _VIEW_KINDS = {"start": "term", "end": "term", "step": "step", "system": "sys", "decision": "dec"}
+_VIEW_REF_KINDS = {"file": "f", "env": "env", "system": "sys", "memory": "mem"}
+
+
+def _view_ref(
+    ref: _content.DataRef,
+) -> dict:
+    """Zwraca dane klocka jako {name, kind}, gdzie kind to klasa kafelka w skrypcie: f, env, sys albo mem.
+
+    Po co: skrypt rysujący nadaje kafelkowi klasę wprost z tego pola, bez zgadywania rodzaju po nazwie.
+    """
+    wpis = {"name": ref.name, "kind": _VIEW_REF_KINDS[ref.kind]}
+    return wpis
+
+
+def _view_refs(
+    refs: list[_content.DataRef],
+) -> list[dict]:
+    """Zwraca listę danych klocka w formacie skryptu, w kolejności od agenta.
+
+    Po co: jedna pętla dla wejść i wyjść klocka.
+    """
+    wynik = []
+    for ref in refs:
+        wynik.append(_view_ref(ref))
+    return wynik
 
 
 def _view_node(
     node: _content.FlowNode,
 ) -> dict:
-    """Zwraca klocek w formacie skryptu z makiety: rodzaj term/step/sys/dec, func jako jeden napis, flaga unc.
+    """Zwraca klocek w formacie skryptu z makiety: rodzaj term/step/sys/dec, funcs jako lista, dane z rodzajem, flaga unc.
 
-    Po co: skrypt rysujący czyta te pola wprost; funkcje łączone przecinkiem, jak w makiecie.
+    Po co: skrypt rysujący czyta te pola wprost; funkcje w kolejności wywołania (podpowiedź łączy je przecinkiem,
+    wiersz „Krok po kroku” pokazuje listę numerowaną).
     """
     wezel = {
         "id": node.id,
@@ -264,9 +290,9 @@ def _view_node(
         "label": node.label,
         "desc": node.description,
         "module": node.module,
-        "func": ", ".join(node.functions),
-        "reads": node.reads,
-        "writes": node.writes,
+        "funcs": list(node.functions),
+        "reads": _view_refs(node.reads),
+        "writes": _view_refs(node.writes),
         "unc": not node.certain,
     }
     return wezel
@@ -277,8 +303,8 @@ def flow_view_data(
 ) -> dict:
     """Zwraca {nodes, edges, layout} dla skryptu rysującego diagram (guide.js): klocki, strzałki from/to i układ.
 
-    Po co: renderer wstawia ten słownik do strony jako JSON; skrypt rysuje z niego diagram i (krok 37) wiersze
-    „Krok po kroku”, więc oba powstają z tych samych danych.
+    Po co: renderer wstawia ten słownik do strony jako JSON; skrypt rysuje z niego diagram i wiersze „Krok po kroku”,
+    więc oba powstają z tych samych danych.
 
     Uwaga: wołać dla diagramu bez problemów z validate_flow - przy problemach układ może być niepełny.
     """
@@ -428,10 +454,41 @@ if __name__ == "__main__":
         for klocek in dane["nodes"]:
             if klocek["unc"]:
                 wywnioskowane.append(klocek["id"])
+        kafelki = 0
+        funkcje = 0
+        for klocek in dane["nodes"]:
+            kafelki = kafelki + len(klocek["reads"]) + len(klocek["writes"])
+            funkcje = funkcje + len(klocek["funcs"])
         pierwsza = dane["edges"][0]
         print(f"  Dane dla skryptu: klocków {len(dane['nodes'])}, strzałek {len(dane['edges'])}, układ {len(dane['layout'])} wpisów")
+        print(f"    kafelków wejść i wyjść: {kafelki}, funkcji: {funkcje}")
         print(f"    rodzaje: {' '.join(rodzaje)}")
         print(f"    pierwsza strzałka: {pierwsza['from']} -> {pierwsza['to']}, wywnioskowane klocki: {wywnioskowane}")
+
+    def _print_ref_kinds() -> None:
+        """Wypisuje klasy kafelków dla czterech rodzajów danych klocka i dla klocka bez danych.
+
+        Po co: dowód, że rodzaj z schematu (file, env, system, memory) trafia do skryptu jako f, env, sys, mem.
+        """
+        klocek = _content.FlowNode(
+            id="x",
+            kind="system",
+            label="Klocek z czterema rodzajami danych",
+            reads=[
+                _content.DataRef(name="config.yml", kind="file"),
+                _content.DataRef(name="HASLO_API", kind="env"),
+            ],
+            writes=[
+                _content.DataRef(name="API zamówień", kind="system"),
+                _content.DataRef(name="lista transakcji", kind="memory"),
+            ],
+        )
+        widok = _view_node(klocek)
+        klasy = []
+        for wpis in widok["reads"] + widok["writes"]:
+            klasy.append(wpis["kind"])
+        print(f"  Klasy kafelków (plik, zmienna, system, pamięć): {klasy}")
+        print(f"  Klocek bez danych: wejścia {_view_node(_content.FlowNode(id='y', kind='end', label='Koniec'))['reads']}")
 
     def manual_test():
         """Sprawdza diagram z makiety, przykład robota 02, zepsute kopie i diagram ponad progiem.
@@ -455,6 +512,7 @@ if __name__ == "__main__":
         _print_check("Przykładowy diagram robota 02 (guide_content)", problemy, ostrzezenia)
         _print_layout(przyklad, layout_flow(przyklad))
         _print_view_data(przyklad)
+        _print_ref_kinds()
         print()
 
         for tytul, zepsuty in _broken_flows(diagram):
@@ -471,9 +529,23 @@ if __name__ == "__main__":
         """
         klocki = [
             _content.FlowNode(id="n1", kind="start", label="Start z run.bat"),
-            _content.FlowNode(id="n2", kind="step", label="Wczytaj listę plików", module="przetwarzanie.py"),
+            _content.FlowNode(
+                id="n2",
+                kind="step",
+                label="Wczytaj listę plików",
+                module="przetwarzanie.py",
+                functions=["run:45"],
+                reads=[_content.DataRef(name="dane/wejscie/*.csv", kind="file")],
+            ),
             _content.FlowNode(id="n3", kind="decision", label="Nagłówek poprawny?", module="przetwarzanie.py"),
-            _content.FlowNode(id="n4", kind="step", label="Przelicz zamówienia", module="przetwarzanie.py"),
+            _content.FlowNode(
+                id="n4",
+                kind="step",
+                label="Przelicz zamówienia",
+                module="przetwarzanie.py",
+                functions=["run:120"],
+                writes=[_content.DataRef(name="dane/wyjscie/wyniki_*.json", kind="file")],
+            ),
             _content.FlowNode(id="n5", kind="system", label="Wyślij do API", module="przetwarzanie.py", certain=False),
             _content.FlowNode(id="n6", kind="end", label="Raport Excel", module="raport.py"),
         ]

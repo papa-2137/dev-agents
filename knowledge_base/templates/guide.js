@@ -36,14 +36,14 @@
  document.querySelectorAll('.cb').forEach(box=>{const b=document.createElement('button');b.className='cp';b.type='button';b.textContent='Kopiuj';
   b.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(box.querySelector('pre').textContent);b.textContent='Skopiowano'}catch(e){b.textContent='Zaznacz i skopiuj'}setTimeout(()=>{b.textContent='Kopiuj'},1600)});box.appendChild(b)});
  /* ---------- dane przepływu ---------- */
- /* dane diagramu wstawia renderer (krok 36: diagram, krok 37: wiersze „krok po kroku”); bez nich nic się nie rysuje */
+ /* dane diagramu wstawia renderer (diagram i wiersze „krok po kroku” z tych samych danych); bez nich nic się nie rysuje */
  const flowEl=document.getElementById('flow-data');
  const flow=flowEl?JSON.parse(flowEl.textContent):{nodes:[],edges:[],layout:{}};
  const byId={};flow.nodes.forEach((n,i)=>{n.num=i+1;byId[n.id]=n});
  const kindName={term:'start / koniec',step:'czynność robota',sys:'kontakt z systemem zewnętrznym',dec:'decyzja'};
  const showFlow=g=>{const n=byId[g.dataset.go];if(!n)return;
-  const mf=[n.module,n.func].filter(Boolean).map(t=>'<code>'+esc(t)+'</code>').join(' · ');
-  tip.innerHTML='<b>'+n.num+'. '+esc(n.label)+(n.unc?' <span class="unc">wywnioskowane</span>':'')+'</b><p class="tk">'+esc(kindName[n.kind])+'</p>'+(n.desc?'<p>'+esc(n.desc)+'</p>':'')+(mf?'<p><span>Moduł i funkcja</span>'+mf+'</p>':'')+(n.reads.length?'<p><span>Czyta</span>'+n.reads.map(esc).join(', ')+'</p>':'')+(n.writes.length?'<p><span>Zapisuje / zwraca</span>'+n.writes.map(esc).join(', ')+'</p>':'')+'<p class="tk">Kliknij, aby przejść do szczegółów kroku.</p>';place(g)};
+  const mf=[n.module,n.funcs.join(', ')].filter(Boolean).map(t=>'<code>'+esc(t)+'</code>').join(' · ');
+  tip.innerHTML='<b>'+n.num+'. '+esc(n.label)+(n.unc?' <span class="unc">wywnioskowane</span>':'')+'</b><p class="tk">'+esc(kindName[n.kind])+'</p>'+(n.desc?'<p>'+esc(n.desc)+'</p>':'')+(mf?'<p><span>Moduł i funkcja</span>'+mf+'</p>':'')+(n.reads.length?'<p><span>Czyta</span>'+n.reads.map(r=>esc(r.name)).join(', ')+'</p>':'')+(n.writes.length?'<p><span>Zapisuje / zwraca</span>'+n.writes.map(r=>esc(r.name)).join(', ')+'</p>':'')+'<p class="tk">Kliknij, aby przejść do szczegółów kroku.</p>';place(g)};
  /* ---------- diagram przepływu (SVG) ---------- */
  const svg=document.getElementById('flow')||document.createElementNS('http://www.w3.org/2000/svg','svg');
  const defs='<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#111"/></marker><marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e4002b"/></marker></defs>';
@@ -80,7 +80,7 @@
    if(nd.kind==='dec'){const hw=bw*.42,hh=bh/2+6;shape=`<polygon class="n-dec" points="${p.x},${p.y-hh} ${p.x+hw},${p.y} ${p.x},${p.y+hh} ${p.x-hw},${p.y}"/>`;cls='t-dec'}
    else{const rx=nd.kind==='term'?22:3;shape=`<rect x="${p.x-bw/2}" y="${p.y-bh/2}" width="${bw}" height="${bh}" rx="${rx}" class="${nd.kind==='sys'?'n-sys':nd.kind==='term'?'n-term':'n-step'}"/>`;cls=nd.kind==='sys'?'t-sys':'t-step'}
    const numCls=nd.kind==='sys'?'t-numw':'t-num';
-   n+=`<g data-go="${nd.id}" tabindex="0" role="button" aria-label="${esc(nd.num+'. '+nd.label)}: szczegóły">${shape}${lines(nd.label,nd.kind==='dec'?bw*.62:bw-30,fs).map((t,k,a)=>`<text x="${nd.kind==='dec'?p.x:p.x+9}" y="${p.y+(k-(a.length-1)/2)*(fs+2)}" class="${cls}" font-size="${fs}">${esc(t)}</text>`).join('')}${nd.kind!=='dec'?`<text x="${p.x-bw/2+12}" y="${p.y}" class="${numCls}">${nd.num}</text>`:''}</g>`});
+   n+=`<g data-go="${esc(nd.id)}" tabindex="0" role="button" aria-label="${esc(nd.num+'. '+nd.label)}: szczegóły">${shape}${lines(nd.label,nd.kind==='dec'?bw*.62:bw-30,fs).map((t,k,a)=>`<text x="${nd.kind==='dec'?p.x:p.x+9}" y="${p.y+(k-(a.length-1)/2)*(fs+2)}" class="${cls}" font-size="${fs}">${esc(t)}</text>`).join('')}${nd.kind!=='dec'?`<text x="${p.x-bw/2+12}" y="${p.y}" class="${numCls}">${nd.num}</text>`:''}</g>`});
   svg.innerHTML=defs+e+n;
  }
  const goRow=id=>{hideTip(true);const r=document.getElementById('row-'+id);if(!r)return;document.querySelectorAll('.row.hl').forEach(x=>x.classList.remove('hl'));r.classList.add('hl');r.scrollIntoView({behavior:reduce?'auto':'smooth',block:'center'})};
@@ -91,15 +91,18 @@
  svg.addEventListener('focusout',()=>{if(!pinned)hideTip()});
  svg.addEventListener('keydown',ev=>{const g=ev.target.closest('[data-go]');if(g&&(ev.key==='Enter'||ev.key===' ')){ev.preventDefault();goRow(g.dataset.go)}});
  /* ---------- krok po kroku (z tych samych danych) ---------- */
- const chip=(t,cls)=>`<div class="c ${cls||''}">${esc(t)}</div>`;
- const isFile=t=>/[\/\\]|\.\w{2,4}\b/.test(t)&&!/ /.test(t.split(',')[0].trim().replace(/\s.*/,''))||/\.(yml|yaml|json|xlsx|db|txt|csv)\b/.test(t);
+ const chip=r=>`<div class="c ${r.kind}">${esc(r.name)}</div>`;
  const rowsHtml=flow.nodes.map((nd,i)=>{
-  const ins=nd.reads.map(t=>chip(t,isFile(t)?'f':'')).join(''),outs=nd.writes.map(t=>chip(t,isFile(t)?'f':'')).join('');
+  const ins=nd.reads.map(chip).join(''),outs=nd.writes.map(chip).join('');
   const out=flow.edges.filter(e=>e.from===nd.id);
   const decOut=nd.kind==='dec'?'<div class="dec-out">'+out.map(e=>`<span>${esc(e.label||'')} → ${byId[e.to].num}</span>`).join('')+'</div>':'';
   const loop=out.find(e=>e.kind==='loop');
   const nextTxt=loop?`<div class="down"><div class="v loop">${esc(loop.label)} → krok ${byId[loop.to].num}</div></div>`:(i<flow.nodes.length-1?'<div class="down"><div class="v"></div></div>':'');
-  return `<div class="row" id="row-${nd.id}"><div class="ins">${ins}</div><div class="ar${ins?'':' none'}"></div><div class="node ${nd.kind==='sys'?'sys':nd.kind==='dec'?'dec':''}"><div class="nh"><span class="num">${nd.num}</span><b>${esc(nd.label)}</b><code>${esc(nd.module)}</code></div><p>${esc(nd.desc)}</p><ol class="calls"><li>${esc(nd.func)}</li></ol>${decOut}</div><div class="ar${outs?'':' none'}"></div><div class="outs">${outs}</div></div>${nextTxt}`;
+  const unc=nd.unc?' <span class="unc">wywnioskowane</span>':'';
+  const mod=nd.module?`<code>${esc(nd.module)}</code>`:'';
+  const desc=nd.desc?`<p>${esc(nd.desc)}</p>`:'';
+  const calls=nd.funcs.length?'<ol class="calls">'+nd.funcs.map(f=>`<li>${esc(f)}</li>`).join('')+'</ol>':'';
+  return `<div class="row" id="row-${esc(nd.id)}"><div class="ins">${ins}</div><div class="ar${ins?'':' none'}"></div><div class="node ${nd.kind==='sys'?'sys':nd.kind==='dec'?'dec':''}"><div class="nh"><span class="num">${nd.num}</span><b>${esc(nd.label)}</b>${unc}${mod}</div>${desc}${calls}${decOut}</div><div class="ar${outs?'':' none'}"></div><div class="outs">${outs}</div></div>${nextTxt}`;
  }).join('');
  const flowRows=document.getElementById('flowrows');if(flowRows)flowRows.innerHTML=rowsHtml;
  /* ---------- graf zależności ---------- */

@@ -192,6 +192,7 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 37. Przepływ krok po kroku pod diagramem (W3)**
 - **Funkcja:** dla każdego klocka wiersz „czyta - co się dzieje - zapisuje”, z tych samych danych co diagram, więc nie mogą się rozjechać.
+- **Decyzje użytkownika (1A, 2A, 3 tak):** wiersze rysuje skrypt (`guide.js`) z tych samych danych co diagram, a krok dokłada markup (nagłówek „Krok po kroku”, legenda rodzajów kafelków, nagłówki kolumn, kontener `#flowrows`); rodzaj kafelka (plik, zmienna środowiskowa, system zewnętrzny, dane w pamięci) jako pole schematu: `FlowNode.reads` i `writes` to listy `DataRef` (`name` i `kind`: `file`, `env`, `system`, `memory`), do skryptu trafia klasa kafelka `f`/`env`/`sys`/`mem`; funkcje klocka jako lista numerowana (`funcs` w danych skryptu). Zrobione: `guide_content.py` (`DataRef`), `flow.py` (`_view_ref`, `_view_refs`, `funcs`), szablon i `guide.js` (wiersze, kafelki z rodzaju, znacznik „wywnioskowane” w wierszu), polecenie dla pisarza w `guide_template.yaml`.
 - **Robimy:** wiersze generowane z `FlowGraph` (moduł, funkcje w kolejności, wejścia i wyjścia jako oznaczone „kafelki”: plik, zmienna, system, dane w pamięci); wyjścia decyzji; strzałki z powrotem pętli; kliknięcie klocka przewija do wiersza i go wyróżnia.
 - **Sprawdzamy:** kliknięcie klocka 9 w diagramie przewija do wiersza kroku 9; liczba wierszy = liczba klocków.
 

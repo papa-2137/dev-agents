@@ -584,7 +584,8 @@ if __name__ == "__main__":
         """Składa mały diagram robota 02: ścieżki procesu mają numery klocków, a diagram opisy, funkcje i dane.
 
         Po co: diagram domyślnego testu; start i koniec bez modułu (podpowiedź bez pustego „Moduł i funkcja”), klocek
-        wywnioskowany (oznaczenie w podpowiedzi) i opis z tekstem `</script>` (JSON w stronie musi zostać bezpieczny).
+        wywnioskowany (oznaczenie w podpowiedzi), opis z tekstem `</script>` (JSON w stronie musi zostać bezpieczny)
+        i dane wszystkich czterech rodzajów (plik, zmienna, system, pamięć) - przykład, nie fakty o robocie 02.
         """
         diagram = _content.FlowGraph(
             nodes=[
@@ -596,7 +597,10 @@ if __name__ == "__main__":
                     description="Robot bierze pliki zamówień z katalogu wejściowego. Test: </script><b>x</b> ma zostać tekstem.",
                     module="przetwarzanie.py",
                     functions=["run:52"],
-                    reads=["dane/wejscie/*.csv"],
+                    reads=[
+                        _content.DataRef(name="dane/wejscie/*.csv", kind="file"),
+                        _content.DataRef(name="KATALOG_WEJSCIOWY", kind="env"),
+                    ],
                 ),
                 _content.FlowNode(id="naglowek", kind="decision", label="Nagłówek poprawny?", description="Porównanie z oczekiwanym nagłówkiem."),
                 _content.FlowNode(
@@ -605,11 +609,20 @@ if __name__ == "__main__":
                     label="Sprawdzenie wierszy i rabaty",
                     module="przetwarzanie.py",
                     functions=["run:110", "run:180"],
-                    reads=["wiersze pliku"],
-                    writes=["zamówienia po przeliczeniu"],
+                    reads=[_content.DataRef(name="wiersze pliku", kind="memory")],
+                    writes=[_content.DataRef(name="zamówienia po przeliczeniu", kind="memory")],
                 ),
                 _content.FlowNode(id="odrzut", kind="step", label="Plik do dane/odrzucone", module="przetwarzanie.py", certain=False),
-                _content.FlowNode(id="wyniki", kind="step", label="Zapis wyników JSON i CSV", module="przetwarzanie.py", writes=["dane/wyjscie/wyniki_*.json"]),
+                _content.FlowNode(
+                    id="wyniki",
+                    kind="step",
+                    label="Zapis wyników JSON i CSV",
+                    module="przetwarzanie.py",
+                    writes=[
+                        _content.DataRef(name="dane/wyjscie/wyniki_*.json", kind="file"),
+                        _content.DataRef(name="serwer raportów", kind="system"),
+                    ],
+                ),
                 _content.FlowNode(id="koniec", kind="end", label="Koniec"),
             ],
             edges=[
@@ -640,6 +653,27 @@ if __name__ == "__main__":
             dane = json.loads(trafienie.group(1))
         return dane
 
+    def _mockup_refs(
+        names: list[str],
+    ) -> list[_content.DataRef]:
+        """Zamienia napisy danych z makiety na DataRef: ścieżka albo nazwa pliku → file, „środowisk” → env, trzy znane
+        napisy → system, reszta → memory.
+
+        Po co: makieta nie ma rodzajów danych; prosta reguła testu pokazuje w wariancie „makieta” kafelki każdego rodzaju.
+        """
+        systemy = ["strona wyniku", "pola formularza", "sesja przeglądarki"]
+        wynik = []
+        for nazwa in names:
+            rodzaj = "memory"
+            if re.fullmatch(r"\S+\.(?:yml|xlsx|db|txt)|\S+/\S+", nazwa):
+                rodzaj = "file"
+            if "środowisk" in nazwa:
+                rodzaj = "env"
+            if nazwa in systemy:
+                rodzaj = "system"
+            wynik.append(_content.DataRef(name=nazwa, kind=rodzaj))
+        return wynik
+
     def _flow_from_mockup(
         data: dict,
     ) -> _content.FlowGraph:
@@ -663,8 +697,8 @@ if __name__ == "__main__":
                     description=wezel["desc"],
                     module=wezel["module"],
                     functions=funkcje,
-                    reads=wezel["reads"],
-                    writes=wezel["writes"],
+                    reads=_mockup_refs(wezel["reads"]),
+                    writes=_mockup_refs(wezel["writes"]),
                 )
             )
         strzalki = []
@@ -682,13 +716,22 @@ if __name__ == "__main__":
     ) -> bool:
         """Zwraca True, gdy dane dla skryptu rysującego (flow_view_data) są takie jak w makiecie: klocki, strzałki i układ.
 
-        Po co: dowód, że zamiana FlowGraph na format skryptu niczego nie gubi.
+        Po co: dowód, że zamiana FlowGraph na format skryptu niczego nie gubi. Makieta ma funkcje jako jeden napis
+        i dane jako napisy, więc porównanie łączy funcs przecinkami i bierze nazwy danych (rodzaje to dodatek kroku 37).
         """
         wynik = _flow.flow_view_data(flow)
         zgodne = len(wynik["nodes"]) == len(data["nodes"]) and wynik["layout"] == data["layout"]
         for klocek, wzor in zip(wynik["nodes"], data["nodes"]):
-            for pole in ["id", "kind", "label", "desc", "module", "func", "reads", "writes"]:
+            for pole in ["id", "kind", "label", "desc", "module"]:
                 if klocek[pole] != wzor[pole]:
+                    zgodne = False
+            if ", ".join(klocek["funcs"]) != wzor["func"]:
+                zgodne = False
+            for pole in ["reads", "writes"]:
+                nazwy = []
+                for wpis in klocek[pole]:
+                    nazwy.append(wpis["name"])
+                if nazwy != wzor[pole]:
                     zgodne = False
         strzalki = []
         for krawedz in wynik["edges"]:
@@ -1020,18 +1063,24 @@ if __name__ == "__main__":
         oznaczenia „wywnioskowane” w tabelach, odnośniki do klocków, znaczniki kolejnych kroków, escapowanie <script>,
         liczby z metryczki (kafelki, grupy i wiersze tabeli, hasła wprost, zdanie o braku konfiguracji) oraz
         liczby z drzewa, zależności i ryzykownych miejsc (wiersze, znaczniki, zdania o braku) oraz z diagramu (rysunek,
-        klocki w danych, klocki wywnioskowane, bezpieczeństwo JSON, lista problemów albo zdanie o braku klocków).
+        klocki w danych, klocki wywnioskowane, funkcje, kafelki według rodzaju, nagłówek i kontener wierszy „Krok po kroku”,
+        bezpieczeństwo JSON, lista problemów albo zdanie o braku klocków).
 
         Po co: szybkie sprawdzenie pliku bez otwierania przeglądarki.
         """
         dane_diagramu = _flow_json(html)
         klocki = 0
         wywnioskowane = 0
+        funkcje = 0
+        rodzaje_danych = {"f": 0, "env": 0, "sys": 0, "mem": 0}
         if dane_diagramu:
             klocki = len(dane_diagramu["nodes"])
             for klocek in dane_diagramu["nodes"]:
                 if klocek["unc"]:
                     wywnioskowane = wywnioskowane + 1
+                funkcje = funkcje + len(klocek["funcs"])
+                for wpis in klocek["reads"] + klocek["writes"]:
+                    rodzaje_danych[wpis["kind"]] = rodzaje_danych[wpis["kind"]] + 1
         ryzykowne = _section_html(html, "ryzykowne_miejsca")
         hasla_ryzykowne = len(re.findall(r'<td data-l="Rodzaj"><span class="kv r">hasło w (?:pliku|kodzie)</span>', ryzykowne))
         hasla_razem = len(re.findall(r'<span class="kv r">hasło w (?:pliku|kodzie)</span>', html))
@@ -1060,6 +1109,11 @@ if __name__ == "__main__":
             "diagram: rysunków SVG": html.count('<svg id="flow"'),
             "diagram: klocków w danych": klocki,
             "diagram: klocków wywnioskowanych": wywnioskowane,
+            "diagram: funkcji w danych": funkcje,
+            "diagram: kafelków (plik / zmienna / system / pamięć)": f"{rodzaje_danych['f']} / {rodzaje_danych['env']} / {rodzaje_danych['sys']} / {rodzaje_danych['mem']}",
+            "diagram: nagłówek „Krok po kroku”": html.count("<h2>Krok po kroku</h2>"),
+            "diagram: kontener wierszy (#flowrows)": html.count('<div id="flowrows"></div>'),
+            "diagram: legenda kafelków (rodzajów)": html.count('<span class="c '),
             "diagram: legenda (powrót pętli)": "powrót pętli" in html,
             "diagram: JSON bez surowego </script> z opisu": "</script><b>" not in html,
             "diagram: lista problemów zamiast rysunku": "nie został narysowany" in html,

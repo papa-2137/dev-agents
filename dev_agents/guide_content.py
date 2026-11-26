@@ -1,8 +1,8 @@
 """Schematy treści przewodnika i diagramu przepływu - to, co zwracają agenci i co renderer zamienia na HTML.
 
 Co zawiera:
-    - diagram przepływu: FlowNode (klocek), FlowEdge (strzałka), FlowGraph (całość) - układ na rysunku liczy kod,
-      model zwraca tylko graf,
+    - diagram przepływu: DataRef (dane klocka z rodzajem), FlowNode (klocek), FlowEdge (strzałka), FlowGraph (całość) -
+      układ na rysunku liczy kod, model zwraca tylko graf,
     - treść sekcji: GuideBlock - jedna klasa z polami dla wszystkich typów sekcji szablonu (text -> paragraphs,
       list -> items, steps -> steps, table -> rows, glossary -> terms, io -> inputs/outputs, paths -> paths,
       recipes -> recipes, config -> config_items, code -> code); pola nieużywane przez typ sekcji zostają puste,
@@ -32,6 +32,20 @@ import pydantic
 # --- Diagram przepływu ---
 
 
+class DataRef(pydantic.BaseModel):
+    """Dane, które klocek czyta albo zapisuje: nazwa i rodzaj.
+
+    Po co: wiersze „Krok po kroku” pokazują wejścia i wyjścia klocka jako kafelki czterech rodzajów (plik, zmienna
+    środowiskowa, system zewnętrzny, dane w pamięci); rodzaj wybiera model z zamkniętej listy, renderer niczego nie
+    zgaduje.
+    """
+
+    name: str = pydantic.Field(description="Nazwa danych: ścieżka pliku (może mieć znak *), nazwa zmiennej środowiskowej, nazwa systemu albo krótki opis danych w pamięci.")
+    kind: typing.Literal["file", "env", "system", "memory"] = pydantic.Field(
+        description="Rodzaj: file (plik lub katalog), env (zmienna środowiskowa), system (aplikacja, API, baza, serwer poza robotem), memory (dane w pamięci robota)."
+    )
+
+
 class FlowNode(pydantic.BaseModel):
     """Klocek diagramu przepływu: jedna czynność robota z modułem, funkcjami i danymi.
 
@@ -46,8 +60,8 @@ class FlowNode(pydantic.BaseModel):
     description: str = pydantic.Field(default="", description="Jedno-dwa zdania: co robot robi w tym kroku i po co.")
     module: str = pydantic.Field(default="", description="Plik kodu, w którym dzieje się krok, np. przetwarzanie.py.")
     functions: list[str] = pydantic.Field(default=[], description="Funkcje w kolejności wywołania, z linią, np. run:120.")
-    reads: list[str] = pydantic.Field(default=[], description="Co krok czyta: pliki, zmienne, systemy, dane w pamięci.")
-    writes: list[str] = pydantic.Field(default=[], description="Co krok zapisuje albo zwraca.")
+    reads: list[DataRef] = pydantic.Field(default=[], description="Co krok czyta: pliki, zmienne środowiskowe, systemy, dane w pamięci - każde z rodzajem.")
+    writes: list[DataRef] = pydantic.Field(default=[], description="Co krok zapisuje albo zwraca - każde z rodzajem.")
     certain: bool = pydantic.Field(default=True, description="False, gdy krok wywnioskowano, a nie zapisano wprost w kodzie.")
 
 
@@ -234,9 +248,9 @@ if __name__ == "__main__":
         """
         klocki = [
             FlowNode(id="n1", kind="start", label="Start z run.bat"),
-            FlowNode(id="n2", kind="step", label="Wczytaj listę plików", module="przetwarzanie.py", functions=["run:45"], reads=["dane/wejscie/*.csv"]),
+            FlowNode(id="n2", kind="step", label="Wczytaj listę plików", module="przetwarzanie.py", functions=["run:45"], reads=[DataRef(name="dane/wejscie/*.csv", kind="file")]),
             FlowNode(id="n3", kind="decision", label="Nagłówek poprawny?", module="przetwarzanie.py", functions=["run:88"]),
-            FlowNode(id="n4", kind="step", label="Przelicz zamówienia", module="przetwarzanie.py", functions=["run:120"], writes=["dane/wyjscie/wyniki_*.json"]),
+            FlowNode(id="n4", kind="step", label="Przelicz zamówienia", module="przetwarzanie.py", functions=["run:120"], writes=[DataRef(name="dane/wyjscie/wyniki_*.json", kind="file")]),
             FlowNode(id="n5", kind="system", label="Wyślij do API", module="przetwarzanie.py", functions=["run:300"], certain=False),
             FlowNode(id="n6", kind="end", label="Raport Excel", module="raport.py", functions=["main:13"]),
         ]

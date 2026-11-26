@@ -110,7 +110,9 @@ tabs:
         required: true
         instruction: >-
           Graf kroków procesu (start, kroki, systemy, decyzje, koniec) z krawędziami; pod diagramem „Krok po kroku”:
-          dla każdego klocka co czyta, co robi (moduł, funkcje w kolejności), co zapisuje. Układ liczy kod.
+          dla każdego klocka co czyta, co robi (moduł, funkcje w kolejności), co zapisuje. Każde dane klocka (czyta,
+          zapisuje) podaj z rodzajem: file (plik lub katalog), env (zmienna środowiskowa), system (aplikacja, API,
+          baza, serwer poza robotem) albo memory (dane w pamięci robota). Układ liczy kod.
 
   - id: sciezki
     title: Ścieżki procesu
