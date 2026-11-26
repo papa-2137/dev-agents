@@ -36,6 +36,8 @@ llm:
 paths:
   prompts: prompts
   knowledge_base: knowledge_base
+  # Szablon przewodnika: zakładki i sekcje (typ, źródło, polecenie dla pisarza) - zmiana bez programowania.
+  guide_template: knowledge_base/templates/guide_template.yaml
 
 scan:
   # Pliki i katalogi pomijane przy skanowaniu analizowanego projektu (wzorce nazw, np. *.pyc).

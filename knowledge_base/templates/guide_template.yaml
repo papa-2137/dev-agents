@@ -1,0 +1,233 @@
+# Szablon przewodnika dla dewelopera: zakładki i sekcje w kolejności wyświetlania (wzorzec: dev_log/guide_mockup.html).
+#
+# Zakładka: id, title, card_label i card_text (karta na stronie startowej, „jak czytać”), lead (stałe zdanie pod
+# tytułem; puste = brak), sections.
+# Sekcja:
+#   id           - unikalny w całym szablonie (odwołują się do niego renderer i pisarze)
+#   title        - nagłówek sekcji w przewodniku
+#   type         - sposób wyświetlenia: text, list, steps, code, table, glossary, io, cards, config, tree,
+#                  dependency_graph, flow, paths, recipes
+#   source       - kto wypełnia: llm (pisarz - agent), scanner (dane z mapy projektu), code (kod składa z danych
+#                  mapy i szablonu, agent może dopisać komentarze)
+#   required     - true: sekcja zawsze widoczna; gdy z kodu nic nie wynika, pokazuje „nie wynika z kodu”
+#                  (nigdy wymyśloną treść); false: sekcja znika, gdy nie ma treści
+#   instruction  - polecenie dla pisarza (dla source llm) albo opis danych (scanner, code)
+#   columns      - kolumny tabeli (wymagane przy type: table)
+#   technologies - opcjonalnie: lista technologii, dla których sekcja się pojawia (np. [python]); brak = wszystkie
+#
+# Nowa sekcja albo zmiana polecenia = zmiana tego pliku, bez zmian w kodzie. Nowy TYP sekcji wymaga kodu w rendererze.
+
+tabs:
+  - id: przeglad
+    title: Przegląd i uruchomienie
+    card_label: "1 · instalacja"
+    card_text: Metryczka z konfiguracji, wymagania, dostępy, zależności do skopiowania, instalacja krok po kroku.
+    lead: ""
+    sections:
+      - id: opis_robota
+        title: Opis robota
+        type: text
+        source: llm
+        required: true
+        instruction: >-
+          Nagłówek „nazwa robota: jedno zdanie, co robi” i 2-4 zdania językiem biznesowym: jaki proces automatyzuje
+          robot, co jest jego wejściem, co efektem i dla kogo.
+      - id: metryczka
+        title: Metryczka robota
+        type: config
+        source: llm
+        required: true
+        instruction: >-
+          Ustawienia robota z plików konfiguracyjnych (wartości przepisane dosłownie) i ze stałych w kodzie (plik
+          i linia): klucz, wartość, rodzaj (adres, ścieżka, zmienna środowiskowa, konto, przełącznik, inne), znaczenie,
+          miejsca użycia. Hasło wpisane wprost - pokaż wartość i oznacz „hasło w pliku”. Bez konfiguracji - jedno zdanie.
+      - id: jak_czytac
+        title: Jak czytać ten przewodnik
+        type: cards
+        source: code
+        required: true
+        instruction: Karty zakładek z card_label i card_text tego szablonu.
+      - id: wejscie_wyjscie
+        title: Wejście i wyjście
+        type: io
+        source: llm
+        required: true
+        instruction: Co robot czyta (pliki, systemy, dane) i co zapisuje albo zwraca - z plikiem i miejscem w kodzie.
+      - id: wymagania
+        title: Wymagania i dostępy
+        type: table
+        source: llm
+        required: true
+        columns: [Obszar, Wymaganie, Szczegóły]
+        instruction: >-
+          Wszystko, czego robot potrzebuje poza kodem: wersja języka, system i aplikacje, dostęp sieciowy (adresy),
+          konta i hasła (nazwy zmiennych środowiskowych, bez wartości), pliki i katalogi, pliki z sekretami (tylko
+          metadane).
+      - id: zaleznosci
+        title: Zależności do skopiowania
+        type: code
+        source: scanner
+        required: true
+        instruction: Treść plików zależności robota (rola dependency) przepisana bez zmian z mapy projektu.
+      - id: instalacja
+        title: Instalacja i uruchomienie
+        type: steps
+        source: llm
+        required: true
+        instruction: >-
+          Kroki od pobrania kodu do uruchomienia: środowisko, zależności, zmienne środowiskowe, konfiguracja,
+          polecenie uruchomienia. Gdy robot startuje z pliku .bat - kolejność kroków z tego pliku.
+      - id: jak_sprawdzic
+        title: Jak sprawdzić, że działa
+        type: list
+        source: llm
+        required: true
+        instruction: Obserwowalne efekty poprawnego przebiegu (pliki, wpisy w logu, rekordy) - z kodu.
+      - id: pojecia
+        title: Pojęcia
+        type: glossary
+        source: llm
+        required: false
+        instruction: Słownik pojęć biznesowych i technicznych użytych w przewodniku, z krótką definicją.
+
+  - id: przeplyw
+    title: Przepływ działania
+    card_label: "2 · zrozumienie"
+    card_text: Diagram całego procesu od startu do końca, pod nim każdy krok - co czyta, co robi, co zapisuje.
+    lead: >-
+      Cały proces od startu do końca. Każdy klocek to jedna czynność robota opisana językiem biznesowo-technicznym.
+      Najedź na klocek, aby zobaczyć moduł, funkcje i dane.
+    sections:
+      - id: przeplyw
+        title: Przepływ działania
+        type: flow
+        source: llm
+        required: true
+        instruction: >-
+          Graf kroków procesu (start, kroki, systemy, decyzje, koniec) z krawędziami; pod diagramem „Krok po kroku”:
+          dla każdego klocka co czyta, co robi (moduł, funkcje w kolejności), co zapisuje. Układ liczy kod.
+
+  - id: sciezki
+    title: Ścieżki procesu
+    card_label: "3 · szczegóły"
+    card_text: Wszystkie możliwe ścieżki jako listy kroków - główna, alternatywne, błędy.
+    lead: >-
+      Wszystkie ścieżki, którymi może pójść robot, jako listy kroków. Numery w kółkach odsyłają do klocków
+      diagramu przepływu.
+    sections:
+      - id: sciezki
+        title: Ścieżki procesu
+        type: paths
+        source: llm
+        required: true
+        instruction: Ścieżka główna, alternatywne i błędów jako listy kroków odwołujących się do klocków diagramu.
+
+  - id: struktura
+    title: Struktura projektu
+    card_label: "4 · orientacja"
+    card_text: Drzewo plików z opisami po najechaniu, zależności między modułami.
+    lead: Najedź na element, aby zobaczyć, czym jest i jaką ma rolę. Kliknięcie przypina opis.
+    sections:
+      - id: drzewo
+        title: Drzewo projektu
+        type: tree
+        source: scanner
+        required: true
+        instruction: Pliki i katalogi z mapy projektu z rolami; sekrety tylko jako metadane; opisy po najechaniu od pisarza.
+      - id: graf_zaleznosci
+        title: Zależności między modułami
+        type: dependency_graph
+        source: scanner
+        required: true
+        instruction: Graf z ProjectMap.dependency_edges, warstwy od punktów wejścia.
+
+  - id: zmiany
+    title: Zmiany i rozszerzenia
+    card_label: "5 · zadanie"
+    card_text: Przepisy - nowa strona, nowy format pliku wsadowego, zmiana reguły.
+    lead: >-
+      Przepisy na najbardziej prawdopodobne zmiany w tym robocie. Każdy przepis: kiedy go użyć, które pliki
+      zmienić (czerwona ramka = nowy plik) i kroki w kolejności.
+    sections:
+      - id: gdzie_zmienic
+        title: Gdzie co zmienić
+        type: table
+        source: llm
+        required: true
+        columns: ["Chcę zmienić…", Plik i miejsce, Uwagi]
+        instruction: Najczęstsze zmiany i miejsce w kodzie albo konfiguracji, w którym się je robi.
+      - id: przepisy
+        title: Przepisy
+        type: recipes
+        source: llm
+        required: false
+        instruction: >-
+          2-3 przepisy na prawdopodobne rozszerzenia tego robota: kiedy użyć, pliki do zmiany i nowe pliki, kroki
+          w kolejności.
+
+  - id: bledy
+    title: Błędy i naprawa
+    card_label: "6 · awaria"
+    card_text: Objawy, przyczyny, gdzie szukać i jak naprawić; ryzykowne miejsca w kodzie i konfiguracji.
+    lead: "Najbardziej prawdopodobne awarie wynikające z kodu: jak je rozpoznać, gdzie szukać przyczyny i jak naprawić."
+    sections:
+      - id: awarie
+        title: Błędy i naprawa
+        type: table
+        source: llm
+        required: true
+        columns: [Objaw, Prawdopodobna przyczyna, Gdzie szukać, Jak naprawić]
+        instruction: Najbardziej prawdopodobne awarie wynikające z kodu, z plikiem i funkcją, w której szukać przyczyny.
+      - id: ryzykowne_miejsca
+        title: Ryzykowne miejsca
+        type: table
+        source: code
+        required: true
+        columns: [Miejsce, Plik i linie, Rodzaj, Dlaczego ryzykowne]
+        instruction: >-
+          Jednostki dłuższe niż analysis.long_unit_lines (z mapy projektu: nazwa, plik:linie, długość) oraz hasła
+          wpisane wprost i inne ryzykowne miejsca wskazane przez pisarza; komentarz „dlaczego ryzykowne” od pisarza.
+      - id: ograniczenia
+        title: Znane ograniczenia i pułapki
+        type: list
+        source: llm
+        required: false
+        instruction: Pułapki i ograniczenia wynikające z kodu (np. brak sprzątania po błędzie, stała kolejność kolumn).
+
+  - id: deweloper
+    title: Dla dewelopera
+    card_label: "7 · kod"
+    card_text: Architektura w pięciu zdaniach, kolejność czytania kodu, konwencje.
+    lead: "Od ogółu do szczegółów: jak ten kod jest zbudowany i od czego zacząć lekturę."
+    sections:
+      - id: piec_zdan
+        title: Całość w pięciu zdaniach
+        type: text
+        source: llm
+        required: true
+        instruction: Architektura robota w pięciu zdaniach - od punktu wejścia do zapisu wyników.
+      - id: warstwy
+        title: Warstwy
+        type: table
+        source: llm
+        required: false
+        columns: [Pakiet, Do czego służy w tym robocie]
+        instruction: Pakiety albo katalogi kodu i ich rola w robocie.
+      - id: kolejnosc_czytania
+        title: Kolejność czytania kodu
+        type: list
+        source: scanner
+        required: true
+        instruction: Pliki w kolejności z ProjectMap.reading_order; jedno zdanie opisu każdego pliku od pisarza.
+      - id: konwencje
+        title: Konwencje w kodzie
+        type: list
+        source: llm
+        required: false
+        instruction: Powtarzalne wzorce w kodzie robota (nazewnictwo, obsługa błędów, logowanie).
+      - id: zaleznosci_zewnetrzne
+        title: Zależności zewnętrzne
+        type: list
+        source: llm
+        required: false
+        instruction: Pakiety spoza projektu użyte w kodzie i do czego robot ich używa.

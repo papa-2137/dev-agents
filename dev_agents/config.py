@@ -2,7 +2,7 @@
 
 Co robi: wczytuje config.yaml, zamienia go na obiekty Pythona (podpowiedzi w edytorze, dostęp przez
 atrybuty, np. app_config.llm.profiles["small"].model), sprawdza, czy każdy agent wskazuje istniejący
-profil modelu, czy metoda structured output w każdym profilu i role plików w sekcji `scan` są znane i czy pliki wiedzy frameworków istnieją, a ścieżki z sekcji `paths`
+profil modelu, czy metoda structured output w każdym profilu i role plików w sekcji `scan` są znane i czy pliki wiedzy frameworków i szablon przewodnika istnieją, a ścieżki z sekcji `paths`
 zamienia na bezwzględne.
 
 Dlaczego istnieje: to jedyne wejście do ustawień narzędzia. Pozostałe moduły dostają już sprawdzony,
@@ -19,7 +19,7 @@ Rola: moduł używany przez punkt wejścia programu i przez warstwy, które potr
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.config
 Najpierw wypisuje wczytany config jako JSON (ścieżki w `paths` mają być bezwzględne), potem komunikaty
-błędów dla siedmiu celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
+błędów dla ośmiu celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
 """
 
 import os
@@ -60,7 +60,7 @@ class LLMConfig(BaseModel):
 
 
 class PathsConfig(BaseModel):
-    """Sekcja `paths`: katalogi z promptami i bazą wiedzy.
+    """Sekcja `paths`: katalogi z promptami i bazą wiedzy oraz plik szablonu przewodnika.
 
     Po co: prompty i wiedza leżą poza kodem; po wczytaniu configu ścieżki są bezwzględne,
     więc działają niezależnie od katalogu, z którego uruchomiono narzędzie.
@@ -68,6 +68,7 @@ class PathsConfig(BaseModel):
 
     prompts: str
     knowledge_base: str
+    guide_template: str  # plik YAML z zakładkami i sekcjami przewodnika
 
 
 class FrameworkConfig(BaseModel):
@@ -193,6 +194,20 @@ def _check_framework_knowledge(
             raise ValueError(komunikat_bledu)
 
 
+def _check_guide_template(
+    app_config: AppConfig,
+) -> None:
+    """Sprawdza, czy plik szablonu przewodnika (paths.guide_template) istnieje; przy braku rzuca ValueError.
+
+    Po co: literówka w ścieżce wychodzi przy starcie, a nie dopiero przy renderowaniu przewodnika.
+
+    Uwaga: wymaga ścieżek bezwzględnych - wołane po _resolve_paths(). Treść szablonu sprawdza guide_template.py.
+    """
+    if not os.path.isfile(app_config.paths.guide_template):
+        komunikat_bledu = f"Brak pliku szablonu przewodnika (paths.guide_template): {app_config.paths.guide_template}"
+        raise ValueError(komunikat_bledu)
+
+
 def _resolve_paths(
     paths: PathsConfig,
     config_dir: str,
@@ -206,6 +221,7 @@ def _resolve_paths(
     """
     paths.prompts = os.path.abspath(os.path.join(config_dir, paths.prompts))
     paths.knowledge_base = os.path.abspath(os.path.join(config_dir, paths.knowledge_base))
+    paths.guide_template = os.path.abspath(os.path.join(config_dir, paths.guide_template))
 
 
 def _build_config(
@@ -227,6 +243,7 @@ def _build_config(
     _check_text_roles(app_config)
     _resolve_paths(app_config.paths, config_dir)
     _check_framework_knowledge(app_config)
+    _check_guide_template(app_config)
     return app_config
 
 
@@ -290,7 +307,7 @@ if __name__ == "__main__":
             _print_error(title, blad)
 
     def manual_test():
-        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla siedmiu zepsutych kopii.
+        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla ośmiu zepsutych kopii.
 
         Po co: szybkie sprawdzenie, czy config się wczytuje, ścieżki są bezwzględne, a błędy w configu
         dają czytelne komunikaty.
@@ -330,5 +347,9 @@ if __name__ == "__main__":
         sekret_jako_tekst = copy.deepcopy(raw_config)
         sekret_jako_tekst["scan"]["text_roles"].append("secret")
         _try_broken_config("Rola secret w scan.text_roles", sekret_jako_tekst, repo_dir)
+
+        zly_szablon = copy.deepcopy(raw_config)
+        zly_szablon["paths"]["guide_template"] = "knowledge_base/templates/guide_templat.yaml"
+        _try_broken_config("Brak pliku szablonu przewodnika ('guide_templat.yaml')", zly_szablon, repo_dir)
 
     manual_test()

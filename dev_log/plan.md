@@ -197,6 +197,7 @@ llm:
 paths:
   prompts: prompts
   knowledge_base: knowledge_base
+  guide_template: knowledge_base/templates/guide_template.yaml   # od kroku 30
 
 scan:                     # od kroku 18
   ignore: [".git", "__pycache__", ".pytest_cache", ".idea", ".vscode", "node_modules", "venv", ".venv", "*.pyc", "Thumbs.db", "desktop.ini", "~$*"]
