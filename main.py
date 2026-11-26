@@ -4,7 +4,8 @@ Co robi: odczytuje argumenty wiersza poleceń, wczytuje config.yaml i sprawdza s
 projektu jest rozpoznana. Potem zakłada magazyn wyników (dev_agents_doc/) i uruchamia graf agentów
 (graph.build_graph) z kontekstem (context.build_context: modele, spis bazy wiedzy, szablon). Mapa projektu
 (pliki z rolami, punkty wejścia, jednostki kodu z zakresami linii, frameworki, pliki tekstowe, graf zależności
-i kolejność czytania) pochodzi z węzła scan grafu; main.py zapisuje ją jako dev_agents_doc/project_map.json
+i kolejność czytania) pochodzi z węzła scan grafu; w trakcie pracy węzły wypisują linie postępu z godziną
+i czasem (progress.py), po grafie main.py wypisuje "razem: X s", zapisuje mapę jako dev_agents_doc/project_map.json
 i wypisuje krótkie podsumowanie. Z opcją --render-only graf i modele nie są używane: mapa pochodzi z samego
 skanu, a program składa przewodnik bez modelu (sekcje z kodu prawdziwe, sekcje agentów to zaślepki, diagram
 przykładowy) - wynik to dev_agents_doc/guide.html, podgląd wyglądu bez wydawania tokenów i bez kluczy.
@@ -31,6 +32,7 @@ import argparse
 import datetime
 import os
 import sys
+import time
 
 import dev_agents.config as _config
 import dev_agents.context as _context
@@ -38,6 +40,7 @@ import dev_agents.graph as _graph
 import dev_agents.guide_placeholders as _placeholders
 import dev_agents.guide_template as _template
 import dev_agents.output as _output
+import dev_agents.progress as _progress
 import dev_agents.render as _render
 import dev_agents.scanner as _scanner
 import dev_agents.schemas as _schemas
@@ -160,16 +163,21 @@ def _run_graph(
     """Buduje kontekst, uruchamia graf agentów na projekcie i zwraca mapę projektu ze stanu końcowego.
 
     Po co: jedyne miejsce w main.py, które zna graf; kolejne węzły nie zmieniają tej funkcji, bo dochodzą do grafu.
+    Węzły zgłaszają postęp liniami na ekran (progress.print_line podane w kontekście), a po grafie wypisana
+    jest linia "razem: X s".
 
     Uwaga: błąd budowy kontekstu (brak zmiennej środowiskowej z kluczem albo adresem modelu, błędny spis bazy wiedzy
     lub szablon) kończy program komunikatem z nazwą przyczyny, zanim graf ruszy.
     """
     try:
-        kontekst = _context.build_context(app_config, store)
+        kontekst = _context.build_context(app_config, store, _progress.print_line)
     except (RuntimeError, ValueError, OSError) as blad:
         sys.exit(f"BŁĄD: {blad}")
     graf = _graph.build_graph()
+    czas_startu = time.monotonic()
     stan_koncowy = graf.invoke({"project_path": project_root}, context=kontekst)
+    razem = _progress.format_seconds(time.monotonic() - czas_startu)
+    _progress.print_line(_progress.format_line("razem", razem))
     mapa = stan_koncowy["project_map"]
     return mapa
 

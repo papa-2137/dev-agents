@@ -1,11 +1,12 @@
 """Kontekst przebiegu grafu agentów: niezmienne zależności, które każdy węzeł dostaje od LangGraph.
 
-Co robi: definiuje RunContext (config, magazyn wyników, modele agentów, spis bazy wiedzy, szablon przewodnika)
-i build_context(), która go składa:
+Co robi: definiuje RunContext (config, magazyn wyników, modele agentów, spis bazy wiedzy, szablon przewodnika,
+funkcja raportująca postęp) i build_context(), która go składa:
     - modele tworzy od razu dla każdego agenta z config.llm.agents (llm.get_model_for_agent),
     - spis bazy wiedzy wczytuje przez knowledge.load_index (błędny spis przerywa start),
     - szablon przewodnika wczytuje przez guide_template.load_template.
-Magazyn wyników (RunStore) dostaje gotowy od wołającego - to wołający decyduje, gdzie zapisują się wyniki.
+Magazyn wyników (RunStore) i funkcję raportującą postęp (report, patrz progress.py) dostaje gotowe od wołającego -
+to wołający decyduje, gdzie zapisują się wyniki i dokąd trafiają linie postępu (ekran w main.py, lista w teście).
 
 Dlaczego istnieje: węzły grafu nie powinny same czytać configu, tworzyć modeli ani otwierać plików -
 dostają wszystko z kontekstu (w węźle: runtime.context). Zmiana modelu agenta to zmiana w config.yaml,
@@ -18,6 +19,7 @@ Test ręczny: brak własnego - kontekst jest budowany i wypisywany w teście gra
 """
 
 import dataclasses
+import typing
 
 from langchain_core.language_models import BaseChatModel
 
@@ -30,7 +32,7 @@ import dev_agents.output as _output
 
 @dataclasses.dataclass
 class RunContext:
-    """Niezmienne zależności przebiegu: config, magazyn wyników, modele agentów, spis bazy wiedzy, szablon przewodnika.
+    """Niezmienne zależności przebiegu: config, magazyn wyników, modele agentów, spis bazy wiedzy, szablon przewodnika, funkcja raportująca.
 
     Po co: jeden obiekt przekazywany do grafu przy uruchomieniu (graph.invoke(..., context=...)); węzeł czyta go przez runtime.context.
     """
@@ -40,18 +42,21 @@ class RunContext:
     models: dict[str, BaseChatModel]  # nazwa agenta (jak w config.llm.agents) -> model
     knowledge_index: list[_knowledge.KBEntry]
     template: _template.GuideTemplate
+    report: typing.Callable[[str], None]  # przyjmuje gotową linię postępu (progress.format_line); main.py: progress.print_line
 
 
 def build_context(
     app_config: _config.AppConfig,
     store: _output.RunStore,
+    report: typing.Callable[[str], None],
 ) -> RunContext:
     """Składa RunContext: tworzy modele wszystkich agentów z configu, wczytuje spis bazy wiedzy i szablon przewodnika.
 
     Po co: jedno miejsce, w którym powstają zależności przebiegu; błąd configu, brak zmiennej środowiskowej z kluczem,
     błędny spis bazy wiedzy albo szablon wychodzą przy starcie, z nazwą przyczyny.
 
-    Argumenty: app_config - wynik config.load_config(), store - magazyn wyników projektu (output.create_run_store).
+    Argumenty: app_config - wynik config.load_config(), store - magazyn wyników projektu (output.create_run_store),
+    report - funkcja przyjmująca linię postępu (progress.print_line na ekranie, list.append w teście).
     """
     modele = {}
     for agent_name in app_config.llm.agents:
@@ -64,5 +69,6 @@ def build_context(
         models=modele,
         knowledge_index=spis,
         template=szablon,
+        report=report,
     )
     return kontekst

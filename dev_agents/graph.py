@@ -3,6 +3,8 @@
 Co robi: buduje graf START -> scan -> END. Węzeł scan woła scanner.build_project_map na projekcie ze stanu
 (project_path) z ustawieniami skanowania z kontekstu (runtime.context.config.scan) i dopisuje do stanu
 project_map. Węzeł niczego nie zapisuje na dysku - zapis wyników należy do wołającego (main.py, krok 44).
+Pracę węzła owija Stage z progress.py: linie "scan: start" i "scan: gotowe w X s - wynik" (albo "BŁĄD po X s")
+trafiają do runtime.context.report (krok 45).
 
 Dlaczego istnieje: kolejne etapy (planner, analitycy, autor diagramu, pisarze, recenzent) dołączamy do tego
 szkieletu po jednym - najpierw uczymy się LangGraph na grafie bez modelu. Graf przyjmuje stan (RunState)
@@ -20,7 +22,8 @@ Test ręczny (z katalogu głównego repo; wymaga zainstalowanego langgraph, bez 
     python -m dev_agents.graph
         buduje kontekst (modele, spis bazy wiedzy, szablon) i uruchamia graf na małym projekcie tymczasowym
         oraz na robotach testowych 02 i 01 (tylko odczyt, bez zapisu w nich); dla każdego wypisuje stan końcowy
-        i porównuje mapę z grafu z mapą z bezpośredniego skanu; na końcu "zgodne z oczekiwaniem: True".
+        i porównuje mapę z grafu z mapą z bezpośredniego skanu; sprawdza też, że węzeł scan zgłosił dwie linie
+        postępu (start i koniec z czasem); na końcu "zgodne z oczekiwaniem: True".
         Jeśli w środowisku nie ma zmiennych z kluczem i adresem modeli (nazwy w config.yaml), test ustawia
         atrapy tylko dla tego procesu - modele nie są wołane.
 """
@@ -31,6 +34,7 @@ from langgraph.graph import END, START, StateGraph
 from langgraph.runtime import Runtime
 
 import dev_agents.context as _context
+import dev_agents.progress as _progress
 import dev_agents.scanner as _scanner
 import dev_agents.state as _state
 
@@ -44,11 +48,17 @@ def scan_node(
 ) -> dict:
     """Skanuje projekt ze stanu i zwraca zmienione pole stanu: project_map.
 
-    Po co: pierwszy węzeł grafu - od mapy projektu zaczynają się wszystkie dalsze etapy; niczego nie zapisuje.
+    Po co: pierwszy węzeł grafu - od mapy projektu zaczynają się wszystkie dalsze etapy; niczego nie zapisuje
+    na dysku, tylko zgłasza postęp przez runtime.context.report (start, koniec z czasem i krótkim wynikiem).
 
     Uwaga: projekt bez rozpoznanej technologii daje mapę z technology=""; o przerwaniu pracy decyduje wołający.
     """
-    mapa = _scanner.build_project_map(state["project_path"], runtime.context.config.scan)
+    with _progress.Stage(runtime.context.report, "scan") as etap:
+        mapa = _scanner.build_project_map(state["project_path"], runtime.context.config.scan)
+        technologia = mapa.technology
+        if not technologia:
+            technologia = "technologia nierozpoznana"
+        etap.set_result(f"{technologia}, plików: {len(mapa.files)}, punktów wejścia: {len(mapa.entrypoints)}")
     zmiana_stanu = {"project_map": mapa}
     return zmiana_stanu
 
@@ -139,21 +149,26 @@ if __name__ == "__main__":
     def _run_case(
         graph,
         context: _context.RunContext,
+        progress_lines: list[str],
         title: str,
         root: str,
     ) -> tuple[list[str], bool]:
-        """Uruchamia graf na projekcie i zwraca (linie opisu stanu końcowego, czy mapa z grafu równa się mapie z bezpośredniego skanu).
+        """Uruchamia graf na projekcie i zwraca (linie opisu stanu końcowego, czy wynik zgadza się z oczekiwaniem).
 
-        Po co: sprawdza, że węzeł scan daje dokładnie ten wynik co skaner wołany wprost, i że uruchomienie
-        nie utworzyło ani nie zmieniło katalogu wyników w skanowanym projekcie.
+        Po co: sprawdza, że węzeł scan daje dokładnie ten wynik co skaner wołany wprost, że uruchomienie
+        nie utworzyło ani nie zmieniło katalogu wyników w skanowanym projekcie i że węzeł zgłosił dwie linie
+        postępu (start i koniec); progress_lines to lista, do której context.report dopisuje linie.
         """
         katalog_wynikow = os.path.join(root, _output.OUTPUT_DIR_NAME)
         istnial_przed = os.path.exists(katalog_wynikow)
+        ile_linii_przed = len(progress_lines)
         stan = graph.invoke({"project_path": root}, context=context)
+        nowe_linie = progress_lines[ile_linii_przed:]
+        postep_poprawny = len(nowe_linie) == 2 and nowe_linie[0].endswith("] scan: start") and "] scan: gotowe w " in nowe_linie[1]
         istnieje_po = os.path.exists(katalog_wynikow)
         mapa = stan["project_map"]
         bezposrednio = _scanner.build_project_map(root, context.config.scan)
-        zgodne = mapa == bezposrednio and istnial_przed == istnieje_po
+        zgodne = mapa == bezposrednio and istnial_przed == istnieje_po and postep_poprawny
         linie = [
             f"=== {title} ===",
             f"  klucze stanu końcowego: {sorted(stan.keys())}",
@@ -162,7 +177,10 @@ if __name__ == "__main__":
             f"  krawędzie zależności: {len(mapa.dependency_edges)}, kolejność czytania: {mapa.reading_order}",
             f"  mapa z grafu == mapa z bezpośredniego skanu: {mapa == bezposrednio}",
             f"  katalog wyników w projekcie bez zmian: {istnial_przed == istnieje_po}",
+            f"  linie postępu węzła scan (start i koniec): {postep_poprawny}",
         ]
+        for linia_postepu in nowe_linie:
+            linie.append(f"    {linia_postepu}")
         wynik_przypadku = (linie, zgodne)
         return wynik_przypadku
 
@@ -181,7 +199,8 @@ if __name__ == "__main__":
         try:
             projekt_maly = _write_temp_project(temp_dir)
             magazyn = _output.create_run_store(temp_dir)
-            kontekst = _context.build_context(app_config, magazyn)
+            linie_postepu = []
+            kontekst = _context.build_context(app_config, magazyn, linie_postepu.append)
             graf = build_graph()
             for linia in _context_lines(kontekst):
                 print(linia)
@@ -195,7 +214,7 @@ if __name__ == "__main__":
                 if not os.path.isdir(root):
                     print(f"=== {tytul}: brak katalogu {root} - pomijam ===")
                     continue
-                linie, zgodne = _run_case(graf, kontekst, tytul, root)
+                linie, zgodne = _run_case(graf, kontekst, linie_postepu, tytul, root)
                 for linia in linie:
                     print(linia)
                 if not zgodne:

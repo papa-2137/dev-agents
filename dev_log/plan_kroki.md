@@ -240,8 +240,9 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 45. Podgląd postępu**
 - **Funkcja:** na ekranie widać, który etap trwa i ile trwał - kilkuminutowy przebieg nie wygląda jak zawieszenie.
-- **Robimy:** `run_graph` przez `stream(..., stream_mode=["tasks", "values"])`; linie postępu z godziną, nazwą etapu, czasem i krótkim wynikiem; błąd węzła widoczny od razu.
-- **Sprawdzamy:** przebieg skanu wypisuje start i koniec węzła `scan` z czasem.
+- **Decyzje użytkownika (1C, 2A):** postęp raportują same węzły przez funkcję `report` w `RunContext`, a nie strumień LangGraph (tryb `tasks` wymaga checkpointera, tryb `updates` nie ma zdarzenia startu); linie tylko na ekran, bez pliku.
+- **Robimy:** nowy `dev_agents/progress.py`: `format_line` (`[GG:MM:SS] etap: tekst`), `format_seconds` (`0,4 s`), `print_line` (z natychmiastowym opróżnieniem bufora) i menedżer kontekstu `Stage` (start, `note()` w trakcie pracy, koniec `gotowe w X s - wynik` albo `BŁĄD po X s - Typ: komunikat` z puszczeniem wyjątku dalej); `RunContext.report` i `build_context(app_config, store, report)`; węzeł `scan` owinięty w `Stage`; `main.py` podaje `print_line` i po grafie wypisuje `razem: X s`. Każdy kolejny węzeł owija pracę w `Stage` i dopisuje `note()` tam, gdzie praca jest długa.
+- **Sprawdzamy:** `python -m dev_agents.progress` (etap udany, z postępem, bez wyniku, z błędem, format czasu); test grafu sprawdza dwie linie postępu węzła `scan`; przebieg `main.py` wypisuje start i koniec węzła `scan` z czasem i `razem`.
 
 **Krok 46. `schemas.py` - plan**
 - **Funkcja:** wynik pracy plannera: co analizować i jaką wiedzę dać agentom.
