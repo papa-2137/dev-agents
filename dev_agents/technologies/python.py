@@ -8,8 +8,8 @@ Co robi: na tym etapie dla pliku .py buduje:
       zależności), biblioteki zewnętrzne i biblioteka standardowa (nazwy modułów),
     - szkielet sterowania jednej funkcji (control_outline) - same rozgałęzienia, pętle, obsługa błędów, wyjścia
       i wywołania funkcji oraz modułów, z liniami, bez treści gałęzi; prosty blok sklejony w jedną linię,
-    - miary złożoności każdej funkcji (metrics) - długość, głębokość zagnieżdżenia, rozgałęzienia.
-Pozostałe metody kontraktu dochodzą w kolejnych krokach.
+    - miary złożoności każdej funkcji (metrics) - długość, głębokość zagnieżdżenia, rozgałęzienia,
+oraz rozpoznaje projekt Pythona (detect, is_source) i jego punkty wejścia (find_entrypoints).
 
 Dlaczego istnieje: cała wiedza o Pythonie siedzi w tym module, a rdzeń towaru woła tylko metody kontraktu
 (AGENTS.md, reguła 7). To jedyny moduł towaru, który importuje `ast` (parser Pythona z biblioteki
@@ -22,11 +22,12 @@ Rola: moduł technologii, używany przez rdzeń towaru przez kontrakt z base.py.
 
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.technologies.python
-        szkielety i importy: robot 01 (Main.py, src/parabank_page.py), robot 02 (przetwarzanie.py), plik ze
+        szkielety i importy: robot 01 (main.py, src/parabank_page.py), robot 02 (przetwarzanie.py), plik ze
         ścieżką Windows w zwykłym napisie (z liczbą ostrzeżeń - oczekiwane 0), pakiet tymczasowy z importem
         względnym, importami w funkcji i w try oraz modułem usuniętym z biblioteki standardowej, plik
         w składni Pythona 2 (linia z przyczyną zamiast szkieletu, puste grupy importów); potem szkielet
-        sterowania run() i kodu poza funkcjami robota 02 oraz miary robotów 01 i 02
+        sterowania run() i kodu poza funkcjami robota 02, miary robotów 01 i 02, na końcu rozpoznanie
+        projektu (detect, pliki źródłowe, punkty wejścia) robotów 01 i 02 oraz katalogów tymczasowych
     python -m dev_agents.technologies.python <katalog projektu> <plik względny do katalogu>
         szkielet, importy i miary jednego, dowolnego pliku
     python -m dev_agents.technologies.python <katalog projektu> <plik> <funkcja>
@@ -851,6 +852,72 @@ def _module_code_metrics(
     return miary
 
 
+# --- Punkty wejścia ---
+
+
+def _is_main_guard(
+    node,
+) -> bool:
+    """Sprawdza, czy instrukcja to blok `if __name__ == "__main__":` (strony porównania w dowolnej kolejności).
+
+    Po co: taki blok oznacza, że plik jest przeznaczony do uruchamiania - główna wskazówka, od którego pliku
+    startuje projekt.
+    """
+    if not isinstance(node, ast.If) or not isinstance(node.test, ast.Compare):
+        return False
+    porownanie = node.test
+    if len(porownanie.ops) != 1 or not isinstance(porownanie.ops[0], ast.Eq):
+        return False
+    czy_name = False
+    czy_main = False
+    for strona in [porownanie.left, porownanie.comparators[0]]:
+        if isinstance(strona, ast.Name) and strona.id == "__name__":
+            czy_name = True
+        if isinstance(strona, ast.Constant) and strona.value == "__main__":
+            czy_main = True
+    czy_blok_main = czy_name and czy_main
+    return czy_blok_main
+
+
+def _has_main_guard(
+    root: str,
+    path: str,
+) -> bool:
+    """Sprawdza, czy plik .py ma na poziomie modułu blok `if __name__ == "__main__":`; plik z błędem składni - False.
+
+    Po co: kod jest tylko parsowany, nie uruchamiany - bezpieczne wykrywanie punktów wejścia także w projektach,
+    które wymagają środowiska robota (przeglądarki, aplikacji, haseł).
+    """
+    tekst = _files.read_text_safe(os.path.join(root, path))
+    try:
+        drzewo = _parse_python(tekst)
+    except SyntaxError:
+        return False
+    for node in drzewo.body:
+        if _is_main_guard(node):
+            return True
+    return False
+
+
+def _entrypoint_sort_key(
+    path: str,
+) -> tuple:
+    """Zwraca klucz sortowania punktów wejścia: najpierw main.py i __main__.py, potem pliki płytsze, potem alfabetycznie.
+
+    Po co: moduły z własnym blokiem testowym też są punktami wejścia - właściwy start projektu ma być na
+    początku listy.
+
+    Uwaga: nazwy porównywane bez względu na wielkość liter - na Windows Main.py i main.py to ten sam plik.
+    """
+    nazwa = os.path.basename(path).lower()
+    priorytet = 1
+    if nazwa in ("main.py", "__main__.py"):
+        priorytet = 0
+    glebokosc = len(path.replace("\\", "/").split("/"))
+    klucz = (priorytet, glebokosc, path.lower())
+    return klucz
+
+
 # --- Technologia ---
 
 
@@ -858,10 +925,61 @@ class PythonTechnology(_base.Technology):
     """Projekty w Pythonie: implementacja kontraktu Technology.
 
     Po co: towar opisuje głównie roboty w Pythonie - ta klasa dostarcza rdzeniowi szkielety plików, importy,
-    szkielety sterowania i miary złożoności, a w kolejnych krokach także wykrywanie technologii i punkty wejścia.
+    szkielety sterowania, miary złożoności, rozpoznanie projektu i punkty wejścia.
     """
 
     name = "python"
+
+    def detect(
+        self,
+        root: str,
+        files: list[str],
+    ) -> bool:
+        """Uznaje projekt za pythonowy, gdy jest w nim choć jeden plik źródłowy Pythona (.py, .pyw).
+
+        Po co: implementacja kontraktu Technology.detect() - na tej podstawie rejestr technologii wybierze
+        obsługę Pythona dla całego projektu.
+
+        Uwaga: projekt innej technologii z pomocniczymi skryptami .py też da True - dlatego rejestr sprawdza
+        technologie bardziej szczegółowe przed Pythonem.
+        """
+        for path in files:
+            if self.is_source(path):
+                return True
+        return False
+
+    def is_source(
+        self,
+        path: str,
+    ) -> bool:
+        """Traktuje jako kod źródłowy pliki .py i .pyw (skrypty Windows uruchamiane bez okna konsoli).
+
+        Po co: implementacja kontraktu Technology.is_source() - tylko te pliki trafią do analityków jako
+        jednostki kodu; konfiguracja, dane i binarki są opisywane metadanymi.
+        """
+        czy_kod = path.lower().endswith((".py", ".pyw"))
+        return czy_kod
+
+    def find_entrypoints(
+        self,
+        root: str,
+        files: list[str],
+    ) -> list[str]:
+        """Zwraca punkty wejścia: pliki źródłowe z blokiem `if __name__ == "__main__":` oraz pliki main.py i __main__.py; posortowane - main.py/__main__.py, potem płytsze, potem alfabetycznie.
+
+        Po co: implementacja kontraktu Technology.find_entrypoints() - przewodnik zaczyna opis od miejsca
+        uruchomienia. Bloki testowe w zwykłych modułach też są wykrywane, dlatego kolejność wskazuje
+        najbardziej prawdopodobny start na początku; prawdziwe uruchomienia z plików .bat/.ps1 dokłada skaner.
+        """
+        punkty = []
+        for path in files:
+            if not self.is_source(path):
+                continue
+            czy_nazwa_main = os.path.basename(path).lower() in ("main.py", "__main__.py")
+            if czy_nazwa_main or _has_main_guard(root, path):
+                punkty.append(path)
+        punkty_wejscia = sorted(punkty, key=_entrypoint_sort_key)
+        return punkty_wejscia
 
     def outline(
         self,
@@ -1038,12 +1156,13 @@ if __name__ == "__main__":
         """Zapisuje w katalogu tymczasowym pliki testowe i zwraca ich treść (ścieżka względna -> tekst).
 
         Po co: przypadki ścieżki Windows w zwykłym napisie, importów w pakiecie (względny, w funkcji, w try,
-        moduł usunięty z biblioteki standardowej) i składni Pythona 2 - bez dokładania plików do repo.
+        moduł usunięty z biblioteki standardowej), modułu z blokiem __main__, składni Pythona 2 i katalogu
+        bez kodu - bez dokładania plików do repo.
         """
         tresci = {
             "sciezka_windows.py": 'KATALOG = "C:\\nowy\\folder\\dane"\n\n\ndef start():\n    print(KATALOG + "\\d")\n',
             "pakiet/__init__.py": "",
-            "pakiet/narzedzia.py": "def pomoc():\n    return 1\n",
+            "pakiet/narzedzia.py": "def pomoc():\n    return 1\n\n\nif __name__ == \"__main__\":\n    print(pomoc())\n",
             "pakiet/glowny.py": (
                 "import os\n"
                 "from .narzedzia import pomoc\n"
@@ -1060,6 +1179,7 @@ if __name__ == "__main__":
                 "    return requests\n"
             ),
             "python2.py": 'import os\n\nprint "start robota"\n',
+            "bez_kodu/dane.txt": "tylko dane\n",
         }
         for sciezka, tresc in tresci.items():
             pelna_sciezka = os.path.join(directory, sciezka)
@@ -1080,7 +1200,7 @@ if __name__ == "__main__":
         robot_01 = os.path.join(katalog_testow, "01_rpa_challange_roboforge")
         robot_02 = os.path.join(katalog_testow, "02_robot_bez_frameworku")
         przypadki = [
-            ("robot 01", robot_01, "Main.py"),
+            ("robot 01", robot_01, "main.py"),
             ("robot 01", robot_01, "src/parabank_page.py"),
             ("robot 02", robot_02, "przetwarzanie.py"),
             ("ścieżka Windows w zwykłym napisie", temp_dir, "sciezka_windows.py"),
@@ -1180,7 +1300,7 @@ if __name__ == "__main__":
             _print_control_outline("robot 02 przetwarzanie.py, run()", technology.control_outline(robot_02, "przetwarzanie.py", "run"), _function_length(miary_02, "run"))
             _print_control_outline("robot 02 przetwarzanie.py, kod poza funkcjami", technology.control_outline(robot_02, "przetwarzanie.py", ""), -1)
         przypadki_miar = [
-            ("robot 01 Main.py", robot_01, "Main.py"),
+            ("robot 01 main.py", robot_01, "main.py"),
             ("robot 01 src/parabank_page.py", robot_01, "src/parabank_page.py"),
             ("robot 02 przetwarzanie.py", robot_02, "przetwarzanie.py"),
             ("robot 02 raport.py", robot_02, "raport.py"),
@@ -1191,6 +1311,85 @@ if __name__ == "__main__":
                 print(f"=== Miary: {opis} - brak pliku, pomijam ===\n")
                 continue
             _print_metrics(opis, technology.metrics(root, path))
+
+    def _list_project_files(
+        root: str,
+    ) -> list[str]:
+        """Zwraca ścieżki względne (separator "/") wszystkich plików katalogu, z pominięciem środowisk wirtualnych (katalog z pyvenv.cfg) i __pycache__.
+
+        Po co: lista plików do testu detect/find_entrypoints, zanim powstanie skaner (krok 18) - bez tysięcy
+        plików z test-venv robota 01. Zwraca tylko nazwy, nie otwiera plików.
+        """
+        pliki = []
+        for katalog, podkatalogi, nazwy_plikow in os.walk(root):
+            zostaw = []
+            for podkatalog in podkatalogi:
+                czy_venv = os.path.isfile(os.path.join(katalog, podkatalog, "pyvenv.cfg"))
+                if not czy_venv and podkatalog != "__pycache__":
+                    zostaw.append(podkatalog)
+            podkatalogi[:] = zostaw
+            for nazwa in nazwy_plikow:
+                sciezka = os.path.relpath(os.path.join(katalog, nazwa), root).replace("\\", "/")
+                pliki.append(sciezka)
+        pliki.sort()
+        return pliki
+
+    def _check_project(
+        technology: PythonTechnology,
+        root: str,
+    ) -> dict:
+        """Zwraca wynik rozpoznania projektu: liczba plików, detect, pliki źródłowe, punkty wejścia.
+
+        Po co: logika testu bez wypisywania.
+        """
+        pliki = _list_project_files(root)
+        zrodla = []
+        for path in pliki:
+            if technology.is_source(path):
+                zrodla.append(path)
+        wynik = {
+            "plików": len(pliki),
+            "detect": technology.detect(root, pliki),
+            "pliki źródłowe": zrodla,
+            "find_entrypoints": technology.find_entrypoints(root, pliki),
+        }
+        return wynik
+
+    def _print_project_check(
+        title: str,
+        root: str,
+        result: dict,
+    ) -> None:
+        """Wypisuje wynik rozpoznania projektu z nagłówkiem.
+
+        Po co: czytelny wynik testu; tylko formatuje gotowe dane.
+        """
+        print(f"=== Projekt: {title} ({root}) ===")
+        for klucz, wartosc in result.items():
+            print(f"{klucz + ':':<18}{wartosc}")
+        print()
+
+    def _run_project_cases(
+        technology: PythonTechnology,
+        temp_dir: str,
+    ) -> None:
+        """Wypisuje rozpoznanie projektu dla robotów 01 i 02, katalogu tymczasowego i jego podkatalogu bez kodu.
+
+        Po co: sprawdzenie detect, is_source i find_entrypoints na prawdziwych robotach i na przypadkach brzegowych.
+        """
+        katalog_repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        katalog_testow = os.path.normpath(os.path.join(katalog_repo, "..", "..", "tests"))
+        przypadki = [
+            ("robot 01", os.path.join(katalog_testow, "01_rpa_challange_roboforge")),
+            ("robot 02", os.path.join(katalog_testow, "02_robot_bez_frameworku")),
+            ("katalog tymczasowy", temp_dir),
+            ("katalog bez kodu", os.path.join(temp_dir, "bez_kodu")),
+        ]
+        for opis, root in przypadki:
+            if not os.path.isdir(root):
+                print(f"=== Projekt: {opis} - brak katalogu {root}, pomijam ===\n")
+                continue
+            _print_project_check(opis, root, _check_project(technology, root))
 
     def manual_test():
         """Z argumentami <katalog> <plik> [funkcja] - szkielet, importy i miary pliku albo szkielet sterowania funkcji; bez argumentów - przypadki testowe.
@@ -1223,6 +1422,7 @@ if __name__ == "__main__":
                     liczba_bez_wyciszenia = _plain_parse_warning_count(tresci[path])
                 _print_case(opis, root, path, szkielet, importy, liczba, liczba_bez_wyciszenia)
             _run_complexity_cases(technology, temp_dir)
+            _run_project_cases(technology, temp_dir)
         finally:
             shutil.rmtree(temp_dir)
 

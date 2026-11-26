@@ -116,6 +116,13 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.htm
 - Test w bloku `__main__`: pod każdym szkieletem z kroku 13 importy; nowy przypadek - pakiet tymczasowy (import względny, import w funkcji, `telnetlib` w `try`).
 - Test użytkownika: robot 01 `Main.py` - 6 plików `src/*.py` w `internal`, 4 moduły `roboforge.*` w `external`, `os, pathlib, time` w `stdlib`; robot 02 - `requests` / `csv, datetime, json, os, shutil, sys`; pakiet - `pakiet/narzedzia.py`, `requests`, `os, telnetlib`; Python 2 - puste grupy; wszędzie 0 ostrzeżeń - OK. Kosmetyka testu: w nagłówku przypadku mieszane separatory (`...\src/parabank_page.py`) - tylko wyświetlanie w teście.
 
+### Krok 15. `technologies/python.py` - szkielet sterowania i miary złożoności - ✅
+- `schemas.FunctionMetrics` (`path`, `name`, `start_line`, `end_line`, `lines`, `max_depth`, `branches` - same liczby). W kontrakcie `base.py` dwie nowe metody z domyślną odpowiedzią „brak danych”: `control_outline(root, path, function_name)` (linia „niedostępny dla technologii”) i `metrics(root, path)` (pusta lista).
+- `python.py`: `control_outline` - nagłówek z zakresem linii, potem `if`/`elif`/`else` (elif na jednym poziomie), pętle (z `else`), `try`/`except`/`else`/`finally`, `with`, `match`, wyjścia (`raise` z nazwą wyjątku) i wywołania funkcji po nazwie, funkcji modułów i `self` (bez metod na danych); prosty blok w jednej linii `[wywołania; -> wyjście]`; `function_name` = `run`, `Klasa.metoda` albo `""` (kod poza funkcjami); nieznana nazwa → linia z listą dostępnych funkcji. `metrics` - kod poza funkcjami (`<kod poza funkcjami>`) i każda funkcja oraz metoda: długość, głębokość (elif na poziomie swojego `if`), rozgałęzienia (if/elif, pętle, except, wyrażenia warunkowe, and/or, warunki w wyrażeniach listowych, case). Funkcje zagnieżdżone liczą się do funkcji, w której leżą.
+- Odstępstwa od planu (wybory użytkownika A, tak, A): wywołania bez metod na danych; kryterium testu „ok. 1/3 długości funkcji” zamiast „jeden ekran”; progi `analysis.complexity` w configu dopiero w kroku 35 (tabela decyzji, `plan_kroki.md` kroki 15 i 35).
+- Test w bloku `__main__`: szkielet sterowania `run()` i kodu poza funkcjami robota 02, miary robotów 01 i 02 (także `raport.py`) i pliku w Pythonie 2; tryb `<katalog> <plik> <funkcja>`.
+- Test użytkownika: `run()` - 129 linii szkieletu z 371 linii kodu, wszystkie poziomy; miary `run` 371 / głębokość 6 / 80 rozgałęzień, funkcje robota 01 do 19 linii i głębokości 1; Python 2 - brak danych - OK. Uwaga: głębokość `run()` wynosi 6 (w kroku 9 szacunek „do 8” liczył `elif` jako zagnieżdżenie). Commit `21f57f4`.
+
 ---
 
 ## Odstępstwa i decyzje poza planem
