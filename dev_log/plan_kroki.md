@@ -136,18 +136,18 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 27. `output.py` - wyniki w `dev_agents_doc/` analizowanego projektu**
 - **Funkcja:** bezpieczny zapis wyników w cudzym repozytorium: dokumentacja leży obok kodu, a narzędzie nigdy nie skasuje cudzych plików.
-- **Robimy:** `RunStore` tworzący `<projekt>/dev_agents_doc/` ze znacznikiem `.dev_agents_output`; czyszczenie przy starcie tylko katalogu ze znacznikiem (bez znacznika → błąd, nic nie kasujemy); sprawdzenie prawa zapisu na początku; `save_text`, `save_json`, `load_json`, podkatalogi (`notes/`, `tabs/`).
-- **Sprawdzamy:** na kopii robota: zapis i odczyt JSON; drugi start czyści katalog; katalog bez znacznika → błąd i nic nie usunięte; katalog tylko do odczytu → czytelny błąd.
+- **Robimy:** `create_run_store(project_root, clear)` i `RunStore` dla `<projekt>/dev_agents_doc/` ze znacznikiem `.dev_agents_output`; czyszczenie przy starcie tylko katalogu ze znacznikiem; niepusty katalog bez znacznika → błąd, nic nie kasujemy; pusty katalog bez znacznika - przejmowany; prawo zapisu sprawdzane na początku (zapis znacznika); `path` (nazwa wychodząca poza katalog wyników → błąd), `save_text`, `save_json`, `load_json`, podkatalogi (`notes/`, `tabs/`) tworzone same.
+- **Sprawdzamy:** na kopii robota 02 w katalogu tymczasowym (robot 01 nie jest kopiowany - plik sekretu): zapis i odczyt JSON; `clear=False` zostawia pliki; drugi start czyści katalog; niepusty katalog bez znacznika → błąd i nic nie usunięte; pusty - przejęty; zwykły plik w miejscu `dev_agents_doc` → czytelny błąd zapisu (atrybut „tylko do odczytu” katalogu na Windows nie blokuje zapisu); nazwa z `..` → błąd.
 
 **Krok 28. `dependencies.py` - graf zależności i kolejność czytania**
 - **Funkcja:** dane do grafu zależności między plikami i szkic kolejności czytania kodu, bez modelu.
-- **Robimy:** schemat `DependencyGraph` (węzły = pliki projektu, punkt wejścia oznaczony; krawędzie = `references().files` - pary ścieżek, bez wiedzy o technologii) w `schemas.py`; kolejność czytania: od punktu wejścia w głąb, cykle bez zawieszenia.
-- **Sprawdzamy:** graf robota 01 (`main.py` → moduły `src/`) i lista kolejności; sztuczny cykl dwóch plików nie zawiesza obliczeń.
+- **Robimy:** `dependencies.build_dependencies(project_map)` bez nowych klas: pola `ProjectMap.dependency_edges` (pary ścieżek `[plik, plik, z którego korzysta]` z `references.files`, tylko między plikami źródłowymi robota - bez frameworku; bez wiedzy o technologii; węzły i punkty wejścia już są w mapie) i `ProjectMap.reading_order` (od punktów wejścia w głąb, alfabetycznie na każdym poziomie, każdy plik raz - cykle bez zawieszenia; pliki nieosiągalne na końcu); wołane na końcu `scanner.build_project_map`.
+- **Sprawdzamy:** graf robota 01 (`main.py` → moduły `src/`) i lista kolejności (`src/__init__.py` na końcu); robot 02 - dwa punkty wejścia bez krawędzi; sztuczny cykl dwóch plików nie zawiesza obliczeń, krawędź do skopiowanego frameworku odpada.
 
 **Krok 29. `main.py` - skan i zapis wyników**
-- **Funkcja:** pierwszy użyteczny przebieg: mapa projektu i graf zależności w katalogu wyników robota.
-- **Robimy:** `--project` wymagany; config → skan → graf zależności → `dev_agents_doc/project_map.json` i `dependency_graph.json`.
-- **Sprawdzamy:** `python main.py --project <robot>` tworzy oba pliki w `<robot>\dev_agents_doc\` - dla robota 01 i 02; w mapie robota 02 widać `run.bat` z treścią, jednostki z zakresami linii (`run` - 371 linii) i pliki zależności. ✅ **M3**
+- **Funkcja:** pierwszy użyteczny przebieg: mapa projektu (z grafem zależności i kolejnością czytania) w katalogu wyników robota.
+- **Robimy:** `--project` wymagany; config → skan (`build_project_map`, graf w środku) → `dev_agents_doc/project_map.json`.
+- **Sprawdzamy:** `python main.py --project <robot>` tworzy `project_map.json` w `<robot>\dev_agents_doc\` - dla robota 01 i 02; w mapie robota 02 widać `run.bat` z treścią, jednostki z zakresami linii (`run` - 371 linii) i pliki zależności. ✅ **M3**
 
 ### Faza D - Szablon przewodnika i HTML bez modelu
 
@@ -193,7 +193,7 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 38. Graf zależności modułów i podpowiedzi słowniczka**
 - **Funkcja:** rysunek, który moduł importuje który, oraz definicje pojęć po najechaniu na nie w tekście.
-- **Robimy:** blok `dependency_graph` z `dependency_graph.json` (warstwy od punktu wejścia, jak w makiecie); oznaczanie wystąpień terminów słowniczka w tekście (bezpiecznie, po escapowaniu) i dymek z definicją.
+- **Robimy:** blok `dependency_graph` z `ProjectMap.dependency_edges` i `entrypoints` (warstwy od punktu wejścia, jak w makiecie); oznaczanie wystąpień terminów słowniczka w tekście (bezpiecznie, po escapowaniu) i dymek z definicją.
 - **Sprawdzamy:** graf robota testowego czytelny; termin pokazuje dymek; termin wewnątrz innego słowa nie jest oznaczany.
 
 **Krok 39. Przewodnik z prawdziwego robota, sekcje modelu jako zaślepki**

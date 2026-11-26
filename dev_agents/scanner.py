@@ -12,8 +12,9 @@ Co robi:
       robota (scan.frameworks.packages), więc działa też dla frameworku zainstalowanego poza projektem (np. w venv),
     - build_project_map() składa całą mapę projektu (ProjectMap): technologia, pliki z rolami, punkty wejścia,
       dla każdego pliku źródłowego robota jednostki z zakresami linii i odwołania (SourceFile), jednostki kodu
-      do analizy (jeden plik źródłowy robota = jedna jednostka), wykryte frameworki i pliki tekstowe robota
-      przepisane dosłownie (role z scan.text_roles, do scan.max_text_file_kb).
+      do analizy (jeden plik źródłowy robota = jedna jednostka), wykryte frameworki, pliki tekstowe robota
+      przepisane dosłownie (role z scan.text_roles, do scan.max_text_file_kb) oraz graf zależności między
+      plikami robota i kolejność czytania (dependencies.build_dependencies).
 
 Dlaczego istnieje: to pierwszy krok mapy projektu - z listy plików korzystają technologia (detect, punkty
 wejścia) i cała mapa, a rola decyduje, co dalej dzieje się z plikiem (kod - do analityków, konfiguracja
@@ -38,6 +39,7 @@ import fnmatch
 import os
 
 import dev_agents.config as _config
+import dev_agents.dependencies as _dependencies
 import dev_agents.files as _files
 import dev_agents.schemas as _schemas
 import dev_agents.technologies.base as _base
@@ -279,7 +281,7 @@ def build_project_map(
     root: str,
     scan_config: _config.ScanConfig,
 ) -> _schemas.ProjectMap:
-    """Zwraca mapę projektu: technologia, pliki z rolami, punkty wejścia, fakty o plikach źródłowych robota, jednostki kodu i frameworki.
+    """Zwraca mapę projektu: technologia, pliki, punkty wejścia, fakty o plikach źródłowych, jednostki kodu, frameworki, graf i kolejność czytania.
 
     Po co: jeden obiekt dla dalszych etapów (graf zależności, agenci, zapis project_map.json).
 
@@ -313,6 +315,7 @@ def build_project_map(
     mapa.entrypoints = technologia.find_entrypoints(katalog, pliki_robota)
     pakiety = _project_packages(mapa.source_files)
     mapa.frameworks = detect_frameworks(wpisy, pakiety, scan_config.frameworks, technologia.name)
+    mapa.dependency_edges, mapa.reading_order = _dependencies.build_dependencies(mapa)
     return mapa
 
 

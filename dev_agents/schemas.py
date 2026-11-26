@@ -4,8 +4,9 @@ Co zawiera: opis kształtu danych, które jeden etap produkuje, a następny odbi
 minimalne fakty o pliku źródłowym podawane przez technologię - jednostki z zakresami linii (SourceUnit),
 odwołania do innych plików i pakietów (References), razem dla jednego pliku (SourceFile) - oraz mapa
 projektu - wynik skanera: pliki z rolami (FileEntry), jednostki kodu do analizy (CodeUnit), pliki
-przepisane dosłownie (TextFile: zależności, konfiguracja, pliki uruchamiające) i całość (ProjectMap).
-Kolejne schematy (graf zależności, plan, notatki analityków, diagram przepływu, treść przewodnika,
+przepisane dosłownie (TextFile: zależności, konfiguracja, pliki uruchamiające) i całość (ProjectMap) - także
+z grafem zależności między plikami robota i kolejnością czytania kodu.
+Kolejne schematy (plan, notatki analityków, diagram przepływu, treść przewodnika,
 recenzja) dochodzą w krokach, które ich potrzebują.
 
 Dlaczego istnieje: jasna umowa między skanerem, technologiami, agentami i rendererem - każdy wie, co
@@ -130,6 +131,8 @@ class ProjectMap(pydantic.BaseModel):
     code_units: list[CodeUnit]  # kod projektu do analizy (bez plików frameworku)
     text_files: list[TextFile] = []  # zależności, konfiguracja i pliki uruchamiające robota - dosłownie
     source_files: list[SourceFile] = []  # fakty o plikach źródłowych robota (bez plików frameworku)
+    dependency_edges: list[list[str]] = []  # [plik, plik, z którego korzysta] - tylko między plikami robota
+    reading_order: list[str] = []  # kolejność czytania plików źródłowych: od punktów wejścia w głąb
     frameworks: list[str] = []  # frameworki wykryte po ścieżkach i importach; [] = robot bez frameworku
 
 

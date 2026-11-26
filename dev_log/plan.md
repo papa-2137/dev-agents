@@ -138,7 +138,7 @@ dev-agents/
 
 <analizowany projekt>/dev_agents_doc/       # wynik ostatniego uruchomienia
     .dev_agents_output                      # znacznik: katalog należy do narzędzia
-    project_map.json, dependency_graph.json, plan.json, notes/*.json, flow.json,
+    project_map.json (z grafem zależności i kolejnością czytania), plan.json, notes/*.json, flow.json,
     tabs/*.json, guide_content.json, review_NN.json, usage.json, guide.html
 ```
 
