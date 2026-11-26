@@ -10,7 +10,7 @@
 | A - Fundament (kroki 1-5) | ✅ zakończona (M1) |
 | B - Dostęp do modelu (6-8) | ✅ zakończona (M2) |
 | C - Mapa projektu bez modelu (9-29) | ✅ zakończona (M3) |
-| D - Szablon przewodnika i HTML bez modelu (30-39) | ⬜ |
+| D - Szablon przewodnika i HTML bez modelu (30-39) | 🟡 w toku (30-34 ✅) |
 | E - Prompty i baza wiedzy (40-42) | ⬜ |
 | F - Graf i agenci (43-59) | ⬜ |
 | G - Ergonomia (60-63) | ⬜ |
@@ -61,6 +61,15 @@ Wpisy kroków 1-29 (fazy A-C) są w archiwum: `dev_log/raport_wykonania_fazy_A-C
 - Wybór użytkownika: A (tabela decyzji). **Do przeglądu prawdziwych przewodników (odłożone przez użytkownika):** długa nazwa projektu ucinana w lewym menu - poprawka jedną regułą CSS (zawijanie).
 - Test użytkownika: OK. Commit `179c0c5`.
 
+### Krok 34. `render.py` - bloki `steps`, `code`, `table`, `glossary`, `paths`, `recipes` (W2, W4, W6, W7) - ✅
+- `dev_agents/render.py`: `_READY_TYPES` rozszerzone o sześć typów, `_CONTENT_FIELDS` dla wszystkich typów z jednym polem treści; nowe pomocnicze `_cell_view` (znacznik `[wywnioskowane]` na końcu komórki → oznaczenie „wywnioskowane”), `_table_rows` (etykiety kolumn z szablonu), `_node_numbers` (numer klocka = pozycja w `flow.nodes`, od 1); `_section_view` przekazuje kolumny i wiersze.
+- `knowledge_base/templates/guide.html.j2`: makra `code_box`, `block_steps`, `block_table`, `block_glossary`, `block_paths` (odnośnik do `#przeplyw`), `block_recipes` (nowy plik w czerwonej ramce, opis zmiany po najechaniu); klasy CSS z makiety, `guide.css` i `guide.js` bez zmian.
+- `guide_template.yaml`: zdanie o znaczniku `[wywnioskowane]` w poleceniach sekcji tabel i w komentarzu o polu `columns`.
+- Test w bloku `__main__`: przykładowa treść robota 02 z każdym gotowym typem bloku i małym diagramem (ścieżki mają numery klocków); wydruk liczb (zakładki, h2, odwołania do internetu, bloki kodu, „wywnioskowane”, odnośniki do klocków, sekcje czekające, escapowanie).
+- Odstępstwa od planu i makiety: oznaczenie „wywnioskowane” przez znacznik w tekście komórki (nie przez `certain`), pełne nazwy kolumn jako etykiety kart na telefonie, ścieżka bez wiersza „kiedy”, opis zmiany pliku po najechaniu (tabela decyzji).
+- Wybór użytkownika: A (tabela decyzji).
+- Test użytkownika: OK - 7 zakładek, 20 sekcji, 0 odwołań do internetu, 4 bloki kodu, 3 „wywnioskowane”, 6 odnośników do klocków, 4 sekcje czekające, escapowanie True; `<script>` z treści widoczny jako tekst. Commit `f7e145d`.
+
 ---
 
 ## Odstępstwa i decyzje poza planem
@@ -101,3 +110,4 @@ Wpisy kroków 1-29 (fazy A-C) są w archiwum: `dev_log/raport_wykonania_fazy_A-C
 | 2026-11-26 | Krok 33: skrypt makiety przeniesiony w całości teraz (z rysowaniem diagramu i grafu), z dwiema poprawkami - diagram i graf rysują się tylko, gdy w stronie są ich dane; nagłówek pierwszej zakładki z sekcji `opis_robota` (zakładka bez `lead`, pierwsza sekcja typu `text`); test zapisuje przewodnik do `guide_test.html` w katalogu głównym repo (stała nazwa, dopisana do `.gitignore`) zamiast do katalogu tymczasowego - prośba użytkownika; `plan_kroki.md` krok 33 zaktualizowany | Jedno przeniesienie bez rozjazdu z makietą - kroki 36 i 38 dokładają tylko dane; bez poprawek skrypt przerywał działanie przy braku danych i zakładki przestawały się przełączać; wybór użytkownika (A) |
 | 2026-11-26 | Raport podzielony: wpisy kroków 1-29 (fazy A-C) przeniesione bez zmian do `dev_log/raport_wykonania_fazy_A-C.md`; w `raport_wykonania.md` zostają podsumowanie, kroki od 30 i cała tabela decyzji | Raport (ok. 52 KB) przekroczył rozmiar, który da się przeczytać w całości jednym odczytem - bez tego nie da się podmienić kopii na claude.ai; wzór z doc-agents (`raport_wykonania_fazy_A-D.md`); wybór użytkownika (A) |
 | 2026-11-26 | Krok 34: (1) oznaczenie „wywnioskowane” w tabelach przez znacznik `[wywnioskowane]` na końcu komórki (renderer usuwa znacznik i pokazuje oznaczenie), zdanie o znaczniku w poleceniach pięciu sekcji tabel w `guide_template.yaml` (plan: wpisy z `certain = false` - komórka tabeli to zwykły napis bez takiego pola); (2) etykiety kart tabel na telefonie (`data-l`) to pełne nazwy kolumn z szablonu (makieta: skróty pisane ręcznie); (3) ścieżka procesu bez wiersza „kiedy” z makiety - `ProcessPath` nie ma takiego pola; (4) plik w przepisie jako znacznik z opisem zmiany po najechaniu (makieta: sam znacznik); tytuł przepisu jako `h2` jak w makiecie; `plan_kroki.md` krok 34 zaktualizowany | (1) bez zmiany schematu `rows: list[list[str]]` i bez `anyOf`; (2) jedno źródło nazw, bez drugiej listy w szablonie; (3) i (4) bez nowych pól w schemacie z kroku 31 - warunek ścieżki mieści się w jej nazwie; wybór użytkownika (A) |
+| 2026-11-26 | Krok 35 podzielony na dwie części w ramach jednego numeru, każda z własnym testem i commitem (część 1: metryczka; część 2: drzewo, zależności do skopiowania, ryzykowne miejsca); opisy po najechaniu w drzewie: fakty z kodu (rola, rozmiar, funkcje) z nadpisaniem przez wiersze pisarza; hasła wpisane wprost dodawane do „Ryzykownych miejsc” przez kod z wpisów metryczki z `plain_password`; próg `analysis.long_unit_lines: 100` (część 2); `plan_kroki.md` krok 35 zaktualizowany | Mniejsze przeglądy, największa makieta (metryczka) sprawdzona osobno, bez przenumerowania planu; drzewo użyteczne przed fazą F; hasło nie zginie, gdy pisarz o nim zapomni (zasada: błąd dewelopera ma wyjść w dokumentacji); próg do zmiany w configu po obejrzeniu prawdziwych robotów; wybór użytkownika (rekomendowane: B, A, A) |

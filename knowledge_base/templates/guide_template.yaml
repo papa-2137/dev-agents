@@ -41,7 +41,8 @@ tabs:
         instruction: >-
           Ustawienia robota z plików konfiguracyjnych (wartości przepisane dosłownie) i ze stałych w kodzie (plik
           i linia): klucz, wartość, rodzaj (adres, ścieżka, zmienna środowiskowa, konto, przełącznik, inne), znaczenie,
-          miejsca użycia. Hasło wpisane wprost - pokaż wartość i oznacz „hasło w pliku”. Bez konfiguracji - jedno zdanie.
+          miejsca użycia. Hasło wpisane wprost - pokaż wartość i ustaw plain_password. W paragraphs jedno zdanie do nagłówka
+          metryczki: gdzie i czym robot wczytuje plik konfiguracyjny (bez pliku - puste). Bez konfiguracji - brak wpisów.
       - id: jak_czytac
         title: Jak czytać ten przewodnik
         type: cards

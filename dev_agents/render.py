@@ -8,8 +8,9 @@ opcjonalna bez treści) - i wypełnia szablon Jinja2 guide.html.j2. CSS i JS z k
 
 Typy bloków: text, list, io, cards (karty „jak czytać” z kart zakładek w szablonie), steps (kroki z kodem do
 skopiowania), code, table (kolumny z szablonu), glossary, paths (numery klocków diagramu jak w kolejności
-flow.nodes, odnośnik do zakładki Przepływ), recipes. Pozostałe typy (config, flow, tree, dependency_graph)
-dochodzą w krokach 35-38 - do tego czasu sekcja pokazuje widoczny znacznik „dochodzi w kolejnym kroku planu”.
+flow.nodes, odnośnik do zakładki Przepływ), recipes, config (metryczka: kafelki po rodzaju wpisu i tabela
+„Pełna konfiguracja”; hasło wpisane wprost z czerwonym znacznikiem). Pozostałe typy (tree, flow, dependency_graph)
+dochodzą w kolejnych krokach - do tego czasu sekcja pokazuje widoczny znacznik „dochodzi w kolejnym kroku planu”.
 Komórka tabeli zakończona znacznikiem „[wywnioskowane]” wyświetla się bez znacznika, z oznaczeniem
 „wywnioskowane” (informacja z analizy kodu, niezapisana w nim wprost).
 
@@ -23,9 +24,13 @@ Rola: moduł rdzenia towaru, wołany na końcu przebiegu (zapis guide.html w dev
 
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.render
-        zapisuje przewodnik z przykładową treścią robota 02 do guide_test.html w katalogu głównym repo (stała nazwa,
-        nadpisywany przy każdym uruchomieniu, w .gitignore - otwórz plik w przeglądarce), wypisuje ścieżkę, liczbę
-        zakładek i sekcji oraz liczbę odwołań do zasobów z internetu
+        zapisuje przewodnik z przykładową treścią robota 02 (metryczka ze stałych w kodzie, jak w robocie bez pliku
+        konfiguracyjnego) do guide_test.html w katalogu głównym repo (stała nazwa, nadpisywany przy każdym uruchomieniu,
+        w .gitignore - otwórz plik w przeglądarce), wypisuje ścieżkę i liczby kontrolne; dodatkowo sprawdza w pamięci
+        metryczkę bez wpisów (zdanie o braku konfiguracji)
+    python -m dev_agents.render plik
+        to samo, ale metryczka z przykładowego pliku config.yml jak w makiecie (sekcje, hasło wpisane wprost,
+        zmienna środowiskowa, stała w kodzie)
 """
 
 import os
@@ -36,7 +41,7 @@ import dev_agents.guide_content as _content
 import dev_agents.guide_template as _template
 import dev_agents.schemas as _schemas
 
-_READY_TYPES = ["text", "list", "io", "cards", "steps", "code", "table", "glossary", "paths", "recipes"]
+_READY_TYPES = ["text", "list", "io", "cards", "steps", "code", "table", "glossary", "paths", "recipes", "config"]
 _CONTENT_FIELDS = {
     "text": "paragraphs",
     "list": "items",
@@ -46,9 +51,29 @@ _CONTENT_FIELDS = {
     "glossary": "terms",
     "paths": "paths",
     "recipes": "recipes",
+    "config": "config_items",
 }
 _UNCERTAIN_MARK = "[wywnioskowane]"
 _PATH_KIND_LABELS = {"main": "sukces", "alternative": "alternatywna", "error": "awaryjna"}
+_CONFIG_TILES = [
+    ("SYSTEMY ZEWNĘTRZNE", ["system"]),
+    ("KONTA I ZMIENNE ŚRODOWISKOWE", ["account", "env_var"]),
+    ("PLIKI WEJŚCIOWE", ["input_file"]),
+    ("PLIKI WYJŚCIOWE", ["output_file"]),
+    ("LOGI", ["log"]),
+    ("PRZEŁĄCZNIKI", ["switch"]),
+]
+_CONFIG_BADGES = {
+    "system": ["sieć", "r"],
+    "account": ["konto", "m"],
+    "env_var": ["zmienna środowiskowa", "r"],
+    "input_file": ["ścieżka", "m"],
+    "output_file": ["ścieżka", "m"],
+    "log": ["ścieżka", "m"],
+    "switch": ["przełącznik", "m"],
+    "other": ["", "m"],
+}
+_CODE_SECTION_LABEL = "w kodzie"
 
 
 # --- Przygotowanie danych ---
@@ -134,6 +159,129 @@ def _node_numbers(
     return numery
 
 
+def _config_password_mark(
+    item: _content.ConfigItem,
+) -> str:
+    """Zwraca napis czerwonego znacznika hasła: „hasło w pliku”, „hasło w kodzie” albo "" (gdy to nie hasło wprost).
+
+    Po co: hasło wpisane wprost jest pokazane dosłownie i wyraźnie oznaczone (decyzja użytkownika: niczego nie ukrywamy).
+    """
+    znacznik = ""
+    if item.plain_password:
+        znacznik = "hasło w kodzie"
+        if item.file:
+            znacznik = "hasło w pliku"
+    return znacznik
+
+
+def _config_entry(
+    item: _content.ConfigItem,
+) -> dict:
+    """Zwraca dane jednego wpisu metryczki dla szablonu: wartość, etykieta, znaczenie, znaczniki i miejsca użycia.
+
+    Po co: kafelki i tabela pokazują ten sam wpis; kod przygotowuje napisy, szablon tylko je wyświetla.
+    """
+    etykieta = item.key
+    if item.group:
+        etykieta = f"{item.group}.{item.key}"
+    odznaka = _CONFIG_BADGES[item.kind]
+    miejsca = []
+    if not item.file and item.location:
+        miejsca.append({"text": item.location, "constant": True})
+    for miejsce in item.used_in:
+        miejsca.append({"text": miejsce, "constant": False})
+    wpis = {
+        "kind": item.kind,
+        "key": item.key,
+        "label": etykieta,
+        "value": item.value,
+        "meaning": item.meaning,
+        "uncertain": not item.certain,
+        "password": _config_password_mark(item),
+        "badge_text": odznaka[0],
+        "badge_color": odznaka[1],
+        "places": miejsca,
+    }
+    return wpis
+
+
+def _config_section_label(
+    item: _content.ConfigItem,
+) -> str:
+    """Zwraca nagłówek wiersza grupującego w tabeli: sekcja pliku, nazwa pliku albo „w kodzie” (stała w kodzie).
+
+    Po co: tabela „Pełna konfiguracja” dzieli wpisy jak plik konfiguracyjny, a stałe z kodu zbiera osobno.
+    """
+    etykieta = item.file
+    if item.group:
+        etykieta = item.group
+    if not item.file:
+        etykieta = _CODE_SECTION_LABEL
+    return etykieta
+
+
+def _config_tiles(
+    items: list[_content.ConfigItem],
+) -> list[dict]:
+    """Zwraca kafelki metryczki w stałej kolejności: tytuł i wpisy danego rodzaju (kafelek bez wpisów pomijany).
+
+    Po co: szybki przegląd ustawień pogrupowanych po tym, czego dotyczą; rodzaj „inne” jest tylko w tabeli.
+    """
+    kafelki = []
+    for tytul, rodzaje in _CONFIG_TILES:
+        wpisy = []
+        for wpis in items:
+            if wpis.kind in rodzaje:
+                wpisy.append(_config_entry(wpis))
+        if wpisy:
+            kafelki.append({"title": tytul, "entries": wpisy})
+    return kafelki
+
+
+def _config_groups(
+    items: list[_content.ConfigItem],
+) -> list[dict]:
+    """Zwraca wpisy pogrupowane kolejno: {label, entries}; nowa grupa, gdy zmienia się nagłówek sekcji.
+
+    Po co: tabela zachowuje kolejność wpisów od agenta (bez sortowania), a wiersze grupujące wstawia się przy zmianie sekcji.
+    """
+    grupy = []
+    for wpis in items:
+        etykieta = _config_section_label(wpis)
+        if not grupy or grupy[-1]["label"] != etykieta:
+            grupy.append({"label": etykieta, "entries": []})
+        grupy[-1]["entries"].append(_config_entry(wpis))
+    return grupy
+
+
+def _config_view(
+    block: _content.GuideBlock,
+) -> dict:
+    """Zwraca dane metryczki dla szablonu: nagłówek (pliki i zdanie od agenta), kafelki, grupy tabeli, liczbę wpisów.
+
+    Po co: cały blok config w jednym słowniku; nagłówek pokazuje nazwy plików konfiguracyjnych albo „Ustawienia w kodzie”,
+    a zdanie o sposobie wczytania pliku bierze z pierwszego akapitu bloku (jeśli agent je napisał).
+    """
+    pliki = []
+    for wpis in block.config_items:
+        if wpis.file and wpis.file not in pliki:
+            pliki.append(wpis.file)
+    naglowek = "Ustawienia w kodzie"
+    if pliki:
+        naglowek = ", ".join(pliki)
+    zdanie = ""
+    if block.paragraphs:
+        zdanie = block.paragraphs[0]
+    widok = {
+        "header": naglowek,
+        "sentence": zdanie,
+        "tiles": _config_tiles(block.config_items),
+        "groups": _config_groups(block.config_items),
+        "count": len(block.config_items),
+    }
+    return widok
+
+
 def _section_view(
     section: _template.TemplateSection,
     block: _content.GuideBlock,
@@ -150,7 +298,10 @@ def _section_view(
         "state": "content",
         "columns": section.columns,
         "rows": _table_rows(section, block),
+        "config": None,
     }
+    if section.type == "config":
+        widok["config"] = _config_view(block)
     if section.type not in _READY_TYPES:
         widok["state"] = "pending"
     elif section.type != "cards" and not _has_content(section, block):
@@ -252,6 +403,7 @@ def render_guide(
 
 if __name__ == "__main__":
     import re
+    import sys
 
     import dev_agents.config as _config
     import dev_agents.scanner as _scanner
@@ -283,11 +435,51 @@ if __name__ == "__main__":
         )
         return diagram
 
-    def _example_overview() -> _content.GuideTab:
-        """Składa przykładową zakładkę Przegląd robota 02: opis, wejście i wyjście, wymagania, zależności, instalacja, pojęcia.
+    def _example_config_code() -> list[_content.ConfigItem]:
+        """Składa przykładową metryczkę robota 02: same stałe w kodzie (robot nie ma pliku konfiguracyjnego).
 
-        Po co: każdy typ bloku tej zakładki z treścią; metryczka celowo pusta (blok config w kroku 35).
+        Po co: przypadek „konfiguracja tylko w kodzie” - nagłówek „Ustawienia w kodzie”, jedna grupa „w kodzie” w tabeli.
         """
+        wpisy = [
+            _content.ConfigItem(location="przetwarzanie.py:14", key="URL", value="https://api.example.test/zamowienia", kind="system", meaning="adres API, do którego robot wysyła zamówienia", used_in=["przetwarzanie.py:301"]),
+            _content.ConfigItem(location="przetwarzanie.py:9", key="INPUT_DIR", value="dane/wejscie", kind="input_file", meaning="katalog z plikami zamówień CSV", used_in=["przetwarzanie.py:52"]),
+            _content.ConfigItem(location="przetwarzanie.py:10", key="OUTPUT_DIR", value="dane/wyjscie", kind="output_file", meaning="wyniki JSON i CSV oraz raport Excel", used_in=["przetwarzanie.py:380"]),
+            _content.ConfigItem(location="przetwarzanie.py:22", key="ENV_PASSWORD", value="ROBOT02_PASS", kind="env_var", meaning="nazwa zmiennej z hasłem do API; potrzebna przy WYSYLKA_DO_API = True", used_in=["przetwarzanie.py:298"]),
+            _content.ConfigItem(location="przetwarzanie.py:24", key="WYSYLKA_DO_API", value="False", kind="switch", meaning="True = wysyłka zamówień do API z ponawianiem", used_in=["przetwarzanie.py:296"]),
+            _content.ConfigItem(location="przetwarzanie.py:26", key="LIMIT_RABATU", value="0.12", kind="other", meaning="łączny limit rabatu VIP i PROMO", used_in=["przetwarzanie.py:210"], certain=False),
+        ]
+        return wpisy
+
+    def _example_config_file() -> list[_content.ConfigItem]:
+        """Składa przykładową metryczkę z pliku config.yml jak w makiecie: sekcje, konto, zmienna, hasło wprost, stała w kodzie.
+
+        Po co: przypadek „plik konfiguracyjny” - czerwony znacznik „hasło w pliku”, wiersze grupujące, wpis wywnioskowany.
+        """
+        wpisy = [
+            _content.ConfigItem(file="config.yml", group="input", key="excel_path", value="resources/in/challenge.xlsx", kind="input_file", meaning="plik Excel z danymi do wpisania w formularz", used_in=["main.py:57"]),
+            _content.ConfigItem(file="config.yml", group="output", key="report_db", value="resources/report.db", kind="output_file", meaning="baza raportowa, wiersz po każdym rekordzie", used_in=["main.py:58"]),
+            _content.ConfigItem(file="config.yml", group="output", key="account_states", value="resources/acc_states.txt", kind="output_file", meaning="stany kont odczytane z ParaBank", used_in=["main.py:59"], certain=False),
+            _content.ConfigItem(file="config.yml", group="parabank", key="url", value="https://parabank.parasoft.com/parabank/", kind="system", meaning="adres aplikacji bankowej", used_in=["main.py:139"]),
+            _content.ConfigItem(file="config.yml", group="parabank", key="username", value="robot", kind="account", meaning="login robota w ParaBank", used_in=["main.py:142"]),
+            _content.ConfigItem(file="config.yml", group="parabank", key="password_env", value="FAKE_PASSWD", kind="env_var", meaning="nazwa zmiennej z hasłem do ParaBank; brak zmiennej zatrzymuje robota", used_in=["main.py:135", "main.py:137"]),
+            _content.ConfigItem(file="config.yml", group="parabank", key="password", value="Haslo123!", kind="account", plain_password=True, meaning="przykład: hasło wpisane wprost w plik", used_in=["main.py:140"]),
+            _content.ConfigItem(location="przetwarzanie.py:14", key="URL", value="https://api.example.test/zamowienia", kind="system", meaning="adres API; stała w kodzie, nie w pliku konfiguracyjnym"),
+            _content.ConfigItem(file="config.yml", group="logger", key="logs_dir", value="logs", kind="log", meaning="katalog dziennych logów CSV", used_in=["main.py:54"]),
+            _content.ConfigItem(file="config.yml", group="logger", key="debug", value="false", kind="switch", meaning="true = także komunikaty DEBUG frameworku", used_in=["main.py:54"]),
+        ]
+        return wpisy
+
+    def _example_overview(
+        config_items: list[_content.ConfigItem],
+        config_sentence: str,
+    ) -> _content.GuideTab:
+        """Składa przykładową zakładkę Przegląd robota 02: opis, metryczka, wejście i wyjście, wymagania, zależności, instalacja, pojęcia.
+
+        Po co: każdy typ bloku tej zakładki z treścią; metryczka z podanych wpisów (zdanie do nagłówka może być puste).
+        """
+        akapity = []
+        if config_sentence:
+            akapity.append(config_sentence)
         zakladka = _content.GuideTab(
             tab_id="przeglad",
             blocks=[
@@ -298,6 +490,7 @@ if __name__ == "__main__":
                         "Robot czyta pliki zamówień z katalogu dane/wejscie, sprawdza wiersze, nalicza rabaty i odrzuca błędne pliki. Wyniki zapisuje jako JSON i CSV, a na końcu tworzy raport Excel dla działu sprzedaży.",
                     ],
                 ),
+                _content.GuideBlock(section_id="metryczka", paragraphs=akapity, config_items=config_items),
                 _content.GuideBlock(
                     section_id="wejscie_wyjscie",
                     inputs=[_content.IoItem(name="dane/wejscie/*.csv", location="przetwarzanie.py:52", description="pliki zamówień, jeden plik na dzień")],
@@ -441,12 +634,15 @@ if __name__ == "__main__":
         zakladki = [sciezki, zmiany, bledy, deweloper]
         return zakladki
 
-    def _example_content() -> _content.GuideContent:
-        """Składa przykładową treść robota 02 z każdym gotowym typem bloku.
+    def _example_content(
+        config_items: list[_content.ConfigItem],
+        config_sentence: str,
+    ) -> _content.GuideContent:
+        """Składa przykładową treść robota 02 z każdym gotowym typem bloku i podaną metryczką.
 
         Po co: podgląd przewodnika bez modelu; sekcje bez treści pokazują „nie wynika z kodu” albo znikają.
         """
-        zakladki = [_example_overview()]
+        zakladki = [_example_overview(config_items, config_sentence)]
         for zakladka in _example_other_tabs():
             zakladki.append(zakladka)
         tresc = _content.GuideContent(project_name="02_robot_bez_frameworku", flow=_example_flow(), tabs=zakladki)
@@ -471,7 +667,8 @@ if __name__ == "__main__":
         html: str,
     ) -> dict:
         """Zwraca liczby do szybkiego sprawdzenia pliku: zakładki, sekcje h2, odwołania do internetu, bloki kodu,
-        oznaczenia „wywnioskowane” w tabelach, odnośniki do klocków, znaczniki kolejnych kroków i escapowanie <script>.
+        oznaczenia „wywnioskowane” w tabelach, odnośniki do klocków, znaczniki kolejnych kroków, escapowanie <script>
+        oraz liczby z metryczki (kafelki, grupy i wiersze tabeli, czerwone znaczniki hasła wprost, zdanie o braku konfiguracji).
 
         Po co: szybkie sprawdzenie pliku bez otwierania przeglądarki.
         """
@@ -484,25 +681,52 @@ if __name__ == "__main__":
             "odnośników do klocków": html.count('<a class="ref"'),
             "sekcji czekających na kolejny krok": html.count("dochodzi w kolejnym kroku planu"),
             "<script> z treści escapowany": "&lt;script&gt;alert(" in html and "<script>alert(" not in html,
+            "metryczka: kafelków": html.count("<div><h3>"),
+            "metryczka: grup w tabeli": html.count('<tr class="csec">'),
+            "metryczka: wierszy w tabeli": html.count('<td class="val"'),
+            "metryczka: znaczników hasła wprost": len(re.findall(r'<span class="kv r">hasło w (?:pliku|kodzie)</span>', html)),
+            "metryczka: zdanie o braku konfiguracji": "Robot nie ma konfiguracji - nie wynika z kodu." in html,
         }
         return wynik
 
-    def manual_test():
-        """Renderuje przykładową treść robota 02 do guide_test.html w katalogu głównym repo i wypisuje ścieżkę oraz podsumowanie.
+    def _render_example(
+        repo_dir: str,
+        app_config: _config.AppConfig,
+        config_items: list[_content.ConfigItem],
+        config_sentence: str,
+    ) -> str:
+        """Renderuje przykładowy przewodnik robota 02 z podaną metryczką i zwraca HTML.
 
-        Po co: pierwszy widoczny przewodnik - do obejrzenia w przeglądarce.
+        Po co: ten sam szablon, mapa i treść dla wszystkich wariantów metryczki w teście.
+        """
+        szablon = _template.load_template(app_config.paths.guide_template)
+        mapa = _example_project_map(repo_dir, app_config)
+        tresc = _example_content(config_items, config_sentence)
+        html = render_guide(tresc, szablon, mapa, os.path.dirname(app_config.paths.guide_template), "2026-11-26 20:00 (test)")
+        return html
+
+    def manual_test():
+        """Renderuje przykładowy przewodnik robota 02 do guide_test.html w katalogu głównym repo i wypisuje podsumowanie.
+
+        Po co: widoczny przewodnik do obejrzenia w przeglądarce; wariant metryczki z argumentu: brak = stałe w kodzie,
+        „plik” = przykładowy config.yml; dodatkowo sprawdzenie w pamięci metryczki bez wpisów.
         """
         repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         app_config = _config.load_config(os.path.join(repo_dir, "config.yaml"))
-        szablon = _template.load_template(app_config.paths.guide_template)
-        mapa = _example_project_map(repo_dir, app_config)
-        html = render_guide(_example_content(), szablon, mapa, os.path.dirname(app_config.paths.guide_template), "2026-11-26 20:00 (test)")
+        wpisy = _example_config_code()
+        zdanie = ""
+        if len(sys.argv) > 1 and sys.argv[1] == "plik":
+            wpisy = _example_config_file()
+            zdanie = "wczytywany w main.py:51 przez get_config(CONFIG_FILE) · ścieżki względne liczone od katalogu projektu"
+        html = _render_example(repo_dir, app_config, wpisy, zdanie)
         sciezka = os.path.join(repo_dir, "guide_test.html")
         with open(sciezka, "w", encoding="utf-8") as plik:
             plik.write(html)
         print(f"Zapisano: {sciezka} ({len(html)} znaków)")
         for nazwa, wartosc in _summary(html).items():
             print(f"  {nazwa}: {wartosc}")
-        print("Otwórz plik w przeglądarce: tabele, kroki z przyciskiem Kopiuj, pojęcia, ścieżki z numerami klocków, przepisy.")
+        pusta = _summary(_render_example(repo_dir, app_config, [], ""))
+        print(f"Metryczka bez wpisów (w pamięci): zdanie o braku konfiguracji: {pusta['metryczka: zdanie o braku konfiguracji']}, kafelków: {pusta['metryczka: kafelków']}")
+        print("Otwórz plik w przeglądarce: metryczka (kafelki, rozwijana tabela), tabele, kroki z Kopiuj, pojęcia, ścieżki, przepisy.")
 
     manual_test()

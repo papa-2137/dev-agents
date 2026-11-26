@@ -189,7 +189,7 @@ class GuideBlock(pydantic.BaseModel):
     """
 
     section_id: str = pydantic.Field(description="Id sekcji z szablonu przewodnika, np. wymagania.")
-    paragraphs: list[str] = pydantic.Field(default=[], description="Typ text: akapity. W sekcji opis_robota pierwszy akapit to jedno zdanie, co robi robot.")
+    paragraphs: list[str] = pydantic.Field(default=[], description="Typ text: akapity. W sekcji opis_robota pierwszy akapit to jedno zdanie, co robi robot. Typ config: opcjonalnie jedno zdanie do nagłówka metryczki - gdzie i czym robot wczytuje plik konfiguracyjny.")
     items: list[str] = pydantic.Field(default=[], description="Typ list: punkty listy.")
     steps: list[Step] = pydantic.Field(default=[], description="Typ steps: kroki instrukcji.")
     rows: list[list[str]] = pydantic.Field(default=[], description="Typ table: wiersze, każdy z tyloma komórkami, ile kolumn ma sekcja w szablonie.")

@@ -100,6 +100,62 @@
 {%- endfor %}
 {%- endmacro -%}
 
+{%- macro config_tile_entry(entry) -%}
+{%- if entry.password %}
+   <p>Hasło <code>{{ entry.value }}</code></p>
+{%- elif entry.kind == "system" %}
+   <p class="warn">{{ entry.value }}</p>
+{%- elif entry.kind == "account" %}
+   <p>Konto <code>{{ entry.value }}</code></p>
+{%- elif entry.kind == "env_var" %}
+   <p>Zmienna <code>{{ entry.value }}</code> <span class="kv r">ustaw przed uruchomieniem</span></p>
+{%- elif entry.kind == "switch" %}
+   <p><code>{{ entry.key }}</code> = <code>{{ entry.value }}</code></p>
+{%- else %}
+   <p><code>{{ entry.value }}</code></p>
+{%- endif %}
+{%- if entry.password %}
+   <p><span class="kv r">{{ entry.password }}</span></p>
+{%- endif %}
+{%- if entry.kind != "switch" or entry.meaning %}
+   <p class="src">{% if entry.kind != "switch" %}<code>{{ entry.label }}</code>{% if entry.meaning %} · {% endif %}{% endif %}{{ entry.meaning }}{% if entry.uncertain %} <span class="unc">wywnioskowane</span>{% endif %}</p>
+{%- endif %}
+{%- endmacro -%}
+
+{%- macro config_row(entry) -%}
+    <tr><td data-l="Klucz"><code>{{ entry.key }}</code></td><td class="val" data-l="Wartość"><code>{{ entry.value }}</code> {% if entry.password %}<span class="kv r">{{ entry.password }}</span>{% elif entry.badge_text %}<span class="kv {{ entry.badge_color }}">{{ entry.badge_text }}</span>{% endif %}</td><td data-l="Znaczenie">{{ entry.meaning }}{% if entry.uncertain %} <span class="unc">wywnioskowane</span>{% endif %}</td><td data-l="Używany w">{% for place in entry.places %}{% if not loop.first %}, {% endif %}<code>{{ place.text }}</code>{% if place.constant %} <span class="kv m">stała</span>{% endif %}{% endfor %}</td></tr>
+{%- endmacro -%}
+
+{%- macro block_config(config) -%}
+ <p class="note">Wartości przepisane z pliku konfiguracyjnego robota (narzędzie przekazuje plik bez zmian) i ze stałych w kodzie; znaczenie kluczy i miejsca użycia opisuje agent na podstawie kodu. Niczego nie ukrywamy: hasło wpisane wprost w plik albo w kod jest pokazane, oznaczone na czerwono i trafia do „Ryzykownych miejsc” w zakładce Błędy i naprawa.</p>
+ <div class="pp">
+  <div class="pp-h"><b>{{ config.header }}</b>{% if config.sentence %}<span>{{ config.sentence }}</span>{% endif %}</div>
+  <div class="pp-g">
+{%- for tile in config.tiles %}
+   <div><h3>{{ tile.title }}</h3>
+{%- for entry in tile.entries %}
+{{ config_tile_entry(entry) }}
+{%- endfor %}
+   </div>
+{%- endfor %}
+  </div>
+ </div>
+ <details class="cfg">
+  <summary>Pełna konfiguracja <span class="kv m">wpisów: {{ config.count }}</span></summary>
+  <div class="scroll"><table class="stack cfgt">
+   <thead><tr><th>Klucz</th><th>Wartość</th><th>Znaczenie</th><th>Używany w</th></tr></thead>
+   <tbody>
+{%- for group in config.groups %}
+    <tr class="csec"><td colspan="4">{{ group.label }}</td></tr>
+{%- for entry in group.entries %}
+{{ config_row(entry) }}
+{%- endfor %}
+{%- endfor %}
+   </tbody>
+  </table></div>
+ </details>
+{%- endmacro -%}
+
 {%- macro block_cards(cards) -%}
  <p class="note">Zacznij od tej zakładki: po niej uruchomisz robota. Potem diagram przepływu: po nim opowiesz, co robot robi. Resztę czytaj, gdy masz konkretne zadanie.</p>
  <div class="cards">
@@ -145,7 +201,9 @@
 {%- endfor %}
 {% for section in tab.sections %}
  <h2 id="s-{{ section.id }}">{{ section.title }}</h2>
-{%- if section.state == "missing" %}
+{%- if section.state == "missing" and section.type == "config" %}
+ <p class="note">Robot nie ma konfiguracji - nie wynika z kodu.</p>
+{%- elif section.state == "missing" %}
  <p class="note">Nie wynika z kodu.</p>
 {%- elif section.state == "pending" %}
  <p class="note"><span class="ph">[blok typu {{ section.type }}: dochodzi w kolejnym kroku planu]</span></p>
@@ -169,6 +227,8 @@
 {{ block_paths(section.block, node_numbers, path_kind_labels) }}
 {%- elif section.type == "recipes" %}
 {{ block_recipes(section.block) }}
+{%- elif section.type == "config" %}
+{{ block_config(section.config) }}
 {%- endif %}
 {% endfor %}
 </section>
