@@ -8,9 +8,11 @@ Co robi: definiuje RunState - słownik (TypedDict) z polami wspólnymi dla całe
     notes        - notatki analityków (wynik równoległych węzłów analyst); pole z reducerem operator.add:
                    każdy analityk zwraca listę z jedną notatką, a LangGraph skleja listy w jedną,
     flow         - diagram przepływu całego procesu (wynik węzła flow_writer, krok 53),
+    tab_ids      - id zakładek do napisania przez pisarzy (wynik węzła plan_tabs: zakładki szablonu z sekcjami dla pisarza),
     tab_id       - id zakładki do napisania; wpisuje je do ładunku Send graf (krok 56), nie węzły; czyta writer_node,
     tabs         - zakładki napisane przez pisarzy (wynik węzłów writer, krok 55); pole z reducerem operator.add:
-                   każdy pisarz zwraca listę z jedną zakładką, a LangGraph skleja listy w jedną.
+                   każdy pisarz zwraca listę z jedną zakładką, a LangGraph skleja listy w jedną,
+    content      - cała treść przewodnika (wynik węzła assemble, krok 56): diagram i zakładki w kolejności szablonu.
 Kolejne etapy (diagram, treść przewodnika) dopisują tu swoje pola w swoich krokach.
 
 Dlaczego istnieje: w LangGraph węzeł dostaje stan i zwraca tylko te pola, które zmienia - słownik z polami
@@ -42,5 +44,7 @@ class RunState(typing.TypedDict, total=False):
     task: _schemas.AnalysisTask
     notes: typing.Annotated[list[_schemas.ModuleNote], operator.add]
     flow: _content.FlowGraph
+    tab_ids: list[str]
     tab_id: str
     tabs: typing.Annotated[list[_content.GuideTab], operator.add]
+    content: _content.GuideContent

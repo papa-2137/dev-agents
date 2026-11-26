@@ -1,6 +1,6 @@
 """Graf agentów (LangGraph): skan projektu, plan pracy, równoległa analiza jednostek.
 
-Co robi: buduje graf START -> scan -> planner -> (analyst x N, równolegle) -> flow_writer -> END. Węzeł scan woła scanner.build_project_map na projekcie ze stanu
+Co robi: buduje graf START -> scan -> planner -> (analyst x N, równolegle) -> flow_writer -> plan_tabs -> (writer x M, równolegle) -> assemble -> END. Węzeł scan woła scanner.build_project_map na projekcie ze stanu
 (project_path) z ustawieniami skanowania z kontekstu (runtime.context.config.scan) i dopisuje do stanu
 project_map. Węzeł niczego nie zapisuje na dysku - zapis wyników należy do wołającego (main.py, krok 44).
 Pracę węzła owija Stage z progress.py: linie "scan: start" i "scan: gotowe w X s - wynik" (albo "BŁĄD po X s")
@@ -13,6 +13,10 @@ analysis.max_concurrency, przekazane do invoke przez run_config().
 Po analitykach węzeł flow_writer (agents/flow_writer.py, krok 54) układa z notatek diagram całego procesu,
 zapisuje flow.json i dopisuje do stanu flow; zaczyna dopiero, gdy skończą wszyscy analitycy (krawędź analyst ->
 flow_writer czeka na wszystkie zadania wysłane przez Send).
+Po diagramie węzeł plan_tabs (kod, bez modelu) wpisuje do stanu tab_ids: zakładki szablonu z sekcjami dla pisarza;
+krawędź warunkowa dispatch_writers wysyła Send("writer", ładunek z tab_id) na każdą z nich, a węzeł writer
+(agents/writer.py, krok 55) pisze zakładkę i zapisuje tabs/<zakładka>.json. Węzeł assemble (assemble.py, krok 56) czeka
+na wszystkich pisarzy, składa treść przewodnika w kolejności szablonu, sprawdza kompletność i zapisuje guide_content.json.
 
 Dlaczego istnieje: kolejne etapy (analitycy, autor diagramu, pisarze, recenzent) dołączamy do tego
 szkieletu po jednym - najpierw uczymy się LangGraph na grafie bez modelu. Graf przyjmuje stan (RunState)
@@ -32,12 +36,13 @@ Pojęcia LangGraph użyte tutaj:
 
 Test ręczny (z katalogu głównego repo; wymaga zainstalowanego langgraph, bez wywołań modelu i bez sieci):
     python -m dev_agents.graph
-        buduje kontekst (modele, spis bazy wiedzy, szablon), podmienia modele plannera, analityków i autora diagramu na udawane (bez sieci)
+        buduje kontekst (modele, spis bazy wiedzy, szablon), podmienia modele plannera, analityków, autora diagramu i pisarzy na udawane (bez sieci)
         i uruchamia graf na małym projekcie tymczasowym oraz na robotach testowych 02 i 01 (tylko odczyt, bez
         zapisu w nich); dla każdego wypisuje stan końcowy, porównuje mapę z grafu z mapą z bezpośredniego skanu,
         sprawdza linie postępu (scan, planner, analityk dla każdej jednostki, flow_writer: start i koniec z czasem), to, że plan
         obejmuje wszystkie jednostki kodu i trafił do plan.json w magazynie tymczasowym, oraz że notatek jest tyle
-        co zadań, każda jednostka ma notatkę w stanie i w notes/<jednostka>.json, a diagram jest spójny i zapisany jako flow.json; na końcu
+        co zadań, każda jednostka ma notatkę w stanie i w notes/<jednostka>.json, a diagram jest spójny i zapisany jako flow.json, a pisarzy było tylu co zakładek z sekcjami dla pisarza (każda zakładka raz, tabs/<zakładka>.json zgodne ze stanem),
+        treść przewodnika ma zakładki w kolejności szablonu i jest zapisana jako guide_content.json; na końcu
         "zgodne z oczekiwaniem: True".
         Jeśli w środowisku nie ma zmiennych z kluczem i adresem modeli (nazwy w config.yaml), test ustawia
         atrapy tylko dla tego procesu - prawdziwe modele nie są wołane.
@@ -52,9 +57,12 @@ from langgraph.types import Send
 import dev_agents.agents.analyst as _analyst
 import dev_agents.agents.flow_writer as _flow_writer
 import dev_agents.agents.planner as _planner
+import dev_agents.agents.writer as _writer
+import dev_agents.assemble as _assemble
 import dev_agents.config as _config
 import dev_agents.context as _context
 import dev_agents.progress as _progress
+import dev_agents.guide_template as _template
 import dev_agents.scanner as _scanner
 import dev_agents.state as _state
 
@@ -83,7 +91,25 @@ def scan_node(
     return zmiana_stanu
 
 
-# --- Krawędź warunkowa i ustawienia uruchomienia ---
+def plan_tabs_node(
+    state: _state.RunState,
+    runtime: Runtime[_context.RunContext],
+) -> dict:
+    """Wpisuje do stanu tab_ids: id zakładek szablonu (dla technologii projektu), które mają sekcje do napisania przez pisarza, w kolejności szablonu.
+
+    Po co: krawędź warunkowa dispatch_writers widzi tylko stan, a lista zakładek zależy od szablonu z kontekstu i technologii
+    projektu; węzeł nie woła modelu i niczego nie zapisuje.
+    """
+    szablon = _template.sections_for_technology(runtime.context.template, state["project_map"].technology)
+    identyfikatory = []
+    for zakladka in szablon.tabs:
+        if _writer.writer_sections(zakladka):
+            identyfikatory.append(zakladka.id)
+    zmiana_stanu = {"tab_ids": identyfikatory}
+    return zmiana_stanu
+
+
+# --- Krawędzie warunkowe i ustawienia uruchomienia ---
 
 
 def dispatch_analysts(
@@ -101,10 +127,25 @@ def dispatch_analysts(
     return polecenia
 
 
+def dispatch_writers(
+    state: _state.RunState,
+) -> list[Send]:
+    """Zwraca po jednym poleceniu Send("writer", ...) na każdą zakładkę z tab_ids; ładunek to mapa projektu, plan, notatki, diagram i tab_id.
+
+    Po co: krawędź warunkowa za plan_tabs - LangGraph uruchomi węzeł writer tyle razy, ile jest zakładek, równolegle
+    (nie więcej naraz niż max_concurrency). Każdy pisarz dostaje komplet notatek i gotowy diagram.
+    """
+    polecenia = []
+    for identyfikator in state["tab_ids"]:
+        ladunek = {"project_map": state["project_map"], "plan": state["plan"], "notes": state["notes"], "flow": state["flow"], "tab_id": identyfikator}
+        polecenia.append(Send("writer", ladunek))
+    return polecenia
+
+
 def run_config(
     app_config: _config.AppConfig,
 ) -> dict:
-    """Zwraca ustawienia uruchomienia grafu (argument config w invoke): max_concurrency z analysis.max_concurrency.
+    """Zwraca ustawienia uruchomienia grafu (argument config w invoke): max_concurrency z analysis.max_concurrency (dla analityków i pisarzy).
 
     Po co: LangGraph ogranicza liczbę równoległych węzłów tylko przez to ustawienie; jedno miejsce, które woła main.py i test.
     """
@@ -116,7 +157,7 @@ def run_config(
 
 
 def build_graph():
-    """Buduje i kompiluje graf START -> scan -> planner -> analyst (po jednym na zadanie, równolegle) -> flow_writer -> END; zwraca graf gotowy do invoke(stan, context=RunContext, config=run_config(...)).
+    """Buduje i kompiluje graf START -> scan -> planner -> analyst (po jednym na zadanie, równolegle) -> flow_writer -> plan_tabs -> writer (po jednym na zakładkę, równolegle) -> assemble -> END; zwraca graf gotowy do invoke(stan, context=RunContext, config=run_config(...)).
 
     Po co: jedno miejsce z układem grafu - kolejne kroki planu dopisują tu węzły i krawędzie.
     """
@@ -129,7 +170,13 @@ def build_graph():
     budowniczy.add_conditional_edges("planner", dispatch_analysts, ["analyst"])
     budowniczy.add_node("flow_writer", _flow_writer.flow_writer_node)
     budowniczy.add_edge("analyst", "flow_writer")
-    budowniczy.add_edge("flow_writer", END)
+    budowniczy.add_node("plan_tabs", plan_tabs_node)
+    budowniczy.add_edge("flow_writer", "plan_tabs")
+    budowniczy.add_node("writer", _writer.writer_node)
+    budowniczy.add_conditional_edges("plan_tabs", dispatch_writers, ["writer"])
+    budowniczy.add_node("assemble", _assemble.assemble_node)
+    budowniczy.add_edge("writer", "assemble")
+    budowniczy.add_edge("assemble", END)
     graf = budowniczy.compile()
     return graf
 
@@ -229,6 +276,41 @@ if __name__ == "__main__":
         )
         return diagram
 
+    def _make_fake_writer_answer(
+        template: _template.GuideTemplate,
+    ):
+        """Zwraca funkcję odpowiedzi udawanego pisarza: dla zakładki z "tab_id: <id>" w prompcie zwraca odpowiedź z pustym blokiem każdej sekcji pisarza.
+
+        Po co: pisarz woła model ze schematem zależnym od zakładki, więc udawana odpowiedź musi mieć klasę tego schematu;
+        puste bloki nie mają problemów (puste sekcje wymagane renderer pokaże jako "nie wynika z kodu").
+        """
+
+        def answer(
+            messages,
+        ):
+            """Czyta id zakładki z promptu i buduje odpowiedź w klasie schematu tej zakładki.
+
+            Po co: odpowiedź udawanego modelu zależna od zakładki.
+            """
+            tab_id = ""
+            for linia in messages[1].content.split("\n"):
+                if linia.startswith("tab_id: "):
+                    tab_id = linia[len("tab_id: "):].strip()
+            sekcje = []
+            for zakladka in template.tabs:
+                if zakladka.id == tab_id:
+                    sekcje = _writer.writer_sections(zakladka)
+            bloki = []
+            for sekcja in sekcje:
+                blok = {"section_id": sekcja.id}
+                for nazwa in _writer.block_fields(sekcje):
+                    blok[nazwa] = []
+                bloki.append(blok)
+            odpowiedz = _writer.tab_response_model(sekcje).model_validate({"tab_id": tab_id, "blocks": bloki})
+            return odpowiedz
+
+        return answer
+
     def _context_lines(
         context: _context.RunContext,
     ) -> list[str]:
@@ -325,9 +407,50 @@ if __name__ == "__main__":
                 linie_flow.append(linia_postepu)
         postep_flow = len(linie_flow) == 2 and linie_flow[0].endswith("] flow_writer: start") and "] flow_writer: gotowe w " in linie_flow[1]
         diagram_zgodny = problemy_diagramu == [] and diagram_zapisany and postep_flow
+        szablon_technologii = _template.sections_for_technology(context.template, mapa.technology)
+        oczekiwane_zakladki = []
+        wszystkie_zakladki = []
+        for zakladka in szablon_technologii.tabs:
+            wszystkie_zakladki.append(zakladka.id)
+            if _writer.writer_sections(zakladka):
+                oczekiwane_zakladki.append(zakladka.id)
+        napisane = []
+        for zakladka in stan.get("tabs", []):
+            napisane.append(zakladka.tab_id)
+        zakladki_zgodne = sorted(napisane) == sorted(oczekiwane_zakladki)
+        zakladki_zapisane = True
+        for zakladka in stan.get("tabs", []):
+            if context.store.load_json(f"tabs/{zakladka.tab_id}.json", _content.GuideTab) != zakladka:
+                zakladki_zapisane = False
+        start_pisarzy = 0
+        koniec_pisarzy = 0
+        linie_assemble = []
+        for linia_postepu in nowe_linie:
+            if "] writer " in linia_postepu and linia_postepu.endswith(": start"):
+                start_pisarzy += 1
+            if "] writer " in linia_postepu and ": gotowe w " in linia_postepu:
+                koniec_pisarzy += 1
+            if "] assemble: " in linia_postepu:
+                linie_assemble.append(linia_postepu)
+        postep_pisarzy = start_pisarzy == len(oczekiwane_zakladki) and koniec_pisarzy == len(oczekiwane_zakladki)
+        tresc = stan["content"]
+        kolejnosc_tresci = []
+        for zakladka in tresc.tabs:
+            kolejnosc_tresci.append(zakladka.tab_id)
+        tresc_zgodna = (
+            kolejnosc_tresci == wszystkie_zakladki
+            and tresc.flow == diagram
+            and context.store.load_json("guide_content.json", _content.GuideContent) == tresc
+            and len(linie_assemble) == 2
+            and "problemów: 0" in linie_assemble[1]
+        )
         zgodne = (
             mapa == bezposrednio
             and diagram_zgodny
+            and zakladki_zgodne
+            and zakladki_zapisane
+            and postep_pisarzy
+            and tresc_zgodna
             and notatki_zgodne
             and notatki_zapisane
             and postep_analitykow
@@ -353,6 +476,10 @@ if __name__ == "__main__":
             f"  notes/<jednostka>.json w magazynie == notatki ze stanu: {notatki_zapisane}",
             f"  analitycy: start i koniec z czasem dla każdej jednostki: {postep_analitykow}",
             f"  diagram bez problemów ({len(diagram.nodes)} klocków), flow.json == diagram ze stanu, linie postępu flow_writer: {diagram_zgodny}",
+            f"  zakładki od pisarzy ({len(napisane)}) tyle co zakładek z sekcjami dla pisarza, każda raz: {zakladki_zgodne}",
+            f"  tabs/<zakładka>.json w magazynie == zakładki ze stanu: {zakladki_zapisane}",
+            f"  pisarze: start i koniec z czasem dla każdej zakładki: {postep_pisarzy}",
+            f"  treść: zakładki w kolejności szablonu, diagram ze stanu, guide_content.json, assemble bez problemów: {tresc_zgodna}",
         ]
         for linia_postepu in nowe_linie:
             linie.append(f"    {linia_postepu}")
@@ -363,7 +490,7 @@ if __name__ == "__main__":
         """Buduje kontekst i graf, uruchamia je na projekcie tymczasowym i robotach testowych 02 i 01 (tylko odczyt).
 
         Po co: sprawdzenie szkieletu LangGraph z prawdziwym skanem i udawanymi modelami plannera (pusty plan,
-        który complete_plan uzupełnia o wszystkie jednostki), analityków (stała notatka) i autora diagramu (stały diagram), bez sieci i bez zapisu w cudzych projektach.
+        który complete_plan uzupełnia o wszystkie jednostki), analityków (stała notatka), autora diagramu (stały diagram) i pisarzy (puste bloki sekcji), bez sieci i bez zapisu w cudzych projektach.
         """
         katalog_repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         app_config = _config.load_config(os.path.join(katalog_repo, "config.yaml"))
@@ -380,6 +507,7 @@ if __name__ == "__main__":
             kontekst.models["planner"] = _fakes.FakeStructuredModel(_schemas.Plan(summary="Plan testowy", tasks=[]))
             kontekst.models["analyst"] = _fakes.FakeStructuredModel(_fake_analyst_answer)
             kontekst.models["flow_writer"] = _fakes.FakeStructuredModel(_fake_flow())
+            kontekst.models["writer"] = _fakes.FakeStructuredModel(_make_fake_writer_answer(kontekst.template))
             graf = build_graph()
             for linia in _context_lines(kontekst):
                 print(linia)

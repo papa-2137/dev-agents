@@ -303,7 +303,7 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 56. Graf: równolegli pisarze + składanie treści**
 - **Funkcja:** wszystkie pozostałe zakładki pisane naraz, potem złożone w jedną treść ze sprawdzeniem kompletności.
-- **Robimy:** drugi `Send` (po jednym pisarzu na zakładkę poza Przepływem), zapis `tabs/<zakładka>.json`; węzeł `assemble` (kod): `GuideContent` z diagramem i blokami skanera, braki wymaganych sekcji, odwołania do nieistniejących klocków, wpisy metryczki bez znaczenia, `guide_content.json`.
+- **Robimy:** węzeł `plan_tabs` (kod: `tab_ids` ze stanu = zakładki szablonu z sekcjami dla pisarza) i drugi `Send` (`dispatch_writers`, po jednym pisarzu na zakładkę poza Przepływem), zapis `tabs/<zakładka>.json`; węzeł `assemble` (`assemble.py`, kod): `GuideContent` z diagramem i zakładkami w kolejności szablonu (bez bloków skanera - sekcje scanner/code wypełnia renderer z mapy projektu), braki wymaganych sekcji, odwołania do nieistniejących klocków, wpisy metryczki bez znaczenia, problemy diagramu, `guide_content.json`; braki nie przerywają przebiegu.
 - **Sprawdzamy:** wszystkie zakładki w `tabs/`, `guide_content.json` kompletny, braki (jeśli są) wypisane.
 
 **Krok 57. Graf: render i finalize**
