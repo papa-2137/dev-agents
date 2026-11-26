@@ -12,7 +12,8 @@
 #   required     - true: sekcja zawsze widoczna; gdy z kodu nic nie wynika, pokazuje „nie wynika z kodu”
 #                  (nigdy wymyśloną treść); false: sekcja znika, gdy nie ma treści
 #   instruction  - polecenie dla pisarza (dla source llm) albo opis danych (scanner, code)
-#   columns      - kolumny tabeli (wymagane przy type: table)
+#   columns      - kolumny tabeli (wymagane przy type: table); komórkę wywnioskowaną (niezapisaną wprost w kodzie)
+#                  pisarz kończy znacznikiem [wywnioskowane] - przewodnik pokazuje w jej miejscu oznaczenie
 #   technologies - opcjonalnie: lista technologii, dla których sekcja się pojawia (np. [python]); brak = wszystkie
 #
 # Nowa sekcja albo zmiana polecenia = zmiana tego pliku, bez zmian w kodzie. Nowy TYP sekcji wymaga kodu w rendererze.
@@ -63,6 +64,7 @@ tabs:
           Wszystko, czego robot potrzebuje poza kodem: wersja języka, system i aplikacje, dostęp sieciowy (adresy),
           konta i hasła (nazwy zmiennych środowiskowych, bez wartości), pliki i katalogi, pliki z sekretami (tylko
           metadane).
+          Komórkę wywnioskowaną z kodu, a niezapisaną w nim wprost, zakończ znacznikiem [wywnioskowane].
       - id: zaleznosci
         title: Zależności do skopiowania
         type: code
@@ -155,7 +157,9 @@ tabs:
         source: llm
         required: true
         columns: ["Chcę zmienić…", Plik i miejsce, Uwagi]
-        instruction: Najczęstsze zmiany i miejsce w kodzie albo konfiguracji, w którym się je robi.
+        instruction: >-
+          Najczęstsze zmiany i miejsce w kodzie albo konfiguracji, w którym się je robi.
+          Komórkę wywnioskowaną z kodu, a niezapisaną w nim wprost, zakończ znacznikiem [wywnioskowane].
       - id: przepisy
         title: Przepisy
         type: recipes
@@ -177,7 +181,9 @@ tabs:
         source: llm
         required: true
         columns: [Objaw, Prawdopodobna przyczyna, Gdzie szukać, Jak naprawić]
-        instruction: Najbardziej prawdopodobne awarie wynikające z kodu, z plikiem i funkcją, w której szukać przyczyny.
+        instruction: >-
+          Najbardziej prawdopodobne awarie wynikające z kodu, z plikiem i funkcją, w której szukać przyczyny.
+          Komórkę wywnioskowaną z kodu, a niezapisaną w nim wprost, zakończ znacznikiem [wywnioskowane].
       - id: ryzykowne_miejsca
         title: Ryzykowne miejsca
         type: table
@@ -187,6 +193,7 @@ tabs:
         instruction: >-
           Jednostki dłuższe niż analysis.long_unit_lines (z mapy projektu: nazwa, plik:linie, długość) oraz hasła
           wpisane wprost i inne ryzykowne miejsca wskazane przez pisarza; komentarz „dlaczego ryzykowne” od pisarza.
+          Komórkę wywnioskowaną z kodu, a niezapisaną w nim wprost, zakończ znacznikiem [wywnioskowane].
       - id: ograniczenia
         title: Znane ograniczenia i pułapki
         type: list
@@ -212,7 +219,7 @@ tabs:
         source: llm
         required: false
         columns: [Pakiet, Do czego służy w tym robocie]
-        instruction: Pakiety albo katalogi kodu i ich rola w robocie.
+        instruction: Pakiety albo katalogi kodu i ich rola w robocie. Komórkę wywnioskowaną z kodu, a niezapisaną w nim wprost, zakończ znacznikiem [wywnioskowane].
       - id: kolejnosc_czytania
         title: Kolejność czytania kodu
         type: list

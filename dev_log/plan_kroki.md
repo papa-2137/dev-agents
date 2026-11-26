@@ -173,7 +173,7 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 34. `render.py` - bloki `steps`, `code`, `table`, `glossary`, `paths`, `recipes` (W2, W4, W6, W7)**
 - **Funkcja:** pozostałe bloki tekstowe: instalacja krok po kroku z kodem do skopiowania, tabele wymagań i błędów, słowniczek, ścieżki procesu z odwołaniami do klocków, przepisy zmian.
-- **Robimy:** szablony bloków; kolumny tabel z `guide_template.yaml`; odwołania `paths` do numerów klocków diagramu (link do zakładki Przepływ); oznaczenie „wywnioskowane” dla wpisów z `certain = false`.
+- **Robimy:** szablony bloków; kolumny tabel z `guide_template.yaml` (także etykiety kart na telefonie); odwołania `paths` do numerów klocków diagramu (numer = pozycja w `flow.nodes`, link do zakładki Przepływ); oznaczenie „wywnioskowane” dla komórki tabeli zakończonej znacznikiem `[wywnioskowane]` (zdanie o znaczniku w poleceniach sekcji tabel w `guide_template.yaml`); nowy plik w przepisie w czerwonej ramce, opis zmiany pliku po najechaniu.
 - **Sprawdzamy:** przykładowa treść z każdym typem bloku wyświetla się jak w makiecie; tekst z `<script>` wyświetlany jako tekst (escapowanie); przycisk „Kopiuj” kopiuje blok kodu.
 
 **Krok 35. `render.py` - bloki: metryczka, drzewo, zależności do skopiowania, ryzykowne miejsca (W2, W6, W8)**

@@ -31,170 +31,7 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ✅ makieta `dev_log/guide_mockup.htm
 - Test użytkownika: wynik.
 -->
 
-### Krok 1. `.gitignore`, README i dziennik prac - ✅
-- `.gitignore`: standardowy szablon Pythona z GitHuba (odtworzony bez pobierania z sieci) + sekcja `# --- dev-agents ---`: `venv/`, wzorce sekretów (`*.pfx`, `*.p12`, `*.pem`, `*.key`, `*.crt`, `.env*`), pliki systemowe (`Thumbs.db`, `desktop.ini`, `~$*`).
-- `README.md`: tytuł i jedno zdanie, pisane grypsem (rozbudowa w kroku 63).
-- `dev_log/` i `AGENTS.md` na miejscu; w `dev_log/` dodatkowo `wiadomosc_startowa.md` (wiadomość startowa architekta, zostaje dla potomnych).
-- Przed krokiem, na prośbę użytkownika: gryps „towar” / „Kwadrat” / „miasto” wprowadzony do plików repo, lekcje z uruchomienia doc-agents na mieście dopisane do kroków 4, 7, 8, 13, poprawki nazw w planie (tabela decyzji). Uwaga użytkownika: gryps obowiązuje także, a nawet zwłaszcza, w README.
-- Test użytkownika: `git status` tylko z zamierzonymi plikami, `venv` i `*.pfx` ignorowane - OK.
-
-### Krok 2. venv - ✅
-- Weryfikacja istniejącego `venv` (utworzony z Pythona 3.14.10, `pythoncore-3.14-64`), aktualizacja `pip`. Bez zmian w plikach repo.
-- Test użytkownika: `python --version` → 3.14.10, `sys.executable` → `...\dev-agents\venv\Scripts\python.exe` - OK.
-
-### Krok 3. Pierwsze biblioteki - ✅
-- `requirements.txt`: `pyyaml`, `pydantic` (bez wersji, tylko zależności bezpośrednie). Instalacja przez `pip install -r requirements.txt` - od razu sprawdza plik.
-- Test użytkownika: `yaml 6.0.4`, `pydantic 2.14.4` - OK.
-
-### Krok 4. Przenieś z doc-agents: `config.yaml` + `config.py` - ✅
-- `dev_agents/__init__.py` (docstring), `config.yaml` (sekcje `llm` i `paths`; profile `small`/`medium` na `json_schema`; pod `model`, `api_key_env`, `base_url_env` i `params` zakomentowane linie miejskie; agenci `planner`, `analyst`, `flow_writer`, `writer`, `reviewer`).
-- `dev_agents/config.py`: publiczne `load_config` i klasy `LLMProfile`, `LLMConfig`, `PathsConfig`, `AppConfig`; pomocnicze z podłogą: `_check_agent_profiles`, `_check_structured_output_methods`, `_resolve_paths`, `_build_config` (budowa configu oddzielona od czytania pliku - test psuje kopie w pamięci). Test pod `if __name__ == "__main__":`.
-- Odstępstwa od doc-agents (wybory użytkownika): `structured_output_method` bez wartości domyślnej - wymagane w każdym profilu (1A); nazwa metody sprawdzana zwykłym `if` przy wczytaniu, z listą dozwolonych (2A).
-- Test użytkownika: `python -m dev_agents.config` - JSON ze ścieżkami bezwzględnymi; trzy zepsute kopie dają czytelne błędy (nieistniejący profil z listą profili, nieznana metoda z listą dozwolonych, brak metody jako `Field required` ze ścieżką pola) - OK.
-
-### Krok 5. Przenieś z doc-agents: `main.py` czyta config - ✅ (M1)
-- `main.py`: `_parse_args` (`--config` domyślnie obok `main.py`; `--project` opcjonalny, a podany - sprawdzany, czy istnieje), `_print_summary` (config, agent → profil → model i metoda, katalogi, projekt), `main()` jako spis treści; config importowany jako moduł z aliasem `_config`.
-- Wybór użytkownika: `--project` opcjonalny, ale sprawdzany (A) - w kroku 29 zmieni się tylko na wymagany.
-- Test użytkownika: podsumowanie z 5 agentami, błąd dla nieistniejącego katalogu, uruchomienie spoza katalogu repo (`python .\dev-agents\main.py --project .\dev-agents`) z tym samym wynikiem - OK. **M1 osiągnięty: szkielet uruchamia się.**
-
-### Krok 6. Biblioteki LLM - ✅
-- `requirements.txt`: dopisane `langchain-core` (importowany bezpośrednio: wiadomości, structured output) i `langchain-openai` (`ChatOpenAI`; ciągnie pakiet `openai`).
-- Test użytkownika: `langchain_core 1.8.4`, `openai 3.58.0`, import `langchain_openai` bez błędu - OK.
-- Uwaga: commit `eb86a41` powstał, zanim dwie linie trafiły do `requirements.txt` (biblioteki były już zainstalowane w venv) - plik uzupełniony po commicie, do osobnego commita.
-- Commit uzupełniający: `e46ef32`.
-
-### Krok 7. Przenieś z doc-agents: fabryka modeli `llm.py` - ✅
-- `dev_agents/llm.py`: publiczne `get_model_for_agent`, `get_structured_output_method`, `invoke_structured`; pomocnicze z podłogą: `_read_env` (brak zmiennej → błąd z nazwą zmiennej), `_create_chat_model` (`ChatOpenAI` tylko z `params` profilu), `_build_schema_error_message`, `_build_length_error_message`.
-- Rozszerzenie względem doc-agents (lekcja z miasta): przy `json_schema` biblioteka openai sama rzuca `pydantic.ValidationError` i `openai.LengthFinishReasonError`, z pominięciem `include_raw` - pierwszy jest ponawiany jak każda niezgodna odpowiedź, drugi daje od razu czytelny błąd z końcówką uciętej odpowiedzi (widać zapętlenie modelu) i podpowiedzią o `max_tokens`.
-- Test w bloku `__main__`: udawany model (4 scenariusze: `ValidationError` → ponowienie → OK; dwa razy `ValidationError` → błąd po 2 próbach; `LengthFinishReasonError` → błąd po 1 wywołaniu; `None` z `finish_reason=length` → błąd po 1 wywołaniu), brak zmiennej środowiskowej, prawdziwy model agenta `planner`.
-- Test użytkownika: wszystkie scenariusze zgodne z oczekiwanymi; prawdziwy model `claude-haiku-5-5` odpowiada (0.6 s, `usage_metadata` obecne), `invoke_structured` z `json_schema` zwraca obiekt w schemacie - OK.
-- Commit: zbiorczy `c349949` razem z regułą stylu 9 (tabela decyzji).
-
-### Krok 8. Przenieś z doc-agents: `scripts/probe_llm.py` - ✅ (M2)
-- `scripts/probe_llm.py` (bez `__init__.py`, uruchamiany przez `python -m`): testy proste wywołanie, system + user, trzy metody structured output, `bind_tools`; na końcu diagnoza z rekomendacją. Kod przepisany pod reguły repo (podłogi, parametry w osobnych liniach, bez wyrażeń warunkowych i list z warunkiem, logika oddzielona od wypisywania). Brak `manual_test()` - moduł z `main()`, jego uruchomienie jest testem (AGENTS.md, Styl kodu pkt 8).
-- Rozszerzenia względem doc-agents (lekcja z miasta): każda metoda testowana na schemacie płaskim i **zagnieżdżonym** (lista obiektów z listą w środku); rekomendowana jest tylko metoda działająca na obu, w kolejności `json_schema`, `function_calling`, `json_mode`; metoda działająca tylko na płaskim dostaje ostrzeżenie o fałszywym „OK”; structured output przez `invoke_structured` z jedną próbą (ta sama droga co u agentów); błąd spłaszczony do jednej linii (widać np. `input_value={}`); brak zmiennej środowiskowej i zła nazwa profilu dają jedną czytelną linię.
-- Wybory użytkownika: 1A - `_create_chat_model` w `dev_agents/llm.py` przemianowane na `create_chat_model` (świadoma zmiana interfejsu, reguła 13), skrypt testuje profil; 2A - structured output przez `invoke_structured`.
-- Test użytkownika: `--help` i literówka w profilu - OK; `small` (`claude-haiku-5-5`): `json_schema` i `function_calling` OK na obu schematach, `json_mode` FAIL (400: endpoint przyjmuje tylko `response_format.type` = `json_schema`), `bind_tools` OK, rekomendacja `json_schema` = config; `medium` (`claude-sonnet-5-5`): tylko `json_schema` OK, `function_calling` FAIL (400: wymuszony `tool_choice` nieobsługiwany przez model), `json_mode` FAIL jak wyżej, rekomendacja `json_schema` = config; `python -m dev_agents.llm` po zmianie nazwy - bez zmian - OK. **M2 osiągnięty: model gotowy.**
-- Wniosek: na Kwadracie `json_schema` to jedyna metoda działająca na obu profilach - potwierdza domyślną metodę z configu; różnica `function_calling` między Haiku a Sonnetem pokazuje, że skrypt trzeba uruchamiać dla każdego profilu osobno.
-
-### Krok 9. Drugi robot testowy: bez frameworku, „spaghetti” - ✅
-- `C:\Users\jankiwoj_box\Documents\projects\claude\tests\02_robot_bez_frameworku` (poza repo, jak robot 01): przetwarzanie zamówień z plików CSV - sprawdzanie wierszy, rabaty, duplikaty, odrzuty, archiwum, wyniki JSON/CSV, raport `.xlsx`.
-- `run.bat` (`python przetwarzanie.py`, potem `python raport.py`, domyślny Python z PATH; przy błędzie przetwarzania bez raportu), `przygotuj_dane.bat` (kopiuje `dane\przyklady\` do `dane\wejscie\` - powtarzalne uruchomienia; drugi plik uruchamiający dla kroku 20).
-- `przetwarzanie.py`: 17 stałych na górze (m.in. `URL`, `INPUT_DIR`, `OUTPUT_DIR`, `ENV_PASSWORD = "ROBOT02_PASS"`, przełącznik `WYSYLKA_DO_API = False`), funkcja pomocnicza `log()` i **`run()` na 371 linii** (zagnieżdżenie do 8 poziomów, pętla po plikach, kilkanaście `try/except`, wysyłka przez `requests` z ponawianiem tylko po włączeniu przełącznika). `raport.py`: `openpyxl`, 4 arkusze, zdublowana stała `OUTPUT_DIR`. Bez pliku konfiguracyjnego, docstringów i README; `requirements.txt`: `openpyxl`, `requests` (UTF-8 - UTF-16 sprawdza robot 01).
-- Przykłady: plik poprawny, plik z 6 błędnymi wierszami i duplikatem, pusty plik, zły nagłówek, `notatka.txt` (złe rozszerzenie).
-- Celowo zostawione „ryzykowne miejsca” do sprawdzenia przewodnika: ścieżki względne (robot działa tylko uruchomiony z własnego katalogu - pilnuje tego `cd /d %~dp0` w `run.bat`); `0.10 + 0.02` daje `0.12000000000000001`, więc dla VIP z produktem PROMO robot loguje „przekracza limit” i obcina do 0.12 (wynik poprawny, komunikat mylący); mieszane separatory ścieżek w logu (`dane/odrzucone\...`).
-- Wybór użytkownika: A - obie paczki naprawdę używane (instalacja w domyślnym Pythonie).
-- Test użytkownika: domyślny Python z PATH to 3.12 (inny niż venv towaru - dobrze, robot nie zależy od towaru); `run.bat` → `KONIEC: plikow przetworzonych 2, odrzuconych 3, zamowien 10, blednych wierszy 7, duplikatow 1`, raport `.xlsx`; katalogi `archiwum`, `odrzucone`, `wyjscie` zgodne z oczekiwanymi, `wejscie` puste; `run()` = 371 linii - OK.
-
-### Krok 10. Odczyt obcych plików: `files.py` - ✅
-- `dev_agents/files.py`: publiczne `read_text_safe(path)`; pomocnicze `_decode_bytes` (BOM UTF-8 / UTF-16 LE / UTF-16 BE; bez BOM ścisły UTF-8, potem cp1250, na końcu UTF-8 z zamianą złych bajtów - nigdy nie rzuca błędu dekodowania), `_normalize_newlines` (`\r\n` i `\r` → `\n`, numery linii bez zmian), `_read_text_with_encoding` (zwraca też użyte kodowanie - dla testu). Błędy systemu plików (brak pliku, uprawnienia) nie są łapane - wołający dostaje `OSError`; limity rozmiaru sprawdza wołający.
-- Odstępstwo od planu (wybór użytkownika B): fallback cp1250 przed zamianą błędów (tabela decyzji, `plan_kroki.md` krok 10).
-- Test w bloku `__main__`: pliki tymczasowe UTF-8 bez BOM i z BOM, UTF-16 BE z BOM, cp1250 (tworzone i usuwane w teście), `requirements.txt` robota 01 (tylko ten plik - bez `certs`), `przetwarzanie.py` robota 02.
-- Test użytkownika: wszystkie przypadki z czytelnymi polskimi znakami, robot 01 `utf-16-le (BOM)` z czytelnymi nazwami paczek, robot 02 `utf-8` - OK.
-
-### Krok 11. Przenieś z doc-agents: `schemas.py` - mapa projektu - ✅
-- `dev_agents/schemas.py`: `FileEntry` (`path`, `role`, `size_bytes`, `framework_name` - domyślnie `""` = kod projektu), `CodeUnit` (`name`, `files`), `ProjectMap` (`project_name`, `root`, `technology`, `entrypoints`, `files`, `code_units` i nowe `frameworks: list[str] = []` - frameworki wykryte po importach, `[]` = robot bez frameworku). Same typy i komentarze, bez `Field(description=...)` - to nie są schematy odpowiedzi modelu. Lista ról w docstringu `FileEntry` (`Uwaga:` - `launcher` dochodzi w kroku 20).
-- Odstępstwo od planu (wybór użytkownika A): bez pól `dependency_files` i `config_files` - dochodzą ze swoimi klasami w krokach 23-24 (tabela decyzji).
-- Test w bloku `__main__`: ręcznie złożona mapa robota 02 (7 plików, 2 jednostki kodu, `frameworks=[]`), zapis do JSON i odczyt.
-- Test użytkownika: JSON zgodny z oczekiwanym, `Odczyt z JSON zgodny z oryginałem: True` - OK. Commit wykonany przez użytkownika (wpis do raportu trafia do commita kroku 12).
-
-### Krok 12. Przenieś z doc-agents: `technologies/base.py` - ✅
-- `dev_agents/technologies/__init__.py` (sam docstring - rejestr w kroku 17), `dev_agents/technologies/base.py`: klasa `Technology` z sześcioma metodami z doc-agents (`name`, `detect`, `is_source`, `find_entrypoints`, `outline`, `imports`), w klasie bazowej `NotImplementedError` z nazwą klasy i metody; zwykłe metody, bez `abc` (zasada prostoty).
-- Zmiany względem doc-agents: w umowach wspólnych pliki projektu czytane wyłącznie przez `files.read_text_safe()` (zamiast `utf-8` + `errors="replace"`); w docstringu zasada rozwoju kontraktu (nowa metoda z domyślnym zachowaniem ogólnym w klasie bazowej); klasa demonstracyjna i funkcje testu w bloku `__main__`.
-- Odstępstwo od planu (wybór użytkownika A): nowe metody kontraktu dochodzą w swoich krokach (tabela decyzji).
-- Test użytkownika: wyniki klasy `demo` zgodne z oczekiwanymi, `NotImplementedError: Technology.detect() - do implementacji` - OK. Commit `fe14cc8`.
-
-### Krok 13. Przenieś z doc-agents: `technologies/python.py` - szkielet pliku - ✅ (zmieniony przy uproszczeniu)
-- `dev_agents/technologies/python.py`: `PythonTechnology(_base.Technology)` z `outline()` (pozostałe metody w krokach 14-16); `_parse_python()` - jedyne miejsce parsowania cudzego kodu, wycisza `SyntaxWarning` (napisy typu `"C:\folder"` bez `r`); szkielet: liczba linii, opis modułu, stałe, zmienne modułu, kod poza funkcjami (instrukcje, odcinki linii, pętle, `try`), klasy z bazami i metodami, funkcje z sygnaturą, dekoratorami, pierwszym akapitem docstringu i zakresem linii. Plik czytany przez `files.read_text_safe`. Pomocnicze funkcje z doc-agents przepisane bez wyrażeń warunkowych, generatorów i list z warunkiem. Jedyny moduł towaru z `import ast`.
-- Odstępstwo od doc-agents (wybór użytkownika A): przy błędzie składni `outline()` zwraca linię `Szkielet niedostępny: błąd składni w linii N (...)` zamiast pustego tekstu; zdanie o wyniku w kontrakcie `base.py` poprawione (tabela decyzji).
-- Test w bloku `__main__`: robot 01 (`Main.py`, `src/parabank_page.py`), robot 02 (`przetwarzanie.py` - `run()` 371 linii), plik tymczasowy ze ścieżką Windows w zwykłym napisie (0 ostrzeżeń, zwykłe `ast.parse` - 2), plik w składni Pythona 2 (linia z przyczyną); tryb z argumentami `<katalog> <plik>` dla dowolnego pliku - do użycia na mieście (bez robotów testowych przypadki 1-3 są pomijane, 4-5 działają).
-- Test użytkownika: OK. Commit `6d49f30`.
-
-### Krok 14. Przenieś z doc-agents: `technologies/python.py` - importy - ✅ (zmieniony przy uproszczeniu)
-- `PythonTechnology.imports()` i pomocnicze `_imported_modules` (importy także w funkcjach i w `try`), `_resolve_relative` (import względny → pełna nazwa), `_is_project_module`, `_classify_module` (najpierw projekt, potem `sys.stdlib_module_names` + 25 modułów usuniętych w Pythonie 3.12-3.13, reszta `external`), `_module_file` (nazwa modułu → ścieżka pliku: `src.report` → `src/report.py`, pakiet → `__init__.py`). Odczyt przez `files.read_text_safe`, parsowanie przez `_parse_python`; przy błędzie składni puste grupy; importy dynamiczne niewykrywane (`Uwaga:`).
-- Odstępstwa od doc-agents (wybory użytkownika: wariant 1 i A): `internal` to ścieżki względne plików projektu (kontrakt w `base.py` zaktualizowany - graf w kroku 28 łączy pliki bez wiedzy o technologii; UiPath i Robot Framework dają ścieżki naturalnie); moduły usunięte ze stdlib liczone jako `stdlib` (tabela decyzji, `plan_kroki.md` kroki 14 i 28).
-- Test w bloku `__main__`: pod każdym szkieletem z kroku 13 importy; nowy przypadek - pakiet tymczasowy (import względny, import w funkcji, `telnetlib` w `try`).
-- Test użytkownika: robot 01 `Main.py` - 6 plików `src/*.py` w `internal`, 4 moduły `roboforge.*` w `external`, `os, pathlib, time` w `stdlib`; robot 02 - `requests` / `csv, datetime, json, os, shutil, sys`; pakiet - `pakiet/narzedzia.py`, `requests`, `os, telnetlib`; Python 2 - puste grupy; wszędzie 0 ostrzeżeń - OK. Kosmetyka testu: w nagłówku przypadku mieszane separatory (`...\src/parabank_page.py`) - tylko wyświetlanie w teście.
-
-### Krok 15. `technologies/python.py` - szkielet sterowania i miary złożoności - ✅, potem wycofany (uproszczenie)
-- `schemas.FunctionMetrics` (`path`, `name`, `start_line`, `end_line`, `lines`, `max_depth`, `branches` - same liczby). W kontrakcie `base.py` dwie nowe metody z domyślną odpowiedzią „brak danych”: `control_outline(root, path, function_name)` (linia „niedostępny dla technologii”) i `metrics(root, path)` (pusta lista).
-- `python.py`: `control_outline` - nagłówek z zakresem linii, potem `if`/`elif`/`else` (elif na jednym poziomie), pętle (z `else`), `try`/`except`/`else`/`finally`, `with`, `match`, wyjścia (`raise` z nazwą wyjątku) i wywołania funkcji po nazwie, funkcji modułów i `self` (bez metod na danych); prosty blok w jednej linii `[wywołania; -> wyjście]`; `function_name` = `run`, `Klasa.metoda` albo `""` (kod poza funkcjami); nieznana nazwa → linia z listą dostępnych funkcji. `metrics` - kod poza funkcjami (`<kod poza funkcjami>`) i każda funkcja oraz metoda: długość, głębokość (elif na poziomie swojego `if`), rozgałęzienia (if/elif, pętle, except, wyrażenia warunkowe, and/or, warunki w wyrażeniach listowych, case). Funkcje zagnieżdżone liczą się do funkcji, w której leżą.
-- Odstępstwa od planu (wybory użytkownika A, tak, A): wywołania bez metod na danych; kryterium testu „ok. 1/3 długości funkcji” zamiast „jeden ekran”; progi `analysis.complexity` w configu dopiero w kroku 35 (tabela decyzji, `plan_kroki.md` kroki 15 i 35).
-- Test w bloku `__main__`: szkielet sterowania `run()` i kodu poza funkcjami robota 02, miary robotów 01 i 02 (także `raport.py`) i pliku w Pythonie 2; tryb `<katalog> <plik> <funkcja>`.
-- Test użytkownika: `run()` - 129 linii szkieletu z 371 linii kodu, wszystkie poziomy; miary `run` 371 / głębokość 6 / 80 rozgałęzień, funkcje robota 01 do 19 linii i głębokości 1; Python 2 - brak danych - OK. Uwaga: głębokość `run()` wynosi 6 (w kroku 9 szacunek „do 8” liczył `elif` jako zagnieżdżenie). Commit `21f57f4`.
-
-### Krok 16. Przenieś z doc-agents: `technologies/python.py` - wykrywanie i punkty wejścia - ✅
-- `PythonTechnology.is_source()` (`.py`, `.pyw`), `detect()` (choć jeden plik źródłowy), `find_entrypoints()` (blok `if __name__ == "__main__":` na poziomie modułu oraz `main.py`/`__main__.py`; kolejność: `main.py`/`__main__.py`, potem płytsze, potem alfabetycznie); pomocnicze `_is_main_guard`, `_has_main_guard` (plik z błędem składni → `False`), `_entrypoint_sort_key`. Nazwa `main.py` porównywana bez względu na wielkość liter (Windows). Odczyt przez `files.read_text_safe`, parsowanie przez `_parse_python`; funkcje z doc-agents bez `any(...)`, wyrażeń warunkowych i generatorów.
-- Wybór użytkownika B (jak w doc-agents): bez zapasowego wyszukiwania bloku `__main__` w plikach, których nie da się sparsować - zespół nie ma robotów w Pythonie 2.
-- Test w bloku `__main__`: sekcja `=== Projekt ===` dla robotów 01 i 02, katalogu tymczasowego (moduł z blokiem `__main__`) i katalogu bez kodu; lista plików budowana w teście z pominięciem katalogów z `pyvenv.cfg` i `__pycache__` (skaner dopiero w kroku 18). Poprawiona nazwa przypadku robota 01: `main.py` (wcześniej `Main.py` - działało tylko dzięki Windows).
-- Test użytkownika: OK. Commit `75d1043`.
-
-### Krok 17. Przenieś z doc-agents: `technologies/uipath.py` + rejestr; puste klasy Robot Framework i NICE - ✅
-- `dev_agents/technologies/registry.py`: `available_technologies()` (kolejność: uipath, robotframework, nice, python), `detect_technology()`, `get_technology()`; importy technologii na górze pliku. `__init__.py` pakietu bez importów (opis w docstringu).
-- Puste klasy `uipath.py`, `robotframework.py`, `nice.py`: `detect` → `False`, metody → `NotImplementedError` z nazwą klasy; opis, co trzeba uchwycić (w Robot Framework delegacja plików `.py` do `PythonTechnology`, w NICE otwarte pytania o formaty plików). Bez `manual_test()` - brak logiki, zachowanie sprawdza test rejestru.
-- Odstępstwo od planu (wybór użytkownika B): rejestr w osobnym module zamiast w `__init__.py` (tabela decyzji).
-- Test użytkownika: rejestr z 4 technologiami (3 puste), `detect_technology` → `python` dla robota i dla projektu UiPath z plikiem `.py` (UiPath pusty), `None` dla samych danych, `get_technology` i `NotImplementedError` pustej klasy - OK. Commit `a3e551b`.
-
-### Uproszczenie analizy deterministycznej (po kroku 17) - ✅
-- Powód (użytkownik): `python.py` (1111 linii kodu) i funkcje z wieloma warunkami byłyby trudne w utrzymaniu; ciężar analizy kodu przechodzi na agentów, „nawet kosztem przyszłych tokenów”. Wybrany wariant pośredni: kod podaje tylko proste, pewne fakty, łatwe do napisania dla każdej technologii.
-- Kontrakt `technologies/base.py`: metody wymagane `detect`, `is_source`, `find_entrypoints` (`NotImplementedError`); opcjonalne `units` (jednostki z zakresami linii) i `references` (pliki projektu i pakiety) z odpowiedzią „brak danych”. Zasada: każda metoda ok. 40 linii prostego kodu, bez drzewa warunków. Usunięte: `outline`, `imports`, `control_outline`, `metrics`.
-- `schemas.py`: zamiast `FunctionMetrics` - `SourceUnit` (`name`, `start_line`, `end_line`) i `References` (`files`, `packages`).
-- `technologies/python.py`: z 1111 do 271 linii kodu (test 143): `_parse_python` (odczyt + `ast` z wyciszonym `SyntaxWarning`, błąd składni → `None`), `units` (funkcje i metody), `references` (pliki projektu jako ścieżki, pakiety bez biblioteki standardowej - bez listy modułów usuniętych w 3.12-3.13), `detect`, `is_source`, `find_entrypoints`. Usunięte: szkielet pliku, szkielet sterowania, miary złożoności, podział importów na trzy grupy.
-- Puste klasy UiPath, Robot Framework, NICE i test rejestru dostosowane do nowego kontraktu (opis w docstringu modułu, jak prosto zrealizować każdą metodę).
-- Plan: kroki 15, 25, 26 wycofane (numeracja bez zmian); 12-14, 16, 17, 19-24, 28, 29, 31, 35, 47, 49-51, 55, 56 przepisane - nowy `masking.py` (krok 20, maskowanie liniowe zamiast parserów konfiguracji), pliki zależności bez metody technologii (rola `dependency`), konfiguracja i pliki uruchamiające jako zamaskowany tekst dla agentów (krok 24), metryczka i komentarze do „Ryzykownych miejsc” od agentów, długie pliki dzielone po granicach jednostek; `plan.md` (podział pracy kod - agenci, rozszerzalność, style robotów, struktura, sekcje configu `scan` i `analysis`); `AGENTS.md` reguła 7 i `zasady_pracy.md`.
-- Test użytkownika: OK. Commit `ea5323d`. Nazwy `CodeUnit` (jednostka kodu do analizy - plik) i `SourceUnit` (funkcja/metoda w pliku) zostają bez zmian.
-
-### Krok 18. Przenieś z doc-agents: `scanner.py` - lista plików - ✅
-- `dev_agents/scanner.py`: `list_files(root, scan_config)` - posortowane ścieżki względne z separatorem `/`; pomocnicze `_is_ignored` (wzorce `fnmatch`) i `_is_skipped_directory` (zawsze `dev_agents_doc/` i katalogi z `pyvenv.cfg`, poza tym `scan.ignore`). Skaner tylko listuje nazwy, nie otwiera plików.
-- `config.yaml`: sekcja `scan.ignore`; `config.py`: `ScanConfig`, `AppConfig.scan` wymagane (wybór użytkownika A - bez wartości domyślnych w kodzie); test configu z czwartym przypadkiem (brak sekcji `scan`).
-- Test w bloku `__main__`: roboty 01 i 02, katalog tymczasowy z `dev_agents_doc`, `.git`, `__pycache__` i środowiskiem wirtualnym o własnej nazwie; tryb `<katalog>`.
-- Test użytkownika: OK. Commit `16c5208`.
-
-### Krok 19. Przenieś z doc-agents: `scanner.py` - role plików i sekrety - ✅
-- `scanner.build_file_entries(root, files, scan_config, technology)` → `FileEntry` (ścieżka, rola, rozmiar); `_file_role` (najpierw `secret` z `scan.secret_patterns`, potem `source` wg technologii, potem `_role_from_patterns` - pierwsza pasująca rola z `scan.role_patterns`, bez dopasowania `other`). Skaner nie otwiera plików.
-- `config.yaml`: `scan.secret_patterns`, `scan.role_patterns` (kolejność: dependency, config, launcher, docs, data, binary); `config.py`: pola w `ScanConfig`, `_check_role_names` (nieznana rola → błąd przy starcie, piąty przypadek w teście configu); `schemas.py`: pełna lista ról w opisie `FileEntry`, przykładowa mapa z rolami `launcher` i `dependency`.
-- Odstępstwo od doc-agents (wybór użytkownika A): bez wykrywania binarek po treści (tabela decyzji).
-- Test użytkownika: OK. Commit `1212c51`.
-
-### Krok 21. `scanner.py` - frameworki po ścieżkach i po pakietach - ✅
-- `config.yaml`: `scan.frameworks.roboforge` (`technology`, `paths`, `packages`, `knowledge`); `config.py`: `FrameworkConfig`, `ScanConfig.frameworks`, `_check_framework_knowledge` (brak pliku wiedzy → błąd przy starcie, szósty przypadek w teście configu).
-- `scanner.py`: `_framework_for_path` (wzorce `paths` → `FileEntry.framework_name`), `project_packages` (suma `references().packages` plików źródłowych), `detect_frameworks` (framework technologii projektu z oznaczonymi plikami albo z pakietem wśród importów). Framework zainstalowany w venv wykrywany po importach robota - skaner nie zagląda do venv.
-- Makieta `knowledge_base/knowledge/frameworks/roboforge.md` (pełna treść w kroku 42).
-- Wybór użytkownika: B + makieta (tabela decyzji).
-- Test użytkownika: OK. Commit `29ec11c`.
-
-### Krok 22. Przenieś z doc-agents: `scanner.py` - `build_project_map()` - ✅
-- `schemas.py`: `SourceFile` (`path`, `units`, `references`) i pole `ProjectMap.source_files`; sekcja faktów o plikach źródłowych przed mapą projektu.
-- `scanner.build_project_map(root, scan_config)`: technologia, pliki z rolami i frameworkami, punkty wejścia (bez plików frameworku), `SourceFile` i `CodeUnit` dla każdego pliku źródłowego robota (jeden plik = jedna jednostka), frameworki; nierozpoznana technologia → mapa z samą listą plików, bez błędu. `project_packages` → wewnętrzne `_project_packages(source_files)` - pakiety tylko z kodu robota.
-- Test w bloku `__main__`: skrót map robotów 01, 02 i katalogu tymczasowego z sztucznym frameworkiem `requests` w configu testu (robot 02 - wykryty bez zmian w kodzie; import w pliku skopiowanego frameworku - nie); tryb `<katalog>` - pełny JSON mapy.
-- Wybór użytkownika: A z poprawką (tabela decyzji).
-- Test użytkownika: OK. Commit `aec330b`.
-
-### Krok 23. `scanner.py` - pliki zależności, konfiguracyjne i uruchamiające przepisane dosłownie (z krokiem 24) - ✅
-- `config.yaml`: `scan.text_roles` (`dependency`, `config`, `launcher`), `scan.max_text_file_kb: 100`; `config.py`: pola w `ScanConfig`, `_check_text_roles` (tylko role z `role_patterns` - nigdy `secret` ani `source`; siódmy przypadek w teście configu).
-- `schemas.py`: `TextFile` (`path`, `role`, `text`), pole `ProjectMap.text_files`; `scanner._read_text_files` (pliki robota bez frameworku, przez `files.read_text_safe`, większe niż limit - tylko wpis w `files`), wypełniane także przy nierozpoznanej technologii.
-- Test w bloku `__main__`: sekcja „Pliki tekstowe” w skrócie mapy (treść tylko zależności - konfiguracja może mieć hasła); katalog tymczasowy z `config.yml`, `requirements.txt`, `duzy.json` (101 KB, poza `text_files`) i `.env` z treścią (poza `text_files`).
-- Odstępstwo od planu (wybór użytkownika B): krok 24 połączony z 23 (tabela decyzji); `plan.md` - przykład sekcji `scan`.
-- Test użytkownika: OK. Commit `18c958d`.
-
-### Krok 27. `output.py` - wyniki w `dev_agents_doc/` analizowanego projektu - ✅
-- `dev_agents/output.py`: `OUTPUT_DIR_NAME`, `create_run_store(project_root, clear=True)` (brak katalogu → założony ze znacznikiem `.dev_agents_output`; ze znacznikiem → czyszczony albo zostawiony przy `clear=False`; pusty bez znacznika → przejęty; niepusty bez znacznika → `ValueError`, nic nie usunięte; brak zapisu → `OSError` ze ścieżką przy zapisie znacznika), `RunStore` (`path` odrzuca nazwy wychodzące poza katalog wyników, `save_text`, `save_json`, `load_json`, podkatalogi tworzone same).
-- Test w bloku `__main__`: 7 przypadków na kopii robota 02 w katalogu tymczasowym (robot 01 nie jest kopiowany - plik sekretu); bez trybu `<katalog>`.
-- Wybór użytkownika: A, A, A (tabela decyzji).
-- Test użytkownika: OK. Commit `2a38e2b`.
-
-### Krok 28. `dependencies.py` - graf zależności i kolejność czytania - ✅
-- `dev_agents/dependencies.py`: `build_dependencies(project_map)` → (krawędzie `[plik, plik, z którego korzysta]` tylko między plikami źródłowymi robota, kolejność czytania od punktów wejścia w głąb, alfabetycznie, każdy plik raz, nieosiągalne na końcu); pomocnicze `_robot_edges`, `_visit` (rekurencja przerywana na pliku już obecnym - cykle bez zawieszenia). Bez wiedzy o technologii.
-- `schemas.py`: pola `ProjectMap.dependency_edges` i `ProjectMap.reading_order`; `scanner.build_project_map` liczy je na końcu.
-- Test w bloku `__main__`: roboty 01 (6 krawędzi z `main.py`, `src/__init__.py` na końcu) i 02 (bez krawędzi) oraz projekt tymczasowy z cyklem `a.py` ↔ `b.py`, plikiem bez odwołań i odwołaniem do skopiowanego frameworku (odpada).
-- Odstępstwo od planu (wybór użytkownika B): bez `DependencyGraph` i `dependency_graph.json` (tabela decyzji). W tym samym commicie uzupełnione wpis kroku 27 w raporcie i opis kroku 27 w planie (wcześniejszy zapis na dysk wziął starszą wersję plików).
-- Test użytkownika: OK. Commit `f685e43`.
-
-### Krok 29. `main.py` - skan i zapis wyników - ✅ (M3)
-- `main.py`: `--project` wymagany; config → `scanner.build_project_map` → `output.create_run_store` → `dev_agents_doc/project_map.json`; nagłówek (config, agenci z modelami) i podsumowanie (`_role_summary`, `_longest_unit`, `_print_scan_summary`); nierozpoznana technologia → `sys.exit` z komunikatem przed założeniem `dev_agents_doc/`; błąd katalogu wyników → jednolinijkowy `BŁĄD: ...`.
-- Wybory użytkownika: A, A - przebieg tylko na robocie 02 (robot 01 tylko do odczytu), nierozpoznana technologia → błąd (tabela decyzji).
-- Poprawka po teście (wybór użytkownika B): `*.json` jako `data`, w `config` tylko typowe nazwy konfiguracji JSON - plik wynikowy robota 02 trafiał do mapy jako „konfiguracja” (tabela decyzji).
-- Test użytkownika: robot 02 - 20 plików, `przetwarzanie.py:run 41-411 (371 linii)`, zapis `project_map.json`, drugi start - w katalogu tylko znacznik i mapa; bez `--project` - błąd argparse; katalog bez kodu - błąd, `dev_agents_doc` nie powstał - OK. Commit `a165c77`. **M3 osiągnięty: mapa projektu bez modelu. Faza C zakończona** (kroki 20, 25, 26 wycofane, 24 połączony z 23).
+Wpisy kroków 1-29 (fazy A-C) są w archiwum: `dev_log/raport_wykonania_fazy_A-C.md`.
 
 ### Krok 30. `guide_template.yaml` + `guide_template.py` - ✅
 - `knowledge_base/templates/guide_template.yaml`: 7 zakładek (id, tytuł, karta „jak czytać”: `card_label`, `card_text`, stałe `lead`) i 24 sekcje z makiety (id, tytuł, typ z zamkniętej listy 14 typów, źródło `llm`/`scanner`/`code`, `required`, `instruction`, `columns` przy tabelach, opcjonalnie `technologies`); komentarz z opisem pól na górze pliku.
@@ -216,6 +53,13 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ✅ makieta `dev_log/guide_mockup.htm
 - Test w bloku `__main__`: diagram z makiety - zero problemów, układ identyczny z makietą; diagram robota 02; pięć zepsutych kopii; 31 klocków → ostrzeżenie.
 - Wybory użytkownika: A, A (tabela decyzji).
 - Test użytkownika: OK. Commit `b345387`.
+
+### Krok 33. `render.py` - szkielet HTML, zakładki, „jak czytać” (W5) - ✅
+- `knowledge_base/templates/`: `guide.css` i `guide.js` z makiety jeden do jednego (w skrypcie diagram i graf rysują się tylko, gdy są ich dane), `guide.html.j2` (menu, stopka, zakładki, sekcje; makra bloków `text`, `list`, `io`, `cards`); `requirements.txt`: `jinja2`.
+- `dev_agents/render.py`: `render_guide(content, template, project_map, templates_dir, generated_at)` - sekcje dla technologii projektu, stany sekcji (treść / „Nie wynika z kodu.” / pominięta opcjonalna / znacznik typu z kolejnego kroku), nagłówek pierwszej zakładki z opisu robota, CSS i JS w pliku, escapowanie zawsze włączone.
+- Test w bloku `__main__`: przykładowa treść robota 02 → `guide_test.html` w katalogu głównym repo (stała nazwa, `.gitignore`); 7 zakładek, 20 sekcji, 0 odwołań do internetu, `<script>` z treści escapowany.
+- Wybór użytkownika: A (tabela decyzji). **Do przeglądu prawdziwych przewodników (odłożone przez użytkownika):** długa nazwa projektu ucinana w lewym menu - poprawka jedną regułą CSS (zawijanie).
+- Test użytkownika: OK. Commit `179c0c5`.
 
 ---
 
@@ -255,3 +99,5 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ✅ makieta `dev_log/guide_mockup.htm
 | 2026-11-26 | Krok 31: (1) jedna klasa `GuideBlock` z polami dla wszystkich typów sekcji (jak w planie); (2) treść przewodnika i diagram w nowym module `guide_content.py` zamiast w `schemas.py` (mapa projektu, plan, notatka i recenzja zostają w `schemas.py`); (3) rodzaje wpisów metryczki zgodne z kafelkami makiety, hasło wpisane wprost jako flaga `plain_password`; `FlowEdge` z polami `source`/`target` (plan: `from`/`to` - `from` to słowo zastrzeżone Pythona); `plan_kroki.md` krok 31 i `plan.md` (struktura) zaktualizowane | (1) jeden schemat JSON bez `anyOf` - na Kwadracie działa tylko `json_schema`, warianty niesprawdzone na bramce na mieście; (2) mniejsze moduły z jedną rolą; (3) hasło może być wartością dowolnego rodzaju klucza; wybór użytkownika (A, B; lista rodzajów zgodnie z propozycją) |
 | 2026-11-26 | Krok 32: (1) ostrzeżenie o zbyt szczegółowym diagramie jako próg liczby decyzji `flow.max_decisions: 8` (plan: decyzja w decyzji głębiej niż 2 poziomy); (2) wiersze układu - porządek od startu w dół liczony przez kod bez strzałek pętli, remis rozstrzyga kolejność klocków od agenta; kolumna 1 dla objazdów z decyzji; `plan_kroki.md` krok 32 i `plan.md` (sekcja `flow`) zaktualizowane | (1) prawdziwa głębokość zagnieżdżenia to drzewo warunków (ok. 40 linii), a próg łapie ten sam objaw kilkoma liniami; (2) układ odtwarza makietę i nie zależy od kolejności, w jakiej model poda klocki; wybór użytkownika (A, A) |
 | 2026-11-26 | Krok 33: skrypt makiety przeniesiony w całości teraz (z rysowaniem diagramu i grafu), z dwiema poprawkami - diagram i graf rysują się tylko, gdy w stronie są ich dane; nagłówek pierwszej zakładki z sekcji `opis_robota` (zakładka bez `lead`, pierwsza sekcja typu `text`); test zapisuje przewodnik do `guide_test.html` w katalogu głównym repo (stała nazwa, dopisana do `.gitignore`) zamiast do katalogu tymczasowego - prośba użytkownika; `plan_kroki.md` krok 33 zaktualizowany | Jedno przeniesienie bez rozjazdu z makietą - kroki 36 i 38 dokładają tylko dane; bez poprawek skrypt przerywał działanie przy braku danych i zakładki przestawały się przełączać; wybór użytkownika (A) |
+| 2026-11-26 | Raport podzielony: wpisy kroków 1-29 (fazy A-C) przeniesione bez zmian do `dev_log/raport_wykonania_fazy_A-C.md`; w `raport_wykonania.md` zostają podsumowanie, kroki od 30 i cała tabela decyzji | Raport (ok. 52 KB) przekroczył rozmiar, który da się przeczytać w całości jednym odczytem - bez tego nie da się podmienić kopii na claude.ai; wzór z doc-agents (`raport_wykonania_fazy_A-D.md`); wybór użytkownika (A) |
+| 2026-11-26 | Krok 34: (1) oznaczenie „wywnioskowane” w tabelach przez znacznik `[wywnioskowane]` na końcu komórki (renderer usuwa znacznik i pokazuje oznaczenie), zdanie o znaczniku w poleceniach pięciu sekcji tabel w `guide_template.yaml` (plan: wpisy z `certain = false` - komórka tabeli to zwykły napis bez takiego pola); (2) etykiety kart tabel na telefonie (`data-l`) to pełne nazwy kolumn z szablonu (makieta: skróty pisane ręcznie); (3) ścieżka procesu bez wiersza „kiedy” z makiety - `ProcessPath` nie ma takiego pola; (4) plik w przepisie jako znacznik z opisem zmiany po najechaniu (makieta: sam znacznik); tytuł przepisu jako `h2` jak w makiecie; `plan_kroki.md` krok 34 zaktualizowany | (1) bez zmiany schematu `rows: list[list[str]]` i bez `anyOf`; (2) jedno źródło nazw, bez drugiej listy w szablonie; (3) i (4) bez nowych pól w schemacie z kroku 31 - warunek ścieżki mieści się w jej nazwie; wybór użytkownika (A) |

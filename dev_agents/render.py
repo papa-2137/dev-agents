@@ -6,8 +6,12 @@ opcjonalna bez treści) - i wypełnia szablon Jinja2 guide.html.j2. CSS i JS z k
 środka pliku, więc przewodnik otwiera się bez internetu. Escapowanie jest zawsze włączone: tekst od agentów
 (np. "<script>") wyświetla się jako tekst.
 
-Typy bloków w tym kroku: text, list, io, cards (karty „jak czytać” z kart zakładek w szablonie). Pozostałe typy
-dochodzą w krokach 34-38 - do tego czasu sekcja pokazuje widoczny znacznik „dochodzi w kolejnym kroku planu”.
+Typy bloków: text, list, io, cards (karty „jak czytać” z kart zakładek w szablonie), steps (kroki z kodem do
+skopiowania), code, table (kolumny z szablonu), glossary, paths (numery klocków diagramu jak w kolejności
+flow.nodes, odnośnik do zakładki Przepływ), recipes. Pozostałe typy (config, flow, tree, dependency_graph)
+dochodzą w krokach 35-38 - do tego czasu sekcja pokazuje widoczny znacznik „dochodzi w kolejnym kroku planu”.
+Komórka tabeli zakończona znacznikiem „[wywnioskowane]” wyświetla się bez znacznika, z oznaczeniem
+„wywnioskowane” (informacja z analizy kodu, niezapisana w nim wprost).
 
 Uwaga: zakładka bez stałego lead, której pierwsza sekcja ma typ text (opis robota), dostaje nagłówek
 „nazwa projektu: pierwszy akapit”, a pozostałe akapity jako lead - jak w makiecie; ta sekcja nie jest osobnym h2.
@@ -32,8 +36,19 @@ import dev_agents.guide_content as _content
 import dev_agents.guide_template as _template
 import dev_agents.schemas as _schemas
 
-_READY_TYPES = ["text", "list", "io", "cards"]
-_CONTENT_FIELDS = {"text": "paragraphs", "list": "items"}
+_READY_TYPES = ["text", "list", "io", "cards", "steps", "code", "table", "glossary", "paths", "recipes"]
+_CONTENT_FIELDS = {
+    "text": "paragraphs",
+    "list": "items",
+    "steps": "steps",
+    "code": "code",
+    "table": "rows",
+    "glossary": "terms",
+    "paths": "paths",
+    "recipes": "recipes",
+}
+_UNCERTAIN_MARK = "[wywnioskowane]"
+_PATH_KIND_LABELS = {"main": "sukces", "alternative": "alternatywna", "error": "awaryjna"}
 
 
 # --- Przygotowanie danych ---
@@ -58,7 +73,7 @@ def _has_content(
     section: _template.TemplateSection,
     block: _content.GuideBlock,
 ) -> bool:
-    """Zwraca True, gdy blok ma treść dla typu sekcji (text - akapity, list - punkty, io - wejścia albo wyjścia).
+    """Zwraca True, gdy blok ma treść dla typu sekcji (pole z _CONTENT_FIELDS; io - wejścia albo wyjścia).
 
     Po co: sekcja wymagana bez treści pokazuje „nie wynika z kodu”, opcjonalna znika.
     """
@@ -69,6 +84,56 @@ def _has_content(
     return czy_tresc
 
 
+def _cell_view(
+    text: str,
+    label: str,
+) -> dict:
+    """Zwraca dane komórki tabeli: tekst bez znacznika „[wywnioskowane]”, etykietę kolumny i flagę uncertain.
+
+    Po co: pisarz oznacza wywnioskowaną komórkę znacznikiem na końcu tekstu (komórka to zwykły napis), a przewodnik
+    pokazuje zamiast niego oznaczenie „wywnioskowane” jak w makiecie.
+    """
+    widok = {"text": text, "label": label, "uncertain": False}
+    bez_spacji = text.rstrip()
+    if bez_spacji.endswith(_UNCERTAIN_MARK):
+        widok["text"] = bez_spacji[: -len(_UNCERTAIN_MARK)].rstrip()
+        widok["uncertain"] = True
+    return widok
+
+
+def _table_rows(
+    section: _template.TemplateSection,
+    block: _content.GuideBlock,
+) -> list[list[dict]]:
+    """Zwraca wiersze tabeli jako listy komórek z etykietą kolumny z szablonu (pusta dla nadmiarowej komórki).
+
+    Po co: etykieta kolumny w każdej komórce (atrybut data-l) układa tabelę w karty na telefonie, jak w makiecie.
+    """
+    wiersze = []
+    for wiersz in block.rows:
+        komorki = []
+        for numer, tekst in enumerate(wiersz):
+            etykieta = ""
+            if numer < len(section.columns):
+                etykieta = section.columns[numer]
+            komorki.append(_cell_view(tekst, etykieta))
+        wiersze.append(komorki)
+    return wiersze
+
+
+def _node_numbers(
+    flow: _content.FlowGraph,
+) -> dict[str, int]:
+    """Zwraca {id klocka: numer na diagramie} - numer to pozycja klocka w flow.nodes, licząc od 1.
+
+    Po co: kroki ścieżek procesu odsyłają do klocków diagramu tym samym numerem, który widać na diagramie.
+    """
+    numery = {}
+    for numer, klocek in enumerate(flow.nodes, start=1):
+        numery[klocek.id] = numer
+    return numery
+
+
 def _section_view(
     section: _template.TemplateSection,
     block: _content.GuideBlock,
@@ -77,7 +142,15 @@ def _section_view(
 
     Po co: jedno miejsce decyzji „treść / nie wynika z kodu / dochodzi w kolejnym kroku / pomiń”.
     """
-    widok = {"id": section.id, "title": section.title, "type": section.type, "block": block, "state": "content"}
+    widok = {
+        "id": section.id,
+        "title": section.title,
+        "type": section.type,
+        "block": block,
+        "state": "content",
+        "columns": section.columns,
+        "rows": _table_rows(section, block),
+    }
     if section.type not in _READY_TYPES:
         widok["state"] = "pending"
     elif section.type != "cards" and not _has_content(section, block):
@@ -167,6 +240,8 @@ def render_guide(
         nav=menu,
         tabs=zakladki,
         cards=karty,
+        node_numbers=_node_numbers(content.flow),
+        path_kind_labels=_PATH_KIND_LABELS,
         css=css,
         js=js,
     )
@@ -181,12 +256,39 @@ if __name__ == "__main__":
     import dev_agents.config as _config
     import dev_agents.scanner as _scanner
 
-    def _example_content() -> _content.GuideContent:
-        """Składa przykładową treść robota 02: opis, wejście i wyjście, listy oraz tekst z <script> (test escapowania).
+    def _example_flow() -> _content.FlowGraph:
+        """Składa mały diagram robota 02 - tylko po to, by ścieżki procesu miały numery klocków (rysowanie w kroku 36).
 
-        Po co: podgląd szkieletu przewodnika bez modelu; pozostałe sekcje celowo puste („nie wynika z kodu”).
+        Po co: odnośniki ścieżek do klocków liczone z prawdziwego obiektu FlowGraph.
         """
-        przeglad = _content.GuideTab(
+        diagram = _content.FlowGraph(
+            nodes=[
+                _content.FlowNode(id="start", kind="start", label="Start run.bat"),
+                _content.FlowNode(id="pliki", kind="step", label="Lista plików CSV", module="przetwarzanie.py"),
+                _content.FlowNode(id="naglowek", kind="decision", label="Nagłówek poprawny?"),
+                _content.FlowNode(id="wiersze", kind="step", label="Sprawdzenie wierszy i rabaty", module="przetwarzanie.py"),
+                _content.FlowNode(id="odrzut", kind="step", label="Plik do dane/odrzucone", module="przetwarzanie.py"),
+                _content.FlowNode(id="wyniki", kind="step", label="Zapis wyników JSON i CSV", module="przetwarzanie.py"),
+                _content.FlowNode(id="koniec", kind="end", label="Koniec"),
+            ],
+            edges=[
+                _content.FlowEdge(source="start", target="pliki"),
+                _content.FlowEdge(source="pliki", target="naglowek"),
+                _content.FlowEdge(source="naglowek", target="wiersze", label="tak", kind="branch"),
+                _content.FlowEdge(source="naglowek", target="odrzut", label="nie", kind="branch"),
+                _content.FlowEdge(source="wiersze", target="wyniki"),
+                _content.FlowEdge(source="odrzut", target="koniec"),
+                _content.FlowEdge(source="wyniki", target="koniec"),
+            ],
+        )
+        return diagram
+
+    def _example_overview() -> _content.GuideTab:
+        """Składa przykładową zakładkę Przegląd robota 02: opis, wejście i wyjście, wymagania, zależności, instalacja, pojęcia.
+
+        Po co: każdy typ bloku tej zakładki z treścią; metryczka celowo pusta (blok config w kroku 35).
+        """
+        zakladka = _content.GuideTab(
             tab_id="przeglad",
             blocks=[
                 _content.GuideBlock(
@@ -205,10 +307,126 @@ if __name__ == "__main__":
                     ],
                 ),
                 _content.GuideBlock(
+                    section_id="wymagania",
+                    rows=[
+                        ["Python", "3.12 albo nowszy", "run.bat woła python bez ścieżki - domyślny Python z PATH [wywnioskowane]"],
+                        ["Pliki i katalogi", "dane/wejscie/*.csv", "pliki zamówień w UTF-8, nagłówek w pierwszym wierszu"],
+                        ["Konta i hasła", "zmienna środowiskowa ROBOT02_PASS", "przetwarzanie.py:22; potrzebna tylko przy WYSYLKA_DO_API = True"],
+                    ],
+                ),
+                _content.GuideBlock(section_id="zaleznosci", code="openpyxl\nrequests"),
+                _content.GuideBlock(
+                    section_id="instalacja",
+                    steps=[
+                        _content.Step(title="Środowisko Python", text="Paczki instalowane w domyślnym Pythonie z PATH.", code="python -m pip install -r requirements.txt"),
+                        _content.Step(title="Dane testowe", text="Kopiuje przykłady z dane\\przyklady do dane\\wejscie.", code="przygotuj_dane.bat"),
+                        _content.Step(title="Konfiguracja", text="Ustawienia są stałymi na górze przetwarzanie.py - bez pliku konfiguracyjnego."),
+                        _content.Step(title="Uruchomienie", text="run.bat przechodzi do katalogu robota, uruchamia przetwarzanie.py, a po sukcesie raport.py.", code="run.bat"),
+                    ],
+                ),
+                _content.GuideBlock(
                     section_id="jak_sprawdzic",
                     items=[
                         "W dane/wyjscie pojawia się plik wyniki_RRRRMMDD.json z bieżącą datą.",
                         "Katalog dane/wejscie jest pusty, a przetworzone pliki leżą w dane/archiwum.",
+                    ],
+                ),
+                _content.GuideBlock(
+                    section_id="pojecia",
+                    terms=[
+                        _content.GlossaryTerm(term="Plik odrzucony", definition="Plik zamówień ze złym nagłówkiem albo rozszerzeniem, przeniesiony do dane/odrzucone bez przetwarzania."),
+                        _content.GlossaryTerm(term="VIP", definition="Klient z dodatkowym rabatem 10%, łącznie z PROMO nie więcej niż 12%."),
+                    ],
+                ),
+            ],
+        )
+        return zakladka
+
+    def _example_other_tabs() -> list[_content.GuideTab]:
+        """Składa przykładowe zakładki Ścieżki, Zmiany, Błędy i Dla dewelopera robota 02, z tekstem <script> w treści.
+
+        Po co: bloki paths, table, recipes i list z treścią oraz test escapowania w komórce, w kodzie i na liście.
+        """
+        sciezki = _content.GuideTab(
+            tab_id="sciezki",
+            blocks=[
+                _content.GuideBlock(
+                    section_id="sciezki",
+                    paths=[
+                        _content.ProcessPath(
+                            name="Poprawny plik zamówień",
+                            kind="main",
+                            steps=[
+                                _content.PathStep(text="Lista plików CSV w dane/wejscie.", node_id="pliki"),
+                                _content.PathStep(text="Nagłówek zgodny z oczekiwanym.", node_id="naglowek"),
+                                _content.PathStep(text="Sprawdzenie wierszy, rabaty, duplikaty.", node_id="wiersze"),
+                                _content.PathStep(text="Zapis wyników i przeniesienie pliku do archiwum.", node_id="wyniki"),
+                            ],
+                        ),
+                        _content.ProcessPath(
+                            name="Zły nagłówek",
+                            kind="alternative",
+                            steps=[
+                                _content.PathStep(text="Nagłówek inny niż oczekiwany.", node_id="naglowek"),
+                                _content.PathStep(text="Plik przeniesiony do dane/odrzucone.", node_id="odrzut"),
+                            ],
+                        ),
+                        _content.ProcessPath(
+                            name="Błąd wysyłki do API",
+                            kind="error",
+                            steps=[
+                                _content.PathStep(text="Tylko przy WYSYLKA_DO_API = True: trzy próby, potem wpis w logu."),
+                            ],
+                        ),
+                    ],
+                ),
+            ],
+        )
+        zmiany = _content.GuideTab(
+            tab_id="zmiany",
+            blocks=[
+                _content.GuideBlock(
+                    section_id="gdzie_zmienic",
+                    rows=[
+                        ["Adres API", "przetwarzanie.py:14, stała URL", "zmiana w kodzie - brak pliku konfiguracyjnego"],
+                        ["Próg rabatu VIP", "przetwarzanie.py:18, stała RABAT_VIP", "limit łączny 12% liczony w run() [wywnioskowane]"],
+                    ],
+                ),
+                _content.GuideBlock(
+                    section_id="przepisy",
+                    recipes=[
+                        _content.Recipe(
+                            title="Nowa kolumna w pliku zamówień",
+                            when="dział sprzedaży dodaje kolumnę do pliku CSV",
+                            files=[
+                                _content.RecipeFile(path="przetwarzanie.py", change="oczekiwany nagłówek i odczyt kolumny"),
+                                _content.RecipeFile(path="dane/przyklady/zamowienia_nowe.csv", change="przykład z nową kolumną", is_new=True),
+                            ],
+                            steps=[
+                                "Dopisz kolumnę do stałej z oczekiwanym nagłówkiem.",
+                                "Odczytaj wartość w pętli po wierszach w run().",
+                                "Sprawdzenie: przygotuj_dane.bat, potem run.bat - plik nie trafia do odrzuconych.",
+                            ],
+                        ),
+                    ],
+                ),
+            ],
+        )
+        bledy = _content.GuideTab(
+            tab_id="bledy",
+            blocks=[
+                _content.GuideBlock(
+                    section_id="awarie",
+                    rows=[
+                        ["Wszystkie pliki w dane/odrzucone", "zmieniony nagłówek w plikach od działu sprzedaży", "log, przetwarzanie.py: run", "porównaj nagłówek z oczekiwanym"],
+                        ["Komunikat „przekracza limit” dla VIP z PROMO", "0.10 + 0.02 daje 0.12000000000000001", "przetwarzanie.py: run", "wynik poprawny, komunikat mylący [wywnioskowane]"],
+                        ["Test escapowania <script>alert('x')</script>", "tekst od agenta", "komórka tabeli", "ma być widoczny jako tekst"],
+                    ],
+                ),
+                _content.GuideBlock(
+                    section_id="ryzykowne_miejsca",
+                    rows=[
+                        ["run", "przetwarzanie.py:41-411", "długa jednostka (371 linii)", "cały proces w jednej funkcji - dane przykładowe, w kroku 35 z mapy projektu"],
                     ],
                 ),
             ],
@@ -216,14 +434,22 @@ if __name__ == "__main__":
         deweloper = _content.GuideTab(
             tab_id="deweloper",
             blocks=[
+                _content.GuideBlock(section_id="warstwy", rows=[["przetwarzanie.py", "cały proces: odczyt, sprawdzenie, rabaty, zapis"], ["raport.py", "raport Excel z wyników"]]),
                 _content.GuideBlock(section_id="konwencje", items=["Stałe na górze pliku przetwarzanie.py - wszystkie ustawienia w kodzie.", "Test escapowania: <script>alert('x')</script> ma być widoczne jako tekst."]),
             ],
         )
-        tresc = _content.GuideContent(
-            project_name="02_robot_bez_frameworku",
-            flow=_content.FlowGraph(nodes=[], edges=[]),
-            tabs=[przeglad, deweloper],
-        )
+        zakladki = [sciezki, zmiany, bledy, deweloper]
+        return zakladki
+
+    def _example_content() -> _content.GuideContent:
+        """Składa przykładową treść robota 02 z każdym gotowym typem bloku.
+
+        Po co: podgląd przewodnika bez modelu; sekcje bez treści pokazują „nie wynika z kodu” albo znikają.
+        """
+        zakladki = [_example_overview()]
+        for zakladka in _example_other_tabs():
+            zakladki.append(zakladka)
+        tresc = _content.GuideContent(project_name="02_robot_bez_frameworku", flow=_example_flow(), tabs=zakladki)
         return tresc
 
     def _example_project_map(
@@ -243,16 +469,22 @@ if __name__ == "__main__":
 
     def _summary(
         html: str,
-    ) -> tuple[int, int, int, bool]:
-        """Zwraca (liczba zakładek, liczba sekcji h2, odwołania do zasobów z internetu, czy <script> z treści jest escapowany).
+    ) -> dict:
+        """Zwraca liczby do szybkiego sprawdzenia pliku: zakładki, sekcje h2, odwołania do internetu, bloki kodu,
+        oznaczenia „wywnioskowane” w tabelach, odnośniki do klocków, znaczniki kolejnych kroków i escapowanie <script>.
 
         Po co: szybkie sprawdzenie pliku bez otwierania przeglądarki.
         """
-        zakladki = len(re.findall(r'<section class="tab"', html))
-        sekcje = len(re.findall(r"<h2 ", html))
-        zewnetrzne = len(re.findall(r'<(?:link|script|img)[^>]+(?:href|src)="https?:', html))
-        escapowany = "&lt;script&gt;alert(" in html and "<script>alert(" not in html
-        wynik = (zakladki, sekcje, zewnetrzne, escapowany)
+        wynik = {
+            "zakładek": len(re.findall(r'<section class="tab"', html)),
+            "sekcji (h2)": len(re.findall(r"<h2 ", html)),
+            "odwołań do zasobów z internetu": len(re.findall(r'<(?:link|script|img)[^>]+(?:href|src)="https?:', html)),
+            "bloków kodu (Kopiuj)": html.count('<div class="cb">'),
+            "„wywnioskowane” w tabelach": html.count('<span class="unc">wywnioskowane</span></td>'),
+            "odnośników do klocków": html.count('<a class="ref"'),
+            "sekcji czekających na kolejny krok": html.count("dochodzi w kolejnym kroku planu"),
+            "<script> z treści escapowany": "&lt;script&gt;alert(" in html and "<script>alert(" not in html,
+        }
         return wynik
 
     def manual_test():
@@ -264,15 +496,13 @@ if __name__ == "__main__":
         app_config = _config.load_config(os.path.join(repo_dir, "config.yaml"))
         szablon = _template.load_template(app_config.paths.guide_template)
         mapa = _example_project_map(repo_dir, app_config)
-        html = render_guide(_example_content(), szablon, mapa, os.path.dirname(app_config.paths.guide_template), "2026-11-26 18:30 (test)")
+        html = render_guide(_example_content(), szablon, mapa, os.path.dirname(app_config.paths.guide_template), "2026-11-26 20:00 (test)")
         sciezka = os.path.join(repo_dir, "guide_test.html")
         with open(sciezka, "w", encoding="utf-8") as plik:
             plik.write(html)
-        zakladki, sekcje, zewnetrzne, escapowany = _summary(html)
-        print(f"Zapisano: {sciezka}")
-        print(f"  zakładek: {zakladki}, sekcji (h2): {sekcje}, rozmiar: {len(html)} znaków")
-        print(f"  odwołania do zasobów z internetu: {zewnetrzne}")
-        print(f"  <script> z treści escapowany: {escapowany}")
-        print("Otwórz plik w przeglądarce i sprawdź zakładki, karty „jak czytać” i polskie znaki.")
+        print(f"Zapisano: {sciezka} ({len(html)} znaków)")
+        for nazwa, wartosc in _summary(html).items():
+            print(f"  {nazwa}: {wartosc}")
+        print("Otwórz plik w przeglądarce: tabele, kroki z przyciskiem Kopiuj, pojęcia, ścieżki z numerami klocków, przepisy.")
 
     manual_test()

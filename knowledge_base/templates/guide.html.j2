@@ -1,6 +1,7 @@
 {#- Układ przewodnika dev-agents (wzorzec: dev_log/guide_mockup.html).
     Dane przygotowuje render.py: project_name, project_root, generated_at, nav (zakładki do menu), tabs (zakładki
-    z nagłówkiem, lead i sekcjami w kolejności z guide_template.yaml), cards (karty „jak czytać”), css, js.
+    z nagłówkiem, lead i sekcjami w kolejności z guide_template.yaml), cards (karty „jak czytać”), node_numbers
+    (id klocka diagramu → numer), path_kind_labels (rodzaj ścieżki → napis), css, js.
     Każda sekcja ma state: content (blok z treścią), missing („nie wynika z kodu”) albo pending (typ bloku
     dochodzi w kolejnym kroku planu). Escapowanie jest zawsze włączone - treść od agentów jest tekstem. -#}
 {%- macro block_text(block) -%}
@@ -31,6 +32,72 @@
   <div class="ar"></div>
   <div class="box"><h3>Wyjście</h3>{{ io_items(block.outputs) }}</div>
  </div>
+{%- endmacro -%}
+
+{%- macro code_box(code) -%}
+<div class="cb"><pre>{{ code }}</pre></div>
+{%- endmacro -%}
+
+{%- macro block_steps(block) -%}
+ <ol class="road">
+{%- for step in block.steps %}
+  <li><b>{{ step.title }}</b>{% if step.text %}<span>{{ step.text }}</span>{% endif %}
+{%- if step.code %}
+   {{ code_box(step.code) }}
+{%- endif %}</li>
+{%- endfor %}
+ </ol>
+{%- endmacro -%}
+
+{%- macro block_table(columns, rows) -%}
+ <div class="scroll"><table class="stack">
+  <thead><tr>{% for column in columns %}<th>{{ column }}</th>{% endfor %}</tr></thead>
+  <tbody>
+{%- for row in rows %}
+   <tr>{% for cell in row %}<td data-l="{{ cell.label }}">{{ cell.text }}{% if cell.uncertain %} <span class="unc">wywnioskowane</span>{% endif %}</td>{% endfor %}</tr>
+{%- endfor %}
+  </tbody>
+ </table></div>
+{%- endmacro -%}
+
+{%- macro block_glossary(block) -%}
+ <dl class="gl">
+{%- for term in block.terms %}
+  <dt>{{ term.term }}</dt><dd>{{ term.definition }}</dd>
+{%- endfor %}
+ </dl>
+{%- endmacro -%}
+
+{%- macro block_paths(block, node_numbers, kind_labels) -%}
+ <div class="paths">
+{%- for path in block.paths %}
+  <div class="path">
+   <h3>{{ path.name }} <span class="tagr"{% if path.kind == "main" %} style="color:var(--ink);border-color:var(--ink)"{% endif %}>{{ kind_labels[path.kind] }}</span></h3>
+   <ol class="pl">
+{%- for step in path.steps %}
+    <li>{{ step.text }}{% if step.node_id in node_numbers %} <a class="ref" href="#przeplyw">{{ node_numbers[step.node_id] }}</a>{% endif %}</li>
+{%- endfor %}
+   </ol>
+  </div>
+{%- endfor %}
+ </div>
+{%- endmacro -%}
+
+{%- macro block_recipes(block) -%}
+{%- for recipe in block.recipes %}
+ <div class="recipe">
+  <h2>{{ recipe.title }}</h2>
+  <p class="when">Kiedy: {{ recipe.when }}</p>
+{%- if recipe.files %}
+  <div class="files">{% for file in recipe.files %}<span class="c{% if file.is_new %} new{% endif %}" title="{{ file.change }}">{{ file.path }}</span>{% endfor %}</div>
+{%- endif %}
+  <ol class="road">
+{%- for step in recipe.steps %}
+   <li>{{ step }}</li>
+{%- endfor %}
+  </ol>
+ </div>
+{%- endfor %}
 {%- endmacro -%}
 
 {%- macro block_cards(cards) -%}
@@ -90,6 +157,18 @@
 {{ block_io(section.block, project_name, technology_line) }}
 {%- elif section.type == "cards" %}
 {{ block_cards(cards) }}
+{%- elif section.type == "steps" %}
+{{ block_steps(section.block) }}
+{%- elif section.type == "code" %}
+ {{ code_box(section.block.code) }}
+{%- elif section.type == "table" %}
+{{ block_table(section.columns, section.rows) }}
+{%- elif section.type == "glossary" %}
+{{ block_glossary(section.block) }}
+{%- elif section.type == "paths" %}
+{{ block_paths(section.block, node_numbers, path_kind_labels) }}
+{%- elif section.type == "recipes" %}
+{{ block_recipes(section.block) }}
 {%- endif %}
 {% endfor %}
 </section>
