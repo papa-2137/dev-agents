@@ -41,3 +41,14 @@ scan:
   # Pliki i katalogi pomijane przy skanowaniu analizowanego projektu (wzorce nazw, np. *.pyc).
   # Zawsze pomijane, niezależnie od tej listy: dev_agents_doc/ (wyniki towaru) i katalogi z pyvenv.cfg (venv).
   ignore: [".git", "__pycache__", ".pytest_cache", ".idea", ".vscode", "node_modules", "venv", ".venv", "*.pyc", "Thumbs.db", "desktop.ini", "~$*"]
+  # Pliki sekretów (certyfikaty, klucze, .env) - do modelu i przewodnika trafiają wyłącznie jako metadane.
+  secret_patterns: ["*.pfx", "*.p12", "*.pem", "*.key", "*.crt", ".env*"]
+  # Role plików innych niż kod (kod rozpoznaje technologia projektu). Wygrywa PIERWSZA pasująca rola,
+  # dlatego dependency stoi przed data (requirements.txt pasuje też do *.txt). Plik bez dopasowania -> other.
+  role_patterns:
+    dependency: ["requirements*.txt", "pyproject.toml"]
+    config: ["*.yml", "*.yaml", "*.json", "*.toml", "*.ini", "*.cfg"]
+    launcher: ["*.bat", "*.cmd", "*.ps1"]
+    docs: ["*.md", "*.rst", "README*", "*.docx", "*.pdf"]
+    data: ["*.csv", "*.txt", "*.xlsx", "*.xls", "*.db", "*.sqlite", "*.xml", "*.log"]
+    binary: ["*.png", "*.jpg", "*.ico", "*.exe", "*.dll", "*.zip", "*.whl"]

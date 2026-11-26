@@ -2,7 +2,7 @@
 
 Co robi: wczytuje config.yaml, zamienia go na obiekty Pythona (podpowiedzi w edytorze, dostęp przez
 atrybuty, np. app_config.llm.profiles["small"].model), sprawdza, czy każdy agent wskazuje istniejący
-profil modelu i czy metoda structured output w każdym profilu jest znana, a ścieżki z sekcji `paths`
+profil modelu, czy metoda structured output w każdym profilu i role plików w sekcji `scan` są znane, a ścieżki z sekcji `paths`
 zamienia na bezwzględne.
 
 Dlaczego istnieje: to jedyne wejście do ustawień narzędzia. Pozostałe moduły dostają już sprawdzony,
@@ -19,7 +19,7 @@ Rola: moduł używany przez punkt wejścia programu i przez warstwy, które potr
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.config
 Najpierw wypisuje wczytany config jako JSON (ścieżki w `paths` mają być bezwzględne), potem komunikaty
-błędów dla czterech celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
+błędów dla pięciu celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
 """
 
 import os
@@ -80,6 +80,8 @@ class ScanConfig(BaseModel):
     """
 
     ignore: list[str]  # wzorce nazw plików i katalogów, np. ".git", "*.pyc"
+    secret_patterns: list[str]  # wzorce nazw plików sekretów - tylko metadane, nigdy treść
+    role_patterns: dict[str, list[str]]  # rola -> wzorce nazw; wygrywa pierwsza pasująca (kolejność z YAML)
 
 
 class AppConfig(BaseModel):
@@ -131,6 +133,20 @@ def _check_structured_output_methods(
             raise ValueError(komunikat_bledu)
 
 
+def _check_role_names(
+    app_config: AppConfig,
+) -> None:
+    """Sprawdza, czy role w scan.role_patterns są znane towarowi; przy błędzie rzuca ValueError z listą dozwolonych ról.
+
+    Po co: literówka w nazwie roli (np. 'launcer') dałaby po cichu pliki z rolą, której nikt dalej nie obsługuje.
+    """
+    dozwolone_role = ["dependency", "config", "launcher", "docs", "data", "binary"]
+    for rola in app_config.scan.role_patterns:
+        if rola not in dozwolone_role:
+            komunikat_bledu = f"Nieznana rola '{rola}' w scan.role_patterns. Dozwolone: {dozwolone_role}"
+            raise ValueError(komunikat_bledu)
+
+
 def _resolve_paths(
     paths: PathsConfig,
     config_dir: str,
@@ -161,6 +177,7 @@ def _build_config(
     app_config = AppConfig(**raw_config)
     _check_agent_profiles(app_config)
     _check_structured_output_methods(app_config)
+    _check_role_names(app_config)
     _resolve_paths(app_config.paths, config_dir)
     return app_config
 
@@ -225,7 +242,7 @@ if __name__ == "__main__":
             _print_error(title, blad)
 
     def manual_test():
-        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla czterech zepsutych kopii.
+        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla pięciu zepsutych kopii.
 
         Po co: szybkie sprawdzenie, czy config się wczytuje, ścieżki są bezwzględne, a błędy w configu
         dają czytelne komunikaty.
@@ -253,5 +270,9 @@ if __name__ == "__main__":
         brak_scan = copy.deepcopy(raw_config)
         del brak_scan["scan"]
         _try_broken_config("Config bez sekcji scan", brak_scan, repo_dir)
+
+        zla_rola = copy.deepcopy(raw_config)
+        zla_rola["scan"]["role_patterns"]["launcer"] = zla_rola["scan"]["role_patterns"].pop("launcher")
+        _try_broken_config("Nieznana rola w scan.role_patterns ('launcer')", zla_rola, repo_dir)
 
     manual_test()

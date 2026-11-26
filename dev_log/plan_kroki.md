@@ -104,7 +104,7 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 19. Przenieś z doc-agents: `scanner.py` - role plików i sekrety**
 - **Funkcja:** każdy plik dostaje rolę (kod, config, zależności, uruchamianie, dane, dokumentacja, binarny, sekret); sekrety nigdy nie są otwierane.
-- **Robimy:** `scan.secret_patterns`, `scan.role_patterns` w configu (w tym rola `dependency` - np. `requirements*.txt`, `pyproject.toml`); kod wg technologii (`is_source`); wykrywanie plików binarnych.
+- **Robimy:** `scan.secret_patterns`, `scan.role_patterns` w configu (w tym rola `dependency` - np. `requirements*.txt`, `pyproject.toml`); kod wg technologii (`is_source`); pliki binarne tylko po wzorcach (rola `binary`), plik bez dopasowania → `other` - skaner nie otwiera żadnego pliku; nieznana nazwa roli w configu → błąd przy starcie.
 - **Sprawdzamy:** tabela `ścieżka | rola | rozmiar`; `client.pfx` → `secret`, `config.yml` → `config`, `requirements.txt` → `dependency`; w robocie 02 `run.bat` → `launcher`.
 
 **Krok 20. `masking.py` - maskowanie wartości wrażliwych w tekście**

@@ -1,27 +1,35 @@
 """Skaner analizowanego projektu: lista plików, a w kolejnych krokach role plików i mapa projektu.
 
-Co robi: na tym etapie list_files() zwraca posortowaną listę ścieżek względnych (separator "/") wszystkich
-plików projektu, bez plików i katalogów pasujących do scan.ignore z configu, bez katalogów środowisk
-wirtualnych (rozpoznawanych po pliku pyvenv.cfg, więc działa dla dowolnej nazwy, np. test-venv) i zawsze
-bez katalogu dev_agents_doc/ - wyników towaru, które nie mogą trafić do analizy.
+Co robi:
+    - list_files() zwraca posortowaną listę ścieżek względnych (separator "/") wszystkich plików projektu,
+      bez plików i katalogów pasujących do scan.ignore z configu, bez katalogów środowisk wirtualnych
+      (rozpoznawanych po pliku pyvenv.cfg, więc działa dla dowolnej nazwy, np. test-venv) i zawsze bez
+      katalogu dev_agents_doc/ - wyników towaru, które nie mogą trafić do analizy,
+    - build_file_entries() nadaje każdemu plikowi rolę i rozmiar: secret (scan.secret_patterns, sprawdzane
+      pierwsze), source (kod wg technologii projektu), pierwsza pasująca rola z scan.role_patterns, a bez
+      dopasowania - other.
 
-Dlaczego istnieje: to pierwszy krok mapy projektu - z tej listy korzystają technologia (detect, punkty
-wejścia), role plików i cała mapa. Skaner tylko listuje nazwy, nie otwiera plików.
+Dlaczego istnieje: to pierwszy krok mapy projektu - z listy plików korzystają technologia (detect, punkty
+wejścia) i cała mapa, a rola decyduje, co dalej dzieje się z plikiem (kod - do analityków, konfiguracja
+i pliki uruchamiające - zamaskowane do agentów, sekret - wyłącznie metadane). Skaner nie otwiera żadnego
+pliku - listuje nazwy i rozmiary.
 
 Rola: moduł rdzenia towaru, używany przy budowie mapy projektu.
 
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.scanner
-        listy plików robotów testowych 01 i 02 oraz katalogu tymczasowego z katalogami, które mają być
-        pominięte (dev_agents_doc, .git, __pycache__, środowisko wirtualne o własnej nazwie)
+        tabele ścieżka | rola | rozmiar dla robotów testowych 01 i 02 oraz katalogu tymczasowego (katalogi,
+        które mają być pominięte, sekret .env, plik binarny, plik nieznanego typu), pod każdą liczba plików w rolach
     python -m dev_agents.scanner <katalog projektu>
-        lista plików dowolnego projektu
+        tabela dowolnego projektu
 """
 
 import fnmatch
 import os
 
 import dev_agents.config as _config
+import dev_agents.schemas as _schemas
+import dev_agents.technologies.base as _base
 
 
 # --- Lista plików ---
@@ -85,6 +93,66 @@ def list_files(
     return posortowane
 
 
+# --- Role plików ---
+
+
+def _role_from_patterns(
+    name: str,
+    role_patterns: dict[str, list[str]],
+) -> str:
+    """Zwraca pierwszą rolę z scan.role_patterns, do której wzorców pasuje nazwa pliku; "other", gdy żadna.
+
+    Po co: role plików innych niż kod są w configu - zespół dopasowuje je do swoich projektów bez zmian w kodzie.
+
+    Uwaga: kolejność ról w config.yaml decyduje, która wygrywa (np. dependency przed data dla requirements.txt).
+    """
+    for rola, wzorce in role_patterns.items():
+        if _is_ignored(name, wzorce):
+            return rola
+    return "other"
+
+
+def _file_role(
+    path: str,
+    scan_config: _config.ScanConfig,
+    technology: _base.Technology | None,
+) -> str:
+    """Zwraca rolę pliku: secret, source albo rolę z wzorców (z other dla nieznanych).
+
+    Po co: sekret sprawdzany jest pierwszy - plik pasujący do wzorca sekretu nigdy nie zostanie potraktowany
+    jak kod ani konfiguracja, więc jego treść nie trafi do modelu.
+
+    Argumenty: technology - technologia projektu albo None, gdy nie rozpoznano żadnej (wtedy nie ma plików source).
+    """
+    nazwa = os.path.basename(path)
+    if _is_ignored(nazwa, scan_config.secret_patterns):
+        return "secret"
+    if technology is not None and technology.is_source(path):
+        return "source"
+    rola = _role_from_patterns(nazwa, scan_config.role_patterns)
+    return rola
+
+
+def build_file_entries(
+    root: str,
+    files: list[str],
+    scan_config: _config.ScanConfig,
+    technology: _base.Technology | None,
+) -> list[_schemas.FileEntry]:
+    """Zwraca FileEntry (ścieżka, rola, rozmiar w bajtach) dla każdego pliku z listy, w tej samej kolejności.
+
+    Po co: z tej listy powstaje mapa projektu - kolejne etapy wiedzą, które pliki są kodem, które wolno czytać
+    (po zamaskowaniu) i które są tylko metadanymi.
+
+    Uwaga: framework_name zostaje puste - pliki frameworku oznacza osobny etap skanera.
+    """
+    wpisy = []
+    for path in files:
+        rozmiar = os.path.getsize(os.path.join(root, path))
+        wpisy.append(_schemas.FileEntry(path=path, role=_file_role(path, scan_config, technology), size_bytes=rozmiar))
+    return wpisy
+
+
 # --- Test ręczny ---
 
 if __name__ == "__main__":
@@ -92,16 +160,21 @@ if __name__ == "__main__":
     import sys
     import tempfile
 
+    import dev_agents.technologies.registry as _registry
+
     def _make_temp_project(
         directory: str,
     ) -> None:
-        """Tworzy w katalogu tymczasowym projekt z dwoma zwykłymi plikami i katalogami, które skaner ma pominąć.
+        """Tworzy projekt tymczasowy: zwykłe pliki, katalogi do pominięcia, sekret .env, plik binarny i plik nieznanego typu.
 
-        Po co: sprawdzenie pomijania bez dotykania robotów testowych.
+        Po co: sprawdzenie pomijania i ról bez dotykania robotów testowych.
         """
         pliki = [
             "main.py",
             "src/modul.py",
+            ".env",
+            "narzedzia/program.exe",
+            "dziwny.xyz",
             "dev_agents_doc/guide.html",
             ".git/config",
             "src/__pycache__/modul.cpython-314.pyc",
@@ -114,29 +187,53 @@ if __name__ == "__main__":
             with open(pelna, "w", encoding="utf-8") as plik:
                 plik.write("")
 
-    def _print_files(
+    def _scan(
+        root: str,
+        scan_config: _config.ScanConfig,
+    ) -> tuple[str, list[_schemas.FileEntry]]:
+        """Listuje pliki, wybiera technologię projektu i nadaje role. Zwraca (nazwa technologii albo "brak", wpisy).
+
+        Po co: logika testu bez wypisywania - ten sam przebieg co później w mapie projektu.
+        """
+        pliki = list_files(root, scan_config)
+        technologia = _registry.detect_technology(root, pliki)
+        nazwa_technologii = "brak"
+        if technologia is not None:
+            nazwa_technologii = technologia.name
+        wpisy = build_file_entries(root, pliki, scan_config, technologia)
+        wynik = (nazwa_technologii, wpisy)
+        return wynik
+
+    def _print_entries(
         title: str,
         root: str,
-        files: list[str],
+        technology_name: str,
+        entries: list[_schemas.FileEntry],
     ) -> None:
-        """Wypisuje listę plików z nagłówkiem i liczbą plików.
+        """Wypisuje tabelę ścieżka | rola | rozmiar i liczbę plików w każdej roli.
 
         Po co: czytelny wynik testu; tylko formatuje gotowe dane.
         """
-        print(f"=== {title}: {root} ({len(files)} plików) ===")
-        for sciezka in files:
-            print(f"  {sciezka}")
-        print()
+        print(f"=== {title}: {root} (technologia: {technology_name}, plików: {len(entries)}) ===")
+        licznik = {}
+        for wpis in entries:
+            print(f"  {wpis.path:<55} {wpis.role:<11} {wpis.size_bytes:>8}")
+            licznik[wpis.role] = licznik.get(wpis.role, 0) + 1
+        podsumowanie = []
+        for rola, liczba in licznik.items():
+            podsumowanie.append(f"{rola}: {liczba}")
+        print(f"  role -> {', '.join(podsumowanie)}\n")
 
     def manual_test():
-        """Z argumentem <katalog> - lista plików projektu; bez argumentów - roboty testowe i katalog tymczasowy.
+        """Z argumentem <katalog> - tabela ról projektu; bez argumentów - roboty testowe i katalog tymczasowy.
 
-        Po co: sprawdzenie pomijania katalogów i wzorców na prawdziwych robotach i na przypadkach brzegowych.
+        Po co: sprawdzenie listy plików i ról na prawdziwych robotach i na przypadkach brzegowych.
         """
         katalog_repo = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         app_config = _config.load_config(os.path.join(katalog_repo, "config.yaml"))
         if len(sys.argv) == 2:
-            _print_files("projekt", sys.argv[1], list_files(sys.argv[1], app_config.scan))
+            nazwa_technologii, wpisy = _scan(sys.argv[1], app_config.scan)
+            _print_entries("projekt", sys.argv[1], nazwa_technologii, wpisy)
             return
 
         katalog_testow = os.path.normpath(os.path.join(katalog_repo, "..", "..", "tests"))
@@ -145,12 +242,14 @@ if __name__ == "__main__":
             if not os.path.isdir(root):
                 print(f"=== {tytul}: brak katalogu {root} - pomijam ===\n")
                 continue
-            _print_files(tytul, root, list_files(root, app_config.scan))
+            nazwa_technologii, wpisy = _scan(root, app_config.scan)
+            _print_entries(tytul, root, nazwa_technologii, wpisy)
 
         temp_dir = tempfile.mkdtemp()
         try:
             _make_temp_project(temp_dir)
-            _print_files("katalog tymczasowy (oczekiwane tylko main.py i src/modul.py)", temp_dir, list_files(temp_dir, app_config.scan))
+            nazwa_technologii, wpisy = _scan(temp_dir, app_config.scan)
+            _print_entries("katalog tymczasowy", temp_dir, nazwa_technologii, wpisy)
         finally:
             shutil.rmtree(temp_dir)
 

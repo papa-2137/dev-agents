@@ -37,12 +37,12 @@ class FileEntry(pydantic.BaseModel):
     Po co: skaner opisuje każdy plik jednym wpisem - po roli agenci i renderer wiedzą, czy plik to kod,
     konfiguracja, dane czy sekret (sekret trafia do modelu wyłącznie jako metadane).
 
-    Uwaga: lista ról rośnie razem z planem. Teraz: source, config, data, secret, binary, docs, other;
-    w kroku 20 dochodzi launcher (pliki .bat, .cmd, .ps1).
+    Uwaga: role: secret (tylko metadane), source (kod wg technologii), dependency, config, launcher (.bat, .cmd,
+    .ps1), docs, data, binary (role z scan.role_patterns) i other (bez dopasowania).
     """
 
     path: str  # ścieżka względna do katalogu projektu, z separatorem "/"
-    role: str  # source | config | data | secret | binary | docs | other (launcher od kroku 20)
+    role: str  # secret | source | dependency | config | launcher | docs | data | binary | other
     size_bytes: int
     framework_name: str = ""  # nazwa frameworku, do którego należy plik; "" = kod projektu
 
@@ -115,15 +115,14 @@ if __name__ == "__main__":
 
         Po co: dane do testu zapisu i odczytu JSON bez uruchamiania skanera, który powstanie w kolejnych krokach.
 
-        Uwaga: role i wybór plików są ułożone ręcznie - pliki .bat mają na razie rolę other, bo rola
-        launcher dochodzi w kroku 20.
+        Uwaga: role i wybór plików są ułożone ręcznie - prawdziwe role nadaje skaner.
         """
         files = [
-            FileEntry(path="run.bat", role="other", size_bytes=350),
-            FileEntry(path="przygotuj_dane.bat", role="other", size_bytes=234),
+            FileEntry(path="run.bat", role="launcher", size_bytes=350),
+            FileEntry(path="przygotuj_dane.bat", role="launcher", size_bytes=234),
             FileEntry(path="przetwarzanie.py", role="source", size_bytes=17208),
             FileEntry(path="raport.py", role="source", size_bytes=2447),
-            FileEntry(path="requirements.txt", role="config", size_bytes=18),
+            FileEntry(path="requirements.txt", role="dependency", size_bytes=18),
             FileEntry(path="dane/przyklady/zamowienia_2026-11-20.csv", role="data", size_bytes=461),
             FileEntry(path="dane/przyklady/notatka.txt", role="docs", size_bytes=79),
         ]
