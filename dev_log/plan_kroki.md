@@ -186,6 +186,7 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 36. Diagram przepływu w HTML (W1, W3)**
 - **Funkcja:** czytelny diagram całego procesu: start, klocki, strzałki, decyzje, pętle - z podpowiedzią po najechaniu (moduł, funkcje, czyta, zapisuje).
+- **Decyzje użytkownika (1A, 2A, 3A):** krok 36 to sam diagram (wiersze „Krok po kroku” w kroku 37, który skurczy się do typowanych kafelków wejść i wyjść, bo skrypt z makiety buduje wiersze z tych samych danych); diagram, który nie przechodzi `validate_flow`, nie jest rysowany (zamiast niego lista problemów, bo brakujący układ przerywa skrypt na całej stronie); klocek wywnioskowany (`certain = false`) z oznaczeniem „wywnioskowane” w podpowiedzi. Zrobione: `flow_view_data()` w `flow.py` (format skryptu z makiety: `term/step/sys/dec`, `from/to`, `func`, `desc`, flaga `unc`, `layout`), blok `flow` w `render.py` i szablonie (legenda, `<svg id="flow">`, JSON przez `tojson`, bez `h2` nad diagramem), podpowiedź w `guide.js` bez pustego „Moduł i funkcja”.
 - **Robimy:** blok `flow`: dane `FlowGraph` + układ z `flow.py` wstawione do HTML jako JSON; rysowanie SVG w `guide.js` jak w makiecie (kształty wg `kind`, numery klocków, etykiety „tak/nie”, czerwone przerywane powroty pętli, zawijanie długich napisów, widok na telefonie).
 - **Sprawdzamy:** diagram z makiety i diagram 25+ klocków (sztuczny) są czytelne na laptopie i w wąskim oknie; podpowiedź pokazuje dane klocka.
 

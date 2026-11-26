@@ -4,7 +4,8 @@
     (id klocka diagramu → numer), path_kind_labels (rodzaj ścieżki → napis), css, js.
     Każda sekcja ma state: content (blok z treścią), missing (zdanie missing_text, domyślnie „nie wynika z kodu”)
     albo pending (typ bloku dochodzi w kolejnym kroku planu). Dane z faktów kodu: tree (drzewo plików), code_text
-    (treść bloku kodu, np. plików zależności), rows (wiersze tabeli; komórka ma opcjonalnie code i badge).
+    (treść bloku kodu, np. plików zależności), rows (wiersze tabeli; komórka ma opcjonalnie code i badge),
+    flow (data: dane diagramu dla skryptu rysującego albo None, problems: lista problemów diagramu).
     Escapowanie jest zawsze włączone - treść od agentów jest tekstem. -#}
 {%- macro block_text(block) -%}
 {%- for paragraph in block.paragraphs %}
@@ -189,6 +190,27 @@
  </div>
 {%- endmacro -%}
 
+{%- macro block_flow(flow) -%}
+{%- if flow.problems %}
+ <p class="note">Diagram nie przeszedł sprawdzenia spójności i nie został narysowany:</p>
+ <ul class="ul">
+{%- for problem in flow.problems %}
+  <li>{{ problem }}</li>
+{%- endfor %}
+ </ul>
+{%- else %}
+ <div class="legend">
+  <span><i class="mk rnd"></i>start / koniec</span>
+  <span><i class="mk"></i>czynność robota</span>
+  <span><i class="mk fill"></i>kontakt z systemem zewnętrznym</span>
+  <span><i class="mk dia"></i>decyzja</span>
+  <span><i class="mk loop"></i>powrót pętli</span>
+ </div>
+ <div class="fig" id="flowfig"><svg id="flow" role="img" aria-label="Diagram przepływu procesu robota"></svg></div>
+ <p class="note">Układ (wiersze, kolumny, pętle) wylicza kod z grafu kroków zwróconego przez model i sprawdzonego pod kątem spójności.</p>
+{%- endif %}
+{%- endmacro -%}
+
 {%- macro block_cards(cards) -%}
  <p class="note">Zacznij od tej zakładki: po niej uruchomisz robota. Potem diagram przepływu: po nim opowiesz, co robot robi. Resztę czytaj, gdy masz konkretne zadanie.</p>
  <div class="cards">
@@ -233,7 +255,9 @@
  <p class="lead">{{ paragraph }}</p>
 {%- endfor %}
 {% for section in tab.sections %}
+{%- if section.type != "flow" %}
  <h2 id="s-{{ section.id }}">{{ section.title }}</h2>
+{%- endif %}
 {%- if section.state == "missing" %}
  <p class="note">{{ section.missing_text }}</p>
 {%- elif section.state == "pending" %}
@@ -252,6 +276,8 @@
  {{ code_box(section.code_text) }}
 {%- elif section.type == "tree" %}
 {{ block_tree(section.tree) }}
+{%- elif section.type == "flow" %}
+{{ block_flow(section.flow) }}
 {%- elif section.type == "table" %}
 {{ block_table(section.columns, section.rows) }}
 {%- elif section.type == "glossary" %}
@@ -268,6 +294,9 @@
 {% endfor %}
 </main>
 
+{%- for tab in tabs %}{% for section in tab.sections %}{% if section.type == "flow" and section.flow and section.flow.data %}
+<script type="application/json" id="flow-data">{{ section.flow.data | tojson }}</script>
+{%- endif %}{% endfor %}{% endfor %}
 <script>
 {{ js | safe }}
 </script>

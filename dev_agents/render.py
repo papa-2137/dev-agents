@@ -9,9 +9,10 @@ opcjonalna bez treści) - i wypełnia szablon Jinja2 guide.html.j2. CSS i JS z k
 Typy bloków: text, list, io, cards (karty „jak czytać” z kart zakładek w szablonie), steps (kroki z kodem do
 skopiowania), code, table (kolumny z szablonu), glossary, paths (numery klocków diagramu jak w kolejności
 flow.nodes, odnośnik do zakładki Przepływ), recipes, config (metryczka: kafelki po rodzaju wpisu i tabela
-„Pełna konfiguracja”; hasło wpisane wprost z czerwonym znacznikiem), tree (drzewo plików z opisami po najechaniu).
-Pozostałe typy (flow, dependency_graph) dochodzą w kolejnych krokach - do tego czasu sekcja pokazuje widoczny znacznik
-„dochodzi w kolejnym kroku planu”.
+„Pełna konfiguracja”; hasło wpisane wprost z czerwonym znacznikiem), tree (drzewo plików z opisami po najechaniu),
+flow (diagram przepływu rysowany w przeglądarce z danych JSON; diagram, który nie przechodzi validate_flow, nie jest
+rysowany - sekcja pokazuje listę problemów). Pozostały typ (dependency_graph) dochodzi w kolejnym kroku - do tego czasu
+sekcja pokazuje widoczny znacznik „dochodzi w kolejnym kroku planu”.
 Fakty z kodu zamiast odpowiedzi modelu (guide_facts.py): sekcja typu code ze źródłem scanner (zależności) to treść
 plików zależności z mapy projektu; tabela ze źródłem code (ryzykowne miejsca) to długie jednostki i hasła wpisane
 wprost, a wiersze pisarza dodają komentarz i inne miejsca; drzewo bierze fakty z mapy, opisy pisarza mają pierwszeństwo.
@@ -36,18 +37,28 @@ Test ręczny (z katalogu głównego repo):
     python -m dev_agents.render plik
         to samo, ale metryczka z przykładowego pliku config.yml jak w makiecie (sekcje, hasło wpisane wprost,
         zmienna środowiskowa, stała w kodzie)
+    python -m dev_agents.render makieta
+        to samo, ale diagram z makiety (12 klocków) wczytany z dev_log/guide_mockup.html; wypisuje, czy dane dla
+        skryptu rysującego są zgodne z makietą (brak pliku makiety - diagram domyślny z komunikatem)
+    python -m dev_agents.render duzy
+        to samo, ale sztuczny diagram z 28 klocków (trzy decyzje, dwa objazdy, pętla, długi ogon)
+Diagram domyślny (robot 02, 7 klocków) ma opis z tekstem </script>, klocek wywnioskowany i start bez modułu; test
+sprawdza też w pamięci diagram zepsuty (lista problemów zamiast rysunku) i diagram bez klocków (zdanie o braku).
 """
 
 import os
 
 import jinja2
+import pydantic
 
+import dev_agents.config as _config
+import dev_agents.flow as _flow
 import dev_agents.guide_content as _content
 import dev_agents.guide_facts as _facts
 import dev_agents.guide_template as _template
 import dev_agents.schemas as _schemas
 
-_READY_TYPES = ["text", "list", "io", "cards", "steps", "code", "table", "glossary", "paths", "recipes", "config", "tree"]
+_READY_TYPES = ["text", "list", "io", "cards", "steps", "code", "table", "glossary", "paths", "recipes", "config", "tree", "flow"]
 _CONTENT_FIELDS = {
     "text": "paragraphs",
     "list": "items",
@@ -63,6 +74,7 @@ _CONTENT_FIELDS = {
 _MISSING_TEXT = "Nie wynika z kodu."
 _MISSING_TEXTS = {
     "config": "Robot nie ma konfiguracji - nie wynika z kodu.",
+    "flow": "Brak diagramu przepływu: nie powstał żaden klocek.",
     "dependencies": "Robot nie ma pliku zależności (requirements.txt ani pyproject.toml).",
 }
 _RISKY_BADGE_COLORS = {"długa jednostka": "m", "hasło w pliku": "r", "hasło w kodzie": "r"}
@@ -93,6 +105,22 @@ _CONFIG_BADGES = {
     "other": ["", "m"],
 }
 _CODE_SECTION_LABEL = "w kodzie"
+
+
+# --- Fakty dla widoków ---
+
+
+class _Facts(pydantic.BaseModel):
+    """Fakty przekazywane widokom sekcji: mapa projektu, wpisy metryczki, diagram i progi z configu.
+
+    Po co: jeden obiekt zamiast pięciu parametrów w każdej funkcji widoku.
+    """
+
+    project_map: _schemas.ProjectMap
+    config_items: list[_content.ConfigItem]
+    flow: _content.FlowGraph
+    flow_config: _config.FlowConfig
+    long_unit_lines: int
 
 
 # --- Przygotowanie danych ---
@@ -340,15 +368,13 @@ def _risky_fact_cells(
 def _risky_view(
     section: _template.TemplateSection,
     block: _content.GuideBlock,
-    project_map: _schemas.ProjectMap,
-    config_items: list[_content.ConfigItem],
-    long_unit_lines: int,
+    facts: _Facts,
 ) -> list[list[dict]]:
     """Zwraca wiersze tabeli ryzykownych miejsc: z faktów kodu (hasła, długie jednostki), potem dodatkowe wiersze pisarza.
 
     Po co: kod wskazuje miejsca, pisarz dopisuje tylko komentarz i miejsca, których kod nie widzi.
     """
-    fakty, dodatkowe = _facts.risky_rows(project_map, config_items, long_unit_lines, block.rows)
+    fakty, dodatkowe = _facts.risky_rows(facts.project_map, facts.config_items, facts.long_unit_lines, block.rows)
     wiersze = []
     for fakt in fakty:
         wiersze.append(_risky_fact_cells(fakt, section.columns))
@@ -357,41 +383,54 @@ def _risky_view(
     return wiersze
 
 
+def _flow_view(
+    facts: _Facts,
+) -> dict:
+    """Zwraca dane sekcji diagramu: {data: dane dla skryptu rysującego albo None, problems: lista problemów}.
+
+    Po co: diagram, który nie przechodzi validate_flow, nie jest rysowany - brakujący układ albo klocek przerwałby
+    skrypt na całej stronie; zamiast diagramu sekcja pokazuje listę problemów.
+    """
+    problemy, ostrzezenia = _flow.validate_flow(facts.flow, facts.flow_config)
+    widok = {"data": None, "problems": problemy}
+    if not problemy:
+        widok["data"] = _flow.flow_view_data(facts.flow)
+    return widok
+
+
 def _fact_view(
     section: _template.TemplateSection,
     block: _content.GuideBlock,
-    project_map: _schemas.ProjectMap,
-    config_items: list[_content.ConfigItem],
-    long_unit_lines: int,
+    facts: _Facts,
 ) -> dict:
-    """Zwraca dane sekcji liczone z faktów kodu (drzewo, zależności, ryzykowne miejsca) albo {} dla pozostałych sekcji.
+    """Zwraca dane sekcji liczone z faktów kodu (drzewo, zależności, ryzykowne miejsca, diagram) albo {} dla pozostałych.
 
-    Po co: pewne fakty (pliki, treść pliku zależności, linie i długości funkcji, hasło wprost) pochodzą z kodu, nie z modelu;
-    klucz has_content mówi, czy sekcja ma co pokazać, a missing_text - co napisać, gdy nie ma.
+    Po co: pewne fakty (pliki, treść pliku zależności, linie i długości funkcji, hasło wprost, układ diagramu) pochodzą
+    z kodu, nie z modelu; klucz has_content mówi, czy sekcja ma co pokazać, a missing_text - co napisać, gdy nie ma.
     """
     widok = {}
     if section.type == "tree":
-        drzewo = _facts.build_tree(project_map, block.rows)
+        drzewo = _facts.build_tree(facts.project_map, block.rows)
         widok = {"tree": drzewo, "has_content": drzewo["file_count"] > 0}
     if section.type == "code" and section.source == "scanner":
-        tekst = _facts.dependency_text(project_map)
+        tekst = _facts.dependency_text(facts.project_map)
         widok = {"code_text": tekst, "has_content": bool(tekst), "missing_text": _MISSING_TEXTS["dependencies"]}
     if section.type == "table" and section.source == "code":
-        wiersze = _risky_view(section, block, project_map, config_items, long_unit_lines)
+        wiersze = _risky_view(section, block, facts)
         brak = (
-            f"Nie znaleziono ryzykownych miejsc: żadna jednostka kodu nie przekracza {long_unit_lines} linii, "
+            f"Nie znaleziono ryzykownych miejsc: żadna jednostka kodu nie przekracza {facts.long_unit_lines} linii, "
             "a w metryczce nie ma haseł wpisanych wprost."
         )
         widok = {"rows": wiersze, "has_content": bool(wiersze), "missing_text": brak}
+    if section.type == "flow":
+        widok = {"flow": _flow_view(facts), "has_content": bool(facts.flow.nodes)}
     return widok
 
 
 def _section_view(
     section: _template.TemplateSection,
     block: _content.GuideBlock,
-    project_map: _schemas.ProjectMap,
-    config_items: list[_content.ConfigItem],
-    long_unit_lines: int,
+    facts: _Facts,
 ) -> dict | None:
     """Zwraca dane sekcji dla szablonu HTML (id, tytuł, typ, stan, blok i dane z faktów) albo None, gdy sekcję pominąć.
 
@@ -407,12 +446,13 @@ def _section_view(
         "rows": _table_rows(block.rows, section.columns, -1),
         "config": None,
         "tree": None,
+        "flow": None,
         "code_text": block.code,
         "missing_text": _MISSING_TEXTS.get(section.type, _MISSING_TEXT),
     }
     if section.type == "config":
         widok["config"] = _config_view(block)
-    fakty = _fact_view(section, block, project_map, config_items, long_unit_lines)
+    fakty = _fact_view(section, block, facts)
     czy_tresc = True
     if fakty:
         czy_tresc = fakty.pop("has_content")
@@ -432,14 +472,12 @@ def _tab_view(
     tab: _template.TemplateTab,
     blocks: dict[str, _content.GuideBlock],
     project_name: str,
-    project_map: _schemas.ProjectMap,
-    long_unit_lines: int,
+    facts: _Facts,
 ) -> dict:
     """Zwraca dane zakładki dla szablonu HTML: id, nagłówek, akapity lead i widoki sekcji.
 
     Po co: nagłówek opisu robota („nazwa: jedno zdanie”) i lead liczone w Pythonie, szablon tylko wyświetla.
     """
-    wpisy_konfiguracji = _all_config_items(blocks)
     naglowek = tab.title
     lead = []
     if tab.lead:
@@ -455,7 +493,7 @@ def _tab_view(
     widoki = []
     for sekcja in sekcje:
         blok = blocks.get(sekcja.id, _content.GuideBlock(section_id=sekcja.id))
-        widok = _section_view(sekcja, blok, project_map, wpisy_konfiguracji, long_unit_lines)
+        widok = _section_view(sekcja, blok, facts)
         if widok is not None:
             widoki.append(widok)
     widok_zakladki = {"id": tab.id, "heading": naglowek, "lead": lead, "sections": widoki}
@@ -486,19 +524,28 @@ def render_guide(
     templates_dir: str,
     generated_at: str,
     long_unit_lines: int,
+    flow_config: _config.FlowConfig,
 ) -> str:
     """Zwraca kompletny HTML przewodnika z CSS i JS wstawionymi do środka pliku.
 
     Po co: jedna funkcja zamienia treść na plik guide.html - wołający tylko zapisuje wynik. long_unit_lines to próg
-    z config.yaml (analysis.long_unit_lines) dla tabeli „Ryzykowne miejsca”.
+    z config.yaml (analysis.long_unit_lines) dla tabeli „Ryzykowne miejsca”, flow_config - sekcja flow (sprawdzenie
+    diagramu przed narysowaniem).
     """
     szablon = _template.sections_for_technology(template, project_map.technology)
     bloki = _blocks_by_section(content)
+    fakty = _Facts(
+        project_map=project_map,
+        config_items=_all_config_items(bloki),
+        flow=content.flow,
+        flow_config=flow_config,
+        long_unit_lines=long_unit_lines,
+    )
     zakladki = []
     menu = []
     karty = []
     for zakladka in szablon.tabs:
-        zakladki.append(_tab_view(zakladka, bloki, content.project_name, project_map, long_unit_lines))
+        zakladki.append(_tab_view(zakladka, bloki, content.project_name, fakty))
         menu.append({"id": zakladka.id, "title": zakladka.title})
         karty.append({"id": zakladka.id, "label": zakladka.card_label, "title": zakladka.title, "text": zakladka.card_text})
     with open(os.path.join(templates_dir, "guide.css"), encoding="utf-8") as plik:
@@ -525,25 +572,44 @@ def render_guide(
 # --- Test ręczny ---
 
 if __name__ == "__main__":
+    import json
     import re
     import sys
 
-    import dev_agents.config as _config
     import dev_agents.scanner as _scanner
 
-    def _example_flow() -> _content.FlowGraph:
-        """Składa mały diagram robota 02 - tylko po to, by ścieżki procesu miały numery klocków (rysowanie w kroku 36).
+    _MOCKUP_KINDS = {"term": "start", "step": "step", "sys": "system", "dec": "decision"}
 
-        Po co: odnośniki ścieżek do klocków liczone z prawdziwego obiektu FlowGraph.
+    def _example_flow() -> _content.FlowGraph:
+        """Składa mały diagram robota 02: ścieżki procesu mają numery klocków, a diagram opisy, funkcje i dane.
+
+        Po co: diagram domyślnego testu; start i koniec bez modułu (podpowiedź bez pustego „Moduł i funkcja”), klocek
+        wywnioskowany (oznaczenie w podpowiedzi) i opis z tekstem `</script>` (JSON w stronie musi zostać bezpieczny).
         """
         diagram = _content.FlowGraph(
             nodes=[
                 _content.FlowNode(id="start", kind="start", label="Start run.bat"),
-                _content.FlowNode(id="pliki", kind="step", label="Lista plików CSV", module="przetwarzanie.py"),
-                _content.FlowNode(id="naglowek", kind="decision", label="Nagłówek poprawny?"),
-                _content.FlowNode(id="wiersze", kind="step", label="Sprawdzenie wierszy i rabaty", module="przetwarzanie.py"),
-                _content.FlowNode(id="odrzut", kind="step", label="Plik do dane/odrzucone", module="przetwarzanie.py"),
-                _content.FlowNode(id="wyniki", kind="step", label="Zapis wyników JSON i CSV", module="przetwarzanie.py"),
+                _content.FlowNode(
+                    id="pliki",
+                    kind="step",
+                    label="Lista plików CSV",
+                    description="Robot bierze pliki zamówień z katalogu wejściowego. Test: </script><b>x</b> ma zostać tekstem.",
+                    module="przetwarzanie.py",
+                    functions=["run:52"],
+                    reads=["dane/wejscie/*.csv"],
+                ),
+                _content.FlowNode(id="naglowek", kind="decision", label="Nagłówek poprawny?", description="Porównanie z oczekiwanym nagłówkiem."),
+                _content.FlowNode(
+                    id="wiersze",
+                    kind="step",
+                    label="Sprawdzenie wierszy i rabaty",
+                    module="przetwarzanie.py",
+                    functions=["run:110", "run:180"],
+                    reads=["wiersze pliku"],
+                    writes=["zamówienia po przeliczeniu"],
+                ),
+                _content.FlowNode(id="odrzut", kind="step", label="Plik do dane/odrzucone", module="przetwarzanie.py", certain=False),
+                _content.FlowNode(id="wyniki", kind="step", label="Zapis wyników JSON i CSV", module="przetwarzanie.py", writes=["dane/wyjscie/wyniki_*.json"]),
                 _content.FlowNode(id="koniec", kind="end", label="Koniec"),
             ],
             edges=[
@@ -556,6 +622,124 @@ if __name__ == "__main__":
                 _content.FlowEdge(source="wyniki", target="koniec"),
             ],
         )
+        return diagram
+
+    def _mockup_data(
+        repo_dir: str,
+    ) -> dict | None:
+        """Zwraca dane diagramu z makiety (dev_log/guide_mockup.html, blok flow-data) albo None, gdy pliku makiety nie ma.
+
+        Po co: wariant „makieta” rysuje dokładnie ten diagram, który zaakceptowano w makiecie.
+        """
+        sciezka = os.path.join(repo_dir, "dev_log", "guide_mockup.html")
+        dane = None
+        if os.path.isfile(sciezka):
+            with open(sciezka, encoding="utf-8") as plik:
+                tekst = plik.read()
+            trafienie = re.search(r'id="flow-data">(.*?)</script>', tekst, re.S)
+            dane = json.loads(trafienie.group(1))
+        return dane
+
+    def _flow_from_mockup(
+        data: dict,
+    ) -> _content.FlowGraph:
+        """Zamienia dane diagramu z makiety na FlowGraph: pierwszy term to start, ostatni to koniec, join to zwykła strzałka.
+
+        Po co: wejście dla renderera i dla porównania z danymi z makiety.
+        """
+        klocki = []
+        for numer, wezel in enumerate(data["nodes"]):
+            rodzaj = _MOCKUP_KINDS[wezel["kind"]]
+            if wezel["kind"] == "term" and numer > 0:
+                rodzaj = "end"
+            funkcje = []
+            if wezel["func"]:
+                funkcje = wezel["func"].split(", ")
+            klocki.append(
+                _content.FlowNode(
+                    id=wezel["id"],
+                    kind=rodzaj,
+                    label=wezel["label"],
+                    description=wezel["desc"],
+                    module=wezel["module"],
+                    functions=funkcje,
+                    reads=wezel["reads"],
+                    writes=wezel["writes"],
+                )
+            )
+        strzalki = []
+        for krawedz in data["edges"]:
+            rodzaj = krawedz.get("kind", "normal")
+            if rodzaj == "join":
+                rodzaj = "normal"
+            strzalki.append(_content.FlowEdge(source=krawedz["from"], target=krawedz["to"], label=krawedz.get("label", ""), kind=rodzaj))
+        diagram = _content.FlowGraph(nodes=klocki, edges=strzalki)
+        return diagram
+
+    def _mockup_matches(
+        flow: _content.FlowGraph,
+        data: dict,
+    ) -> bool:
+        """Zwraca True, gdy dane dla skryptu rysującego (flow_view_data) są takie jak w makiecie: klocki, strzałki i układ.
+
+        Po co: dowód, że zamiana FlowGraph na format skryptu niczego nie gubi.
+        """
+        wynik = _flow.flow_view_data(flow)
+        zgodne = len(wynik["nodes"]) == len(data["nodes"]) and wynik["layout"] == data["layout"]
+        for klocek, wzor in zip(wynik["nodes"], data["nodes"]):
+            for pole in ["id", "kind", "label", "desc", "module", "func", "reads", "writes"]:
+                if klocek[pole] != wzor[pole]:
+                    zgodne = False
+        strzalki = []
+        for krawedz in wynik["edges"]:
+            strzalki.append((krawedz["from"], krawedz["to"], krawedz["label"], krawedz["kind"]))
+        wzorzec = []
+        for krawedz in data["edges"]:
+            rodzaj = krawedz.get("kind", "normal")
+            if rodzaj == "join":
+                rodzaj = "normal"
+            wzorzec.append((krawedz["from"], krawedz["to"], krawedz.get("label", ""), rodzaj))
+        wynik_porownania = zgodne and strzalki == wzorzec
+        return wynik_porownania
+
+    def _big_flow() -> _content.FlowGraph:
+        """Składa sztuczny diagram z 28 klocków: trzy decyzje, dwa objazdy, pętla po plikach i długi ogon po pętli.
+
+        Po co: wariant „duzy” - czytelność diagramu 25+ klocków na laptopie i w wąskim oknie. Klocki w kolejności
+        przepływu (objazd zaraz po swojej decyzji), jak powinien je podać model.
+        """
+        dane = [
+            ("n0", "start", "Start"), ("n1", "step", "Wczytanie konfiguracji"), ("n2", "system", "Logowanie do aplikacji"),
+            ("n3", "step", "Pobranie listy plików"), ("n4", "decision", "Jest kolejny plik?"), ("n5", "step", "Odczyt pliku"),
+            ("n6", "step", "Sprawdzenie nagłówka"), ("n7", "decision", "Nagłówek poprawny?"), ("n8", "step", "Przeniesienie do odrzuconych"),
+            ("n9", "step", "Sprawdzenie wierszy"), ("n10", "step", "Naliczenie rabatów"), ("n11", "decision", "Rabat w limicie?"),
+            ("n12", "step", "Korekta rabatu"), ("n13", "system", "Wysyłka do API"), ("n14", "step", "Zapis wyniku JSON"),
+            ("n15", "step", "Zapis wyniku CSV"), ("n16", "step", "Przeniesienie do archiwum"), ("n17", "step", "Wpis do logu"),
+            ("n18", "step", "Aktualizacja liczników"), ("n19", "step", "Podsumowanie przebiegu"), ("n20", "step", "Generowanie raportu Excel"),
+            ("n21", "system", "Wysyłka raportu e-mailem"), ("n22", "step", "Czyszczenie plików tymczasowych"), ("n23", "step", "Zamknięcie logów"),
+            ("n24", "system", "Wylogowanie z aplikacji"), ("n25", "step", "Zapis statusu przebiegu"), ("n26", "step", "Sprawdzenie kodu wyjścia"),
+            ("n27", "end", "Koniec"),
+        ]
+        klocki = []
+        for identyfikator, rodzaj, napis in dane:
+            modul = "przetwarzanie.py"
+            if rodzaj in ("start", "end"):
+                modul = ""
+            klocki.append(_content.FlowNode(id=identyfikator, kind=rodzaj, label=napis, module=modul, description=f"Krok testowy: {napis}."))
+        tabela = [
+            ("n0", "n1", "", "normal"), ("n1", "n2", "", "normal"), ("n2", "n3", "", "normal"), ("n3", "n4", "", "normal"),
+            ("n4", "n5", "tak", "branch"), ("n4", "n19", "nie", "branch"), ("n5", "n6", "", "normal"), ("n6", "n7", "", "normal"),
+            ("n7", "n9", "tak", "branch"), ("n7", "n8", "nie", "branch"), ("n8", "n18", "", "normal"), ("n9", "n10", "", "normal"),
+            ("n10", "n11", "", "normal"), ("n11", "n13", "tak", "branch"), ("n11", "n12", "nie", "branch"), ("n12", "n13", "", "normal"),
+            ("n13", "n14", "", "normal"), ("n14", "n15", "", "normal"), ("n15", "n16", "", "normal"), ("n16", "n17", "", "normal"),
+            ("n17", "n18", "", "normal"), ("n18", "n4", "następny plik", "loop"), ("n19", "n20", "", "normal"), ("n20", "n21", "", "normal"),
+            ("n21", "n22", "", "normal"), ("n22", "n23", "", "normal"), ("n23", "n24", "", "normal"), ("n24", "n25", "", "normal"),
+            ("n25", "n26", "", "normal"), ("n26", "n27", "", "normal"),
+        ]
+        strzalki = []
+        for zrodlo, cel, etykieta, rodzaj in tabela:
+            strzalki.append(_content.FlowEdge(source=zrodlo, target=cel, label=etykieta, kind=rodzaj))
+        diagram = _content.FlowGraph(nodes=klocki, edges=strzalki)
         return diagram
 
     def _example_config_code() -> list[_content.ConfigItem]:
@@ -772,15 +956,16 @@ if __name__ == "__main__":
     def _example_content(
         config_items: list[_content.ConfigItem],
         config_sentence: str,
+        flow: _content.FlowGraph,
     ) -> _content.GuideContent:
-        """Składa przykładową treść robota 02 z każdym gotowym typem bloku i podaną metryczką.
+        """Składa przykładową treść robota 02 z każdym gotowym typem bloku, podaną metryczką i diagramem.
 
         Po co: podgląd przewodnika bez modelu; sekcje bez treści pokazują „nie wynika z kodu” albo znikają.
         """
         zakladki = [_example_overview(config_items, config_sentence)]
         for zakladka in _example_other_tabs():
             zakladki.append(zakladka)
-        tresc = _content.GuideContent(project_name="02_robot_bez_frameworku", flow=_example_flow(), tabs=zakladki)
+        tresc = _content.GuideContent(project_name="02_robot_bez_frameworku", flow=flow, tabs=zakladki)
         return tresc
 
     def _example_project_map(
@@ -815,16 +1000,38 @@ if __name__ == "__main__":
             fragment = html[poczatek:koniec]
         return fragment
 
+    def _flow_json(
+        html: str,
+    ) -> dict | None:
+        """Zwraca dane diagramu wstawione do strony (blok flow-data) jako słownik albo None, gdy bloku nie ma.
+
+        Po co: liczniki testu liczą klocki z danych, które dostanie skrypt rysujący.
+        """
+        trafienie = re.search(r'id="flow-data">(.*?)</script>', html, re.S)
+        dane = None
+        if trafienie:
+            dane = json.loads(trafienie.group(1))
+        return dane
+
     def _summary(
         html: str,
     ) -> dict:
         """Zwraca liczby do szybkiego sprawdzenia pliku: zakładki, sekcje h2, odwołania do internetu, bloki kodu,
         oznaczenia „wywnioskowane” w tabelach, odnośniki do klocków, znaczniki kolejnych kroków, escapowanie <script>,
         liczby z metryczki (kafelki, grupy i wiersze tabeli, hasła wprost, zdanie o braku konfiguracji) oraz
-        liczby z drzewa, zależności i ryzykownych miejsc (wiersze, znaczniki, zdania o braku).
+        liczby z drzewa, zależności i ryzykownych miejsc (wiersze, znaczniki, zdania o braku) oraz z diagramu (rysunek,
+        klocki w danych, klocki wywnioskowane, bezpieczeństwo JSON, lista problemów albo zdanie o braku klocków).
 
         Po co: szybkie sprawdzenie pliku bez otwierania przeglądarki.
         """
+        dane_diagramu = _flow_json(html)
+        klocki = 0
+        wywnioskowane = 0
+        if dane_diagramu:
+            klocki = len(dane_diagramu["nodes"])
+            for klocek in dane_diagramu["nodes"]:
+                if klocek["unc"]:
+                    wywnioskowane = wywnioskowane + 1
         ryzykowne = _section_html(html, "ryzykowne_miejsca")
         hasla_ryzykowne = len(re.findall(r'<td data-l="Rodzaj"><span class="kv r">hasło w (?:pliku|kodzie)</span>', ryzykowne))
         hasla_razem = len(re.findall(r'<span class="kv r">hasło w (?:pliku|kodzie)</span>', html))
@@ -850,6 +1057,13 @@ if __name__ == "__main__":
             "ryzykowne: długich jednostek": ryzykowne.count('<span class="kv m">długa jednostka</span>'),
             "ryzykowne: haseł wprost": hasla_ryzykowne,
             "ryzykowne: komentarzy pisarza": ryzykowne.count("cały proces w jednej funkcji") + ryzykowne.count("wpisany w kod - zmiana"),
+            "diagram: rysunków SVG": html.count('<svg id="flow"'),
+            "diagram: klocków w danych": klocki,
+            "diagram: klocków wywnioskowanych": wywnioskowane,
+            "diagram: legenda (powrót pętli)": "powrót pętli" in html,
+            "diagram: JSON bez surowego </script> z opisu": "</script><b>" not in html,
+            "diagram: lista problemów zamiast rysunku": "nie został narysowany" in html,
+            "diagram: zdanie o braku klocków": "Brak diagramu przepływu" in html,
         }
         return wynik
 
@@ -858,15 +1072,24 @@ if __name__ == "__main__":
         app_config: _config.AppConfig,
         config_items: list[_content.ConfigItem],
         config_sentence: str,
+        flow: _content.FlowGraph,
     ) -> str:
-        """Renderuje przykładowy przewodnik robota 02 z podaną metryczką i zwraca HTML.
+        """Renderuje przykładowy przewodnik robota 02 z podaną metryczką i diagramem i zwraca HTML.
 
-        Po co: ten sam szablon, mapa i treść dla wszystkich wariantów metryczki w teście.
+        Po co: ten sam szablon, mapa i treść dla wszystkich wariantów metryczki i diagramu w teście.
         """
         szablon = _template.load_template(app_config.paths.guide_template)
         mapa = _example_project_map(repo_dir, app_config)
-        tresc = _example_content(config_items, config_sentence)
-        html = render_guide(tresc, szablon, mapa, os.path.dirname(app_config.paths.guide_template), "2026-11-26 20:00 (test)", app_config.analysis.long_unit_lines)
+        tresc = _example_content(config_items, config_sentence, flow)
+        html = render_guide(
+            tresc,
+            szablon,
+            mapa,
+            os.path.dirname(app_config.paths.guide_template),
+            "2026-11-26 20:00 (test)",
+            app_config.analysis.long_unit_lines,
+            app_config.flow,
+        )
         return html
 
     def _render_robot_in_memory(
@@ -886,7 +1109,7 @@ if __name__ == "__main__":
             mapa = _scanner.build_project_map(katalog, app_config.scan)
             szablon = _template.load_template(app_config.paths.guide_template)
             tresc = _content.GuideContent(project_name=robot_name, flow=_content.FlowGraph(nodes=[], edges=[]), tabs=[])
-            html = render_guide(tresc, szablon, mapa, os.path.dirname(app_config.paths.guide_template), "test", long_unit_lines)
+            html = render_guide(tresc, szablon, mapa, os.path.dirname(app_config.paths.guide_template), "test", long_unit_lines, app_config.flow)
         return html
 
     def _print_robot_counts(
@@ -910,34 +1133,83 @@ if __name__ == "__main__":
             f"ryzykowne - wierszy {wynik['ryzykowne: wierszy']}, długich jednostek {wynik['ryzykowne: długich jednostek']}"
         )
 
+    def _variant(
+        repo_dir: str,
+        name: str,
+    ) -> tuple[list[_content.ConfigItem], str, _content.FlowGraph, str]:
+        """Zwraca (wpisy metryczki, zdanie metryczki, diagram, komunikat) dla wariantu testu z argumentu.
+
+        Po co: wariant "" - stałe w kodzie i diagram robota 02; "plik" - przykładowy config.yml; "makieta" - diagram z
+        makiety wczytany z dev_log/guide_mockup.html (brak pliku - diagram domyślny z komunikatem); "duzy" - sztuczny
+        diagram z 28 klocków.
+        """
+        wpisy = _example_config_code()
+        zdanie = ""
+        diagram = _example_flow()
+        komunikat = ""
+        if name == "plik":
+            wpisy = _example_config_file()
+            zdanie = "wczytywany w main.py:51 przez get_config(CONFIG_FILE) · ścieżki względne liczone od katalogu projektu"
+        if name == "duzy":
+            diagram = _big_flow()
+        if name == "makieta":
+            dane = _mockup_data(repo_dir)
+            if dane is None:
+                komunikat = "Wariant makieta: brak dev_log/guide_mockup.html - pominięto, diagram domyślny"
+            else:
+                diagram = _flow_from_mockup(dane)
+                komunikat = f"Dane diagramu zgodne z makietą (klocki, strzałki, układ): {_mockup_matches(diagram, dane)}"
+        wynik = (wpisy, zdanie, diagram, komunikat)
+        return wynik
+
+    def _print_flow_cases(
+        repo_dir: str,
+        app_config: _config.AppConfig,
+    ) -> None:
+        """Wypisuje liczby diagramu dla zepsutego diagramu i dla diagramu bez klocków (oba renderowane w pamięci).
+
+        Po co: zepsuty diagram ma dać listę problemów zamiast rysunku, pusty - zdanie o braku diagramu.
+        """
+        zepsuty = _example_flow()
+        zepsuty.edges.pop()
+        pusty = _content.FlowGraph(nodes=[], edges=[])
+        for tytul, diagram in [("zepsuty (klocek bez wyjścia)", zepsuty), ("bez klocków", pusty)]:
+            wynik = _summary(_render_example(repo_dir, app_config, [], "", diagram))
+            print(
+                f"Diagram {tytul} (w pamięci): rysunków SVG {wynik['diagram: rysunków SVG']}, klocków w danych {wynik['diagram: klocków w danych']}, "
+                f"lista problemów: {wynik['diagram: lista problemów zamiast rysunku']}, zdanie o braku: {wynik['diagram: zdanie o braku klocków']}"
+            )
+
     def manual_test():
         """Renderuje przykładowy przewodnik robota 02 do guide_test.html w katalogu głównym repo i wypisuje podsumowanie.
 
-        Po co: widoczny przewodnik do obejrzenia w przeglądarce; wariant metryczki z argumentu: brak = stałe w kodzie,
-        „plik” = przykładowy config.yml; dodatkowo sprawdzenie w pamięci metryczki bez wpisów oraz przewodników
+        Po co: widoczny przewodnik do obejrzenia w przeglądarce; wariant z argumentu (plik, makieta, duzy - patrz _variant);
+        dodatkowo sprawdzenie w pamięci metryczki bez wpisów, zepsutego diagramu, diagramu bez klocków oraz przewodników
         robotów 01 i 02 (bez zapisu plików, bez treści od pisarza).
         """
         repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         app_config = _config.load_config(os.path.join(repo_dir, "config.yaml"))
-        wpisy = _example_config_code()
-        zdanie = ""
-        if len(sys.argv) > 1 and sys.argv[1] == "plik":
-            wpisy = _example_config_file()
-            zdanie = "wczytywany w main.py:51 przez get_config(CONFIG_FILE) · ścieżki względne liczone od katalogu projektu"
-        html = _render_example(repo_dir, app_config, wpisy, zdanie)
+        wariant = ""
+        if len(sys.argv) > 1:
+            wariant = sys.argv[1]
+        wpisy, zdanie, diagram, komunikat = _variant(repo_dir, wariant)
+        html = _render_example(repo_dir, app_config, wpisy, zdanie, diagram)
         sciezka = os.path.join(repo_dir, "guide_test.html")
         with open(sciezka, "w", encoding="utf-8") as plik:
             plik.write(html)
         print(f"Zapisano: {sciezka} ({len(html)} znaków)")
+        if komunikat:
+            print(komunikat)
         for nazwa, wartosc in _summary(html).items():
             print(f"  {nazwa}: {wartosc}")
-        pusta = _summary(_render_example(repo_dir, app_config, [], ""))
+        pusta = _summary(_render_example(repo_dir, app_config, [], "", diagram))
         print(f"Metryczka bez wpisów (w pamięci): zdanie o braku konfiguracji: {pusta['metryczka: zdanie o braku konfiguracji']}, kafelków: {pusta['metryczka: kafelków']}")
+        _print_flow_cases(repo_dir, app_config)
         print("Roboty testowe w pamięci (bez zapisu plików):")
         limit = app_config.analysis.long_unit_lines
         _print_robot_counts(repo_dir, app_config, "02_robot_bez_frameworku", limit)
         _print_robot_counts(repo_dir, app_config, "01_rpa_challange_roboforge", limit)
         _print_robot_counts(repo_dir, app_config, "01_rpa_challange_roboforge", 15)
-        print("Otwórz plik w przeglądarce: metryczka, drzewo (najedź na plik), zależności, ryzykowne miejsca, tabele, kroki z Kopiuj, pojęcia, ścieżki, przepisy.")
+        print("Otwórz plik w przeglądarce: diagram przepływu (najedź na klocek, kliknij), metryczka, drzewo, zależności, ryzykowne miejsca, tabele, kroki z Kopiuj, pojęcia, ścieżki, przepisy.")
 
     manual_test()

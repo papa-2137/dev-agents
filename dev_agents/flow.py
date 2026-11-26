@@ -8,17 +8,19 @@ Co robi:
     - layout_flow() zwraca {id klocka: [wiersz, kolumna]} w formacie czytanym przez skrypt rysujący z makiety:
       wiersze - porządek od startu w dół liczony bez strzałek pętli (przy remisie kolejność klocków od agenta),
       kolumny - 0 ścieżka główna, 1 krótki objazd z decyzji (klocek, do którego prowadzą tylko gałęzie i który
-      wraca do ścieżki głównej); pętle rysuje skrypt jako strzałki powrotne.
+      wraca do ścieżki głównej); pętle rysuje skrypt jako strzałki powrotne,
+    - flow_view_data() zwraca słownik {nodes, edges, layout} w formacie skryptu z makiety (guide.js): rodzaje
+      term/step/sys/dec, strzałki from/to, funkcje jako jeden napis, flaga unc dla klocka wywnioskowanego.
 
 Dlaczego istnieje: model zwraca tylko graf (klocki i strzałki). Kod gwarantuje, że graf jest poprawny, a układ
 powtarzalny - ten sam diagram wygląda tak samo przy każdym przebiegu.
 
-Rola: moduł rdzenia towaru, używany przez renderer (krok 37) i agenta diagramu (krok 51).
+Rola: moduł rdzenia towaru, używany przez renderer (kroki 36-37) i agenta diagramu (krok 51).
 
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.flow
-        diagram z makiety (problemy, ostrzeżenia, układ porównany z makietą), przykładowy diagram robota 02
-        z guide_content, zepsute kopie i diagram ponad progiem liczby klocków
+        diagram z makiety (problemy, ostrzeżenia, układ porównany z makietą, dane dla skryptu rysującego),
+        przykładowy diagram robota 02 z guide_content, zepsute kopie i diagram ponad progiem liczby klocków
 """
 
 import dev_agents.config as _config
@@ -244,6 +246,52 @@ def layout_flow(
     return uklad
 
 
+# --- Dane dla skryptu rysującego ---
+
+_VIEW_KINDS = {"start": "term", "end": "term", "step": "step", "system": "sys", "decision": "dec"}
+
+
+def _view_node(
+    node: _content.FlowNode,
+) -> dict:
+    """Zwraca klocek w formacie skryptu z makiety: rodzaj term/step/sys/dec, func jako jeden napis, flaga unc.
+
+    Po co: skrypt rysujący czyta te pola wprost; funkcje łączone przecinkiem, jak w makiecie.
+    """
+    wezel = {
+        "id": node.id,
+        "kind": _VIEW_KINDS[node.kind],
+        "label": node.label,
+        "desc": node.description,
+        "module": node.module,
+        "func": ", ".join(node.functions),
+        "reads": node.reads,
+        "writes": node.writes,
+        "unc": not node.certain,
+    }
+    return wezel
+
+
+def flow_view_data(
+    flow: _content.FlowGraph,
+) -> dict:
+    """Zwraca {nodes, edges, layout} dla skryptu rysującego diagram (guide.js): klocki, strzałki from/to i układ.
+
+    Po co: renderer wstawia ten słownik do strony jako JSON; skrypt rysuje z niego diagram i (krok 37) wiersze
+    „Krok po kroku”, więc oba powstają z tych samych danych.
+
+    Uwaga: wołać dla diagramu bez problemów z validate_flow - przy problemach układ może być niepełny.
+    """
+    klocki = []
+    for klocek in flow.nodes:
+        klocki.append(_view_node(klocek))
+    strzalki = []
+    for strzalka in flow.edges:
+        strzalki.append({"from": strzalka.source, "to": strzalka.target, "label": strzalka.label, "kind": strzalka.kind})
+    dane = {"nodes": klocki, "edges": strzalki, "layout": layout_flow(flow)}
+    return dane
+
+
 # --- Test ręczny ---
 
 if __name__ == "__main__":
@@ -365,10 +413,30 @@ if __name__ == "__main__":
             wiersz, kolumna = layout[klocek.id]
             print(f"    {klocek.id:<4} wiersz {wiersz:>2}  kolumna {kolumna}  {klocek.label}")
 
+    def _print_view_data(
+        flow: _content.FlowGraph,
+    ) -> None:
+        """Wypisuje liczby i rodzaje z danych dla skryptu rysującego oraz id klocków z flagą unc.
+
+        Po co: sprawdzenie formatu (term/step/sys/dec, from/to) bez uruchamiania przeglądarki.
+        """
+        dane = flow_view_data(flow)
+        rodzaje = []
+        for klocek in dane["nodes"]:
+            rodzaje.append(klocek["kind"])
+        wywnioskowane = []
+        for klocek in dane["nodes"]:
+            if klocek["unc"]:
+                wywnioskowane.append(klocek["id"])
+        pierwsza = dane["edges"][0]
+        print(f"  Dane dla skryptu: klocków {len(dane['nodes'])}, strzałek {len(dane['edges'])}, układ {len(dane['layout'])} wpisów")
+        print(f"    rodzaje: {' '.join(rodzaje)}")
+        print(f"    pierwsza strzałka: {pierwsza['from']} -> {pierwsza['to']}, wywnioskowane klocki: {wywnioskowane}")
+
     def manual_test():
         """Sprawdza diagram z makiety, przykład robota 02, zepsute kopie i diagram ponad progiem.
 
-        Po co: wszystkie problemy i ostrzeżenia oraz układ w jednym przebiegu.
+        Po co: wszystkie problemy i ostrzeżenia, układ i dane dla skryptu rysującego w jednym przebiegu.
         """
         repo_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
         flow_config = _config.load_config(os.path.join(repo_dir, "config.yaml")).flow
@@ -378,12 +446,15 @@ if __name__ == "__main__":
         _print_check("Diagram z makiety", problemy, ostrzezenia)
         uklad = layout_flow(diagram)
         _print_layout(diagram, uklad)
-        print(f"  Układ zgodny z makietą: {uklad == uklad_makiety}\n")
+        print(f"  Układ zgodny z makietą: {uklad == uklad_makiety}")
+        _print_view_data(diagram)
+        print()
 
         przyklad = _robot_02_flow()
         problemy, ostrzezenia = validate_flow(przyklad, flow_config)
         _print_check("Przykładowy diagram robota 02 (guide_content)", problemy, ostrzezenia)
         _print_layout(przyklad, layout_flow(przyklad))
+        _print_view_data(przyklad)
         print()
 
         for tytul, zepsuty in _broken_flows(diagram):

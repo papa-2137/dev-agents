@@ -36,13 +36,14 @@
  document.querySelectorAll('.cb').forEach(box=>{const b=document.createElement('button');b.className='cp';b.type='button';b.textContent='Kopiuj';
   b.addEventListener('click',async()=>{try{await navigator.clipboard.writeText(box.querySelector('pre').textContent);b.textContent='Skopiowano'}catch(e){b.textContent='Zaznacz i skopiuj'}setTimeout(()=>{b.textContent='Kopiuj'},1600)});box.appendChild(b)});
  /* ---------- dane przepływu ---------- */
- /* dane diagramu wstawia renderer (krok 36); bez nich diagram i wiersze „krok po kroku” się nie rysują */
+ /* dane diagramu wstawia renderer (krok 36: diagram, krok 37: wiersze „krok po kroku”); bez nich nic się nie rysuje */
  const flowEl=document.getElementById('flow-data');
  const flow=flowEl?JSON.parse(flowEl.textContent):{nodes:[],edges:[],layout:{}};
  const byId={};flow.nodes.forEach((n,i)=>{n.num=i+1;byId[n.id]=n});
  const kindName={term:'start / koniec',step:'czynność robota',sys:'kontakt z systemem zewnętrznym',dec:'decyzja'};
  const showFlow=g=>{const n=byId[g.dataset.go];if(!n)return;
-  tip.innerHTML='<b>'+n.num+'. '+esc(n.label)+'</b><p class="tk">'+esc(kindName[n.kind])+'</p><p>'+esc(n.desc)+'</p><p><span>Moduł i funkcja</span><code>'+esc(n.module)+'</code> · <code>'+esc(n.func)+'</code></p>'+(n.reads.length?'<p><span>Czyta</span>'+n.reads.map(esc).join(', ')+'</p>':'')+(n.writes.length?'<p><span>Zapisuje / zwraca</span>'+n.writes.map(esc).join(', ')+'</p>':'')+'<p class="tk">Kliknij, aby przejść do szczegółów kroku.</p>';place(g)};
+  const mf=[n.module,n.func].filter(Boolean).map(t=>'<code>'+esc(t)+'</code>').join(' · ');
+  tip.innerHTML='<b>'+n.num+'. '+esc(n.label)+(n.unc?' <span class="unc">wywnioskowane</span>':'')+'</b><p class="tk">'+esc(kindName[n.kind])+'</p>'+(n.desc?'<p>'+esc(n.desc)+'</p>':'')+(mf?'<p><span>Moduł i funkcja</span>'+mf+'</p>':'')+(n.reads.length?'<p><span>Czyta</span>'+n.reads.map(esc).join(', ')+'</p>':'')+(n.writes.length?'<p><span>Zapisuje / zwraca</span>'+n.writes.map(esc).join(', ')+'</p>':'')+'<p class="tk">Kliknij, aby przejść do szczegółów kroku.</p>';place(g)};
  /* ---------- diagram przepływu (SVG) ---------- */
  const svg=document.getElementById('flow')||document.createElementNS('http://www.w3.org/2000/svg','svg');
  const defs='<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#111"/></marker><marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e4002b"/></marker></defs>';
