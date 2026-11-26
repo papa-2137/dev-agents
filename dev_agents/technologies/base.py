@@ -7,7 +7,8 @@ Co robi: definiuje klasę Technology - zestaw metod, przez które rdzeń towaru 
         find_entrypoints - pliki, od których startuje projekt,
     opcjonalne (w klasie bazowej domyślna odpowiedź "brak danych"):
         units            - jednostki pliku (funkcje, klasy, workflowy...) z zakresami linii,
-        references       - pliki projektu i pakiety, do których plik się odwołuje.
+        references       - pliki projektu i pakiety, do których plik się odwołuje,
+        knowledge_file   - plik wiedzy o technologii dla agentów (względnie do knowledge_base/knowledge/).
 
 Dlaczego istnieje: rdzeń towaru nie zna żadnego języka ani frameworku (AGENTS.md, reguła 7). Kod podaje tylko
 proste, pewne fakty - numery linii, powiązania między plikami i punkty startu - a rozumienie kodu (struktura,
@@ -21,6 +22,7 @@ Jak dodać technologię:
     1. Utwórz plik dev_agents/technologies/<nazwa>.py z podklasą Technology.
     2. Ustaw atrybut `name` i zaimplementuj metody wymagane; opcjonalne - gdy da się je napisać prosto.
     3. Dopisz technologię do rejestru w dev_agents/technologies/registry.py.
+    4. Napisz plik wiedzy (np. knowledge_base/knowledge/technologies/<nazwa>.md) i zwróć go z knowledge_file().
 
 Umowy wspólne dla wszystkich metod:
     - `root` to ścieżka bezwzględna katalogu analizowanego projektu,
@@ -34,7 +36,7 @@ Rola: kontrakt dla modułów technologii; rdzeń towaru korzysta wyłącznie z j
 
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.technologies.base
-Wypisuje wyniki metod demonstracyjnej podklasy (pliki .demo; units i references z domyślnym zachowaniem),
+Wypisuje wyniki metod demonstracyjnej podklasy (pliki .demo; units, references i knowledge_file z domyślnym zachowaniem),
 a na końcu komunikat NotImplementedError klasy bazowej.
 """
 
@@ -118,6 +120,19 @@ class Technology:
         odwolania = _schemas.References()
         return odwolania
 
+    def knowledge_file(
+        self,
+    ) -> str:
+        """Zwraca nazwę pliku wiedzy o tej technologii, względną do knowledge_base/knowledge/ (np. "technologies/python.md").
+
+        Po co: agenci dostają ten plik zawsze, gdy projekt jest w tej technologii - niezależnie od wyboru
+        plannera; nowa technologia to nowy plik wiedzy i jedna linia w tej metodzie.
+
+        Wynik: domyślnie (technologia bez pliku wiedzy) pusty napis - "brak danych".
+        """
+        nazwa_pliku = ""
+        return nazwa_pliku
+
 
 # --- Test ręczny ---
 
@@ -189,6 +204,7 @@ if __name__ == "__main__":
             "find_entrypoints": technology.find_entrypoints(root, files),
             "units": technology.units(root, "start.demo"),
             "references": technology.references(root, "start.demo"),
+            "knowledge_file": technology.knowledge_file(),
         }
         return wyniki
 

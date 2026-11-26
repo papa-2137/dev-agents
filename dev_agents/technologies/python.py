@@ -4,7 +4,8 @@ Co robi: implementuje kontrakt Technology dla Pythona:
     - detect, is_source - projekt jest pythonowy, gdy ma pliki .py / .pyw,
     - find_entrypoints - pliki z blokiem `if __name__ == "__main__":` oraz main.py / __main__.py,
     - units - funkcje i metody pliku z zakresami linii,
-    - references - pliki projektu importowane przez plik i pakiety spoza projektu.
+    - references - pliki projektu importowane przez plik i pakiety spoza projektu,
+    - knowledge_file - plik wiedzy technologies/python.md (konwencje projektów RPA w Pythonie).
 Wszystko inne (co robi kod, jak płynie logika, co jest ryzykowne) opisują agenci na podstawie pełnego kodu.
 
 Dlaczego istnieje: cała wiedza o Pythonie siedzi w tym module (AGENTS.md, reguła 7); to jedyny moduł towaru,
@@ -18,7 +19,8 @@ Test ręczny (z katalogu głównego repo):
     python -m dev_agents.technologies.python
         jednostki i odwołania plików robotów testowych i plików tymczasowych (ścieżka Windows w zwykłym
         napisie - oczekiwane 0 ostrzeżeń, pakiet z importem względnym, plik z błędem składni), potem
-        rozpoznanie projektu (detect, pliki źródłowe, punkty wejścia)
+        rozpoznanie projektu (detect, pliki źródłowe, punkty wejścia), na końcu plik wiedzy technologii
+        (nazwa z knowledge_file(), czy plik istnieje w bazie wiedzy)
     python -m dev_agents.technologies.python <katalog projektu> <plik względny do katalogu>
         jednostki i odwołania jednego, dowolnego pliku
 """
@@ -29,6 +31,7 @@ import sys
 import warnings
 
 import dev_agents.files as _files
+import dev_agents.knowledge as _knowledge
 import dev_agents.schemas as _schemas
 import dev_agents.technologies.base as _base
 
@@ -256,7 +259,8 @@ class PythonTechnology(_base.Technology):
         pakiety = []
         drzewo = _parse_python(root, path)
         if drzewo is None:
-            return _schemas.References()
+            brak_odwolan = _schemas.References()
+            return brak_odwolan
         for nazwa in _imported_names(drzewo, path):
             plik = _module_file(root, nazwa)
             pakiet = nazwa.split(".")[0]
@@ -267,6 +271,17 @@ class PythonTechnology(_base.Technology):
                 pakiety.append(pakiet)
         odwolania = _schemas.References(files=sorted(pliki), packages=sorted(pakiety))
         return odwolania
+
+    def knowledge_file(
+        self,
+    ) -> str:
+        """Zwraca nazwę pliku wiedzy o Pythonie: technologies/python.md (względnie do knowledge_base/knowledge/).
+
+        Po co: implementacja kontraktu Technology.knowledge_file() - agenci dostają konwencje zespołu
+        dla każdego projektu w Pythonie.
+        """
+        nazwa_pliku = "technologies/python.md"
+        return nazwa_pliku
 
 
 # --- Test ręczny ---
@@ -363,6 +378,32 @@ if __name__ == "__main__":
         ]
         return linie
 
+    def _knowledge_lines(
+        technology: _base.Technology,
+        repo_dir: str,
+    ) -> list[str]:
+        """Zwraca linie o pliku wiedzy technologii: nazwa z knowledge_file(), czy plik istnieje w bazie wiedzy i ile ma znaków.
+
+        Po co: sprawdza, że nazwa z kontraktu wskazuje prawdziwy plik w knowledge_base/knowledge/ (czytany przez
+        knowledge.read_kb_file(), czyli z kontrolą granicy bazy).
+        """
+        nazwa = technology.knowledge_file()
+        tresc = ""
+        try:
+            tresc = _knowledge.read_kb_file(os.path.join(repo_dir, "knowledge_base"), nazwa)
+        except OSError:
+            tresc = ""
+        pierwsza_linia = "(brak)"
+        if tresc:
+            pierwsza_linia = tresc.splitlines()[0]
+        linie = [
+            "=== Plik wiedzy technologii ===",
+            f"  knowledge_file(): {nazwa!r}",
+            f"  plik istnieje i nie jest pusty: {len(tresc) > 0}",
+            f"  pierwsza linia: {pierwsza_linia}",
+        ]
+        return linie
+
     def _print_lines(
         lines: list[str],
     ) -> None:
@@ -408,6 +449,7 @@ if __name__ == "__main__":
                     _print_lines([f"=== Projekt: {tytul} - brak katalogu {root}, pomijam ==="])
                     continue
                 _print_lines(_project_lines(technology, tytul, root))
+            _print_lines(_knowledge_lines(technology, katalog_repo))
         finally:
             shutil.rmtree(temp_dir)
 
