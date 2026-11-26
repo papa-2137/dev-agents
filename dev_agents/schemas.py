@@ -5,9 +5,10 @@ minimalne fakty o pliku źródłowym podawane przez technologię - jednostki z z
 odwołania do innych plików i pakietów (References), razem dla jednego pliku (SourceFile) - oraz mapa
 projektu - wynik skanera: pliki z rolami (FileEntry), jednostki kodu do analizy (CodeUnit), pliki
 przepisane dosłownie (TextFile: zależności, konfiguracja, pliki uruchamiające) i całość (ProjectMap) - także
-z grafem zależności między plikami robota i kolejnością czytania kodu.
-Kolejne schematy (plan, notatki analityków, diagram przepływu, treść przewodnika,
-recenzja) dochodzą w krokach, które ich potrzebują.
+z grafem zależności między plikami robota i kolejnością czytania kodu. Dalej plan - wynik plannera
+(AnalysisTask: jednostka kodu i wskazówka; Plan: podsumowanie, zadania analizy i pliki wiedzy dla analityków,
+autora diagramu i pisarzy). Treść przewodnika i diagram są w guide_content.py. Kolejne schematy (notatki
+analityków, recenzja) dochodzą w krokach, które ich potrzebują.
 
 Dlaczego istnieje: jasna umowa między skanerem, technologiami, agentami i rendererem - każdy wie, co
 dostaje i co oddaje. Każdy obiekt da się zapisać do JSON (model_dump_json) i wczytać z powrotem
@@ -15,16 +16,19 @@ dostaje i co oddaje. Każdy obiekt da się zapisać do JSON (model_dump_json) i 
 Mapa projektu zawiera ścieżki i metadane, a nie treść kodu - kod czytamy z dysku dopiero przy analizie,
 dzięki czemu stan grafu pozostaje chudy; dosłownie trzymamy tylko małe pliki tekstowe (TextFile).
 
-Uwaga: schematy odpowiedzi modelu (dojdą później) będą miały przy polach Field(description="...") - model
-widzi tylko schemat JSON. Schematy w tym pliku modelowi nie są podawane jako format odpowiedzi, więc mają
-same typy i komentarze.
+Uwaga: schematy odpowiedzi modelu (Plan i AnalysisTask, dalej notatka analityka i recenzja) mają przy polach
+Field(description="...") - model widzi tylko schemat JSON - i są płaskie, bez wariantów anyOf. Schematy faktów
+o projekcie (SourceUnit ... ProjectMap) modelowi nie są podawane jako format odpowiedzi, więc mają same typy
+i komentarze.
 
 Rola: moduł używany przez wszystkie warstwy towaru (skaner, technologie, agenci, zapis wyników, renderer).
 
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.schemas
-Składa ręcznie przykładową mapę robota 02, wypisuje ją jako JSON i sprawdza, czy odczyt z JSON daje
-obiekt równy oryginałowi (oczekiwane: True).
+Składa ręcznie przykładową mapę robota 02 i przykładowy plan, wypisuje je jako JSON i sprawdza, czy odczyt
+z JSON daje obiekt równy oryginałowi (oczekiwane: True). Dla planu sprawdza też schemat JSON dla modelu:
+brak wariantów anyOf i opis przy każdym polu oraz odrzucenie planu bez wymaganych pól; na końcu
+"zgodne z oczekiwaniem: True".
 """
 
 import pydantic
@@ -136,9 +140,59 @@ class ProjectMap(pydantic.BaseModel):
     frameworks: list[str] = []  # frameworki wykryte po ścieżkach i importach; [] = robot bez frameworku
 
 
+# --- Plan (wynik plannera) ---
+
+
+class AnalysisTask(pydantic.BaseModel):
+    """Zadanie dla jednego analityka: jednostka kodu do opisania i wskazówka plannera.
+
+    Po co: planner widzi cały projekt, a analityk tylko swoją jednostkę - wskazówka przekazuje to, co planner
+    wie o miejscu jednostki w całości (np. "główna funkcja, długa, czytaj po kawałkach").
+    """
+
+    unit: str = pydantic.Field(
+        description="Nazwa jednostki kodu dokładnie tak, jak w mapie projektu (code_units), np. przetwarzanie.py."
+    )
+    hint: str = pydantic.Field(
+        default="",
+        description="Wskazówka dla analityka: na co zwrócić uwagę w tej jednostce albo jaką ma rolę w robocie. Puste, gdy nie ma nic szczególnego.",
+    )
+
+
+class Plan(pydantic.BaseModel):
+    """Plan przebiegu: podsumowanie projektu, zadania analizy i pliki wiedzy dla kolejnych agentów.
+
+    Po co: wynik plannera, na którym opierają się dalsze etapy - analitycy (jedno zadanie na jednostkę), autor
+    diagramu i pisarze zakładek dostają ze spisu bazy wiedzy tylko te pliki, których potrzebują.
+
+    Uwaga: analizujemy wszystkie jednostki z mapy projektu - planner ustala kolejność i wskazówki, a brakujące
+    jednostki dopisze kod (krok 47). Pliki wiedzy technologii i frameworków dołącza kod, nie planner.
+    """
+
+    summary: str = pydantic.Field(
+        description="2-4 zdania: co robi robot, jakiej technologii i frameworku używa, od czego się zaczyna. Czytają je wszyscy agenci."
+    )
+    tasks: list[AnalysisTask] = pydantic.Field(
+        description="Zadania analizy w kolejności czytania kodu: od punktów wejścia w głąb. Każda jednostka z mapy projektu najwyżej raz."
+    )
+    analyst_knowledge: list[str] = pydantic.Field(
+        default=[],
+        description="Pliki wiedzy ze spisu (index.md) dla analityków - dokładne nazwy plików. Puste, gdy żaden się nie przyda.",
+    )
+    flow_knowledge: list[str] = pydantic.Field(
+        default=[],
+        description="Pliki wiedzy ze spisu (index.md) dla autora diagramu przepływu - dokładne nazwy plików. Puste, gdy żaden się nie przyda.",
+    )
+    writer_knowledge: list[str] = pydantic.Field(
+        default=[],
+        description="Pliki wiedzy ze spisu (index.md) dla pisarzy zakładek - dokładne nazwy plików. Puste, gdy żaden się nie przyda.",
+    )
+
+
 # --- Test ręczny ---
 
 if __name__ == "__main__":
+    import json
 
     def _build_example_project_map() -> ProjectMap:
         """Składa ręcznie przykładową mapę robota 02 (bez frameworku, start z run.bat).
@@ -213,13 +267,80 @@ if __name__ == "__main__":
         print(model_json)
         print(f"\nOdczyt z JSON zgodny z oryginałem: {is_equal}")
 
-    def manual_test():
-        """Składa przykładową mapę robota 02, zapisuje ją do JSON, wczytuje z powrotem i wypisuje wynik.
+    def _build_example_plan() -> Plan:
+        """Składa ręcznie przykładowy plan robota 02: dwa zadania (jedno ze wskazówką, drugie bez) i różne listy wiedzy.
 
-        Po co: potwierdzenie, że mapa projektu przechodzi zapis i odczyt bez utraty danych.
+        Po co: dane do testu zapisu i odczytu JSON bez uruchamiania plannera; jedna lista wiedzy jest pusta,
+        żeby test objął także ten przypadek.
+
+        Uwaga: treść jest ułożona ręcznie - prawdziwy plan zwraca planner (krok 47).
+        """
+        zadania = [
+            AnalysisTask(
+                unit="przetwarzanie.py",
+                hint="Funkcja run ma ok. 370 linii i zawiera większość logiki - czytaj ją po kawałkach; zwróć uwagę na kontakty z systemami i obsługę błędów.",
+            ),
+            AnalysisTask(unit="raport.py"),
+        ]
+        przykladowy_plan = Plan(
+            summary="Robot w Pythonie bez frameworku, uruchamiany z run.bat: przetwarzanie.py wykonuje główną pracę, raport.py składa raport z wyników.",
+            tasks=zadania,
+            analyst_knowledge=[],
+            flow_knowledge=["diagram_rules.md"],
+            writer_knowledge=["guide_goals.md"],
+        )
+        return przykladowy_plan
+
+    def _schema_problems(
+        model_class,
+    ) -> list[str]:
+        """Zwraca listę problemów schematu JSON klasy dla modelu: wariant anyOf albo pole bez opisu (pusta lista = schemat poprawny).
+
+        Po co: model widzi tylko schemat JSON; wariant anyOf nie był sprawdzony na bramce na mieście, a pole bez
+        opisu model wypełnia po omacku.
+        """
+        schemat = model_class.model_json_schema()
+        problemy = []
+        if "anyOf" in json.dumps(schemat):
+            problemy.append("schemat zawiera wariant anyOf")
+        obiekty = [schemat]
+        for definicja in schemat.get("$defs", {}).values():
+            obiekty.append(definicja)
+        for obiekt in obiekty:
+            for nazwa_pola, pole in obiekt.get("properties", {}).items():
+                if not pole.get("description"):
+                    problemy.append(f"{obiekt.get('title')}.{nazwa_pola}: brak opisu")
+        return problemy
+
+    def _plan_missing_fields_rejected() -> bool:
+        """Zwraca True, gdy plan bez wymaganych pól (summary, tasks) jest odrzucony przy odczycie z JSON.
+
+        Po co: odpowiedź modelu bez podsumowania albo zadań ma dać błąd walidacji, a nie pusty plan.
+        """
+        odrzucony = False
+        try:
+            Plan.model_validate_json('{"analyst_knowledge": []}')
+        except pydantic.ValidationError:
+            odrzucony = True
+        return odrzucony
+
+    def manual_test():
+        """Składa przykładową mapę robota 02 i przykładowy plan, zapisuje je do JSON, wczytuje z powrotem, sprawdza schemat planu i wypisuje wynik.
+
+        Po co: potwierdzenie, że mapa projektu i plan przechodzą zapis i odczyt bez utraty danych, a schemat planu nadaje się dla modelu.
         """
         project_map = _build_example_project_map()
         project_map_json, is_equal = _round_trip(project_map)
         _print_round_trip("ProjectMap (robot 02)", project_map_json, is_equal)
+        plan = _build_example_plan()
+        plan_json = plan.model_dump_json(indent=2)
+        plan_zgodny = Plan.model_validate_json(plan_json) == plan
+        _print_round_trip("Plan (robot 02, ułożony ręcznie)", plan_json, plan_zgodny)
+        problemy_planu = _schema_problems(Plan)
+        brakujace_odrzucone = _plan_missing_fields_rejected()
+        print(f"\nProblemy schematu JSON klasy Plan (anyOf, pola bez opisu): {problemy_planu}")
+        print(f"Plan bez wymaganych pól odrzucony przy odczycie: {brakujace_odrzucone}")
+        zgodne = is_equal and plan_zgodny and not problemy_planu and brakujace_odrzucone
+        print(f"\nzgodne z oczekiwaniem: {zgodne}")
 
     manual_test()

@@ -245,9 +245,10 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 - **Sprawdzamy:** `python -m dev_agents.progress` (etap udany, z postępem, bez wyniku, z błędem, format czasu); test grafu sprawdza dwie linie postępu węzła `scan`; przebieg `main.py` wypisuje start i koniec węzła `scan` z czasem i `razem`.
 
 **Krok 46. `schemas.py` - plan**
-- **Funkcja:** wynik pracy plannera: co analizować i jaką wiedzę dać agentom.
-- **Robimy:** `AnalysisTask` (jednostka kodu, wskazówka), `Plan` (podsumowanie, zadania, pliki wiedzy dla analityków, autora diagramu i pisarzy, wybrane sekcje opcjonalne); `Field(description=...)`.
-- **Sprawdzamy:** ręcznie złożony plan, wydruk JSON.
+- **Funkcja:** wynik pracy plannera: kolejność i wskazówki dla analityków oraz wiedza dla agentów.
+- **Decyzje (rekomendowane, tryb pracy fazy F: 1A, 2A, 3A):** analizujemy wszystkie jednostki z mapy (planner ustala kolejność i wskazówki, brakujące jednostki dopisze kod w kroku 47; bez pola `skipped`); pliki wiedzy w trzech listach (analitycy, autor diagramu, pisarze); bez pola `optional_sections` (opcjonalną sekcję pisarz pomija sam, gdy nie ma treści - zasada szablonu).
+- **Robimy:** w `schemas.py` `AnalysisTask` (`unit` - nazwa jednostki z mapy, `hint` - wskazówka) i `Plan` (`summary`, `tasks`, `analyst_knowledge`, `flow_knowledge`, `writer_knowledge`); `Field(description=...)`, schemat płaski bez `anyOf`.
+- **Sprawdzamy:** ręcznie złożony plan robota 02, wydruk JSON i zgodność po odczycie; schemat JSON klasy `Plan` bez `anyOf` i z opisem przy każdym polu; plan bez `summary` i `tasks` odrzucony przy odczycie.
 
 **Krok 47. Agent planner (bez grafu)**
 - **Funkcja:** decyzja, które jednostki kodu analizować, w jakiej kolejności i które pliki wiedzy są potrzebne.
