@@ -28,9 +28,11 @@ Rola: kontrakt dla modułów technologii; rdzeń towaru korzysta wyłącznie z j
 
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.technologies.base
-Wypisuje wyniki wszystkich metod demonstracyjnej podklasy (pliki .demo), a na końcu komunikat
-NotImplementedError klasy bazowej.
+Wypisuje wyniki wszystkich metod demonstracyjnej podklasy (pliki .demo) - control_outline i metrics
+z domyślnym zachowaniem klasy bazowej - a na końcu komunikat NotImplementedError klasy bazowej.
 """
+
+import dev_agents.schemas as _schemas
 
 
 # --- Kontrakt ---
@@ -120,6 +122,39 @@ class Technology:
                          np. "os"); pusta lista, gdy w danej technologii to rozróżnienie nie ma sensu.
         """
         raise NotImplementedError(f"{type(self).__name__}.imports() - do implementacji")
+
+    def control_outline(
+        self,
+        root: str,
+        path: str,
+        function_name: str,
+    ) -> str:
+        """Buduje szkielet sterowania jednej funkcji: same rozgałęzienia, pętle, obsługę błędów, wyjścia i wywołania, z numerami linii, bez treści gałęzi.
+
+        Po co: mapa logiki długiej funkcji dla analityka i podstawa podziału funkcji na kawałki - liczona przez
+        kod, tania w tokenach, bez zgadywania.
+
+        Argumenty: function_name - nazwa funkcji ("run"), metody ("Klasa.metoda") albo "" dla kodu poza funkcjami.
+
+        Wynik: czytelny tekst (wiele linii). Domyślnie (technologia bez implementacji) - jedna linia "niedostępny".
+        """
+        komunikat = f"Szkielet sterowania niedostępny dla technologii '{self.name}'"
+        return komunikat
+
+    def metrics(
+        self,
+        root: str,
+        path: str,
+    ) -> list[_schemas.FunctionMetrics]:
+        """Zwraca miary złożoności każdej funkcji pliku (i kodu poza funkcjami): długość, głębokość zagnieżdżenia, rozgałęzienia.
+
+        Po co: liczby wskazują najtrudniejsze miejsca kodu - tabela "Ryzykowne miejsca" i decyzja o analizie
+        po kawałkach opierają się na nich, a nie na opinii modelu.
+
+        Wynik: lista schemas.FunctionMetrics. Domyślnie (technologia bez implementacji) - pusta lista, czyli "brak danych".
+        """
+        miary = []
+        return miary
 
 
 # --- Test ręczny ---
@@ -218,6 +253,8 @@ if __name__ == "__main__":
             "find_entrypoints": technology.find_entrypoints(root, files),
             "outline": technology.outline(root, "start.demo"),
             "imports": technology.imports(root, "start.demo"),
+            "control_outline": technology.control_outline(root, "start.demo", "start"),
+            "metrics": technology.metrics(root, "start.demo"),
         }
         return wyniki
 

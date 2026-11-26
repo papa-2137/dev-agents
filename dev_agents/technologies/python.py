@@ -5,7 +5,10 @@ Co robi: na tym etapie dla pliku .py buduje:
       kod wykonywany poza funkcjami, klasy i funkcje z sygnaturami, pierwszym akapitem docstringu i zakresem
       linii; pokazuje strukturę także kodu "spaghetti" (funkcja na kilkaset linii, logika luzem),
     - zależności (imports) w trzech grupach: pliki projektu (ścieżki względne - z nich powstaje graf
-      zależności), biblioteki zewnętrzne i biblioteka standardowa (nazwy modułów).
+      zależności), biblioteki zewnętrzne i biblioteka standardowa (nazwy modułów),
+    - szkielet sterowania jednej funkcji (control_outline) - same rozgałęzienia, pętle, obsługa błędów, wyjścia
+      i wywołania funkcji oraz modułów, z liniami, bez treści gałęzi; prosty blok sklejony w jedną linię,
+    - miary złożoności każdej funkcji (metrics) - długość, głębokość zagnieżdżenia, rozgałęzienia.
 Pozostałe metody kontraktu dochodzą w kolejnych krokach.
 
 Dlaczego istnieje: cała wiedza o Pythonie siedzi w tym module, a rdzeń towaru woła tylko metody kontraktu
@@ -22,9 +25,12 @@ Test ręczny (z katalogu głównego repo):
         szkielety i importy: robot 01 (Main.py, src/parabank_page.py), robot 02 (przetwarzanie.py), plik ze
         ścieżką Windows w zwykłym napisie (z liczbą ostrzeżeń - oczekiwane 0), pakiet tymczasowy z importem
         względnym, importami w funkcji i w try oraz modułem usuniętym z biblioteki standardowej, plik
-        w składni Pythona 2 (linia z przyczyną zamiast szkieletu, puste grupy importów)
+        w składni Pythona 2 (linia z przyczyną zamiast szkieletu, puste grupy importów); potem szkielet
+        sterowania run() i kodu poza funkcjami robota 02 oraz miary robotów 01 i 02
     python -m dev_agents.technologies.python <katalog projektu> <plik względny do katalogu>
-        szkielet i importy jednego, dowolnego pliku
+        szkielet, importy i miary jednego, dowolnego pliku
+    python -m dev_agents.technologies.python <katalog projektu> <plik> <funkcja>
+        szkielet sterowania funkcji ("run", "Klasa.metoda"; "" = kod poza funkcjami)
 """
 
 import ast
@@ -33,6 +39,7 @@ import sys
 import warnings
 
 import dev_agents.files as _files
+import dev_agents.schemas as _schemas
 import dev_agents.technologies.base as _base
 
 
@@ -456,14 +463,402 @@ def _classify_module(
     return "external"
 
 
+# --- Szkielet sterowania i miary złożoności ---
+
+
+def _functions(
+    body: list,
+    prefix: str = "",
+) -> list[tuple[str, ast.AST]]:
+    """Zwraca funkcje i metody z ciała modułu albo klasy jako pary (nazwa, węzeł); metody jako "Klasa.metoda", także w klasach zagnieżdżonych.
+
+    Po co: jedna lista funkcji dla miar i dla wyszukiwania funkcji po nazwie w szkielecie sterowania.
+
+    Uwaga: funkcje zdefiniowane wewnątrz innych funkcji nie są osobnymi pozycjami - liczą się do funkcji, w której leżą.
+    """
+    funkcje = []
+    for node in body:
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            funkcje.append((prefix + node.name, node))
+        elif isinstance(node, ast.ClassDef):
+            funkcje.extend(_functions(node.body, prefix + node.name + "."))
+    return funkcje
+
+
+def _imported_names(
+    tree: ast.Module,
+) -> list[str]:
+    """Zwraca nazwy wprowadzone importami w pliku (moduły i importowane nazwy, z uwzględnieniem aliasów).
+
+    Po co: szkielet sterowania pokazuje wywołania funkcji modułów (np. shutil.move, requests.post), a pomija
+    metody na danych (np. lista.append) - rozpoznaje je po tym, czy początek wywołania to importowana nazwa.
+    """
+    nazwy = []
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.Import, ast.ImportFrom)):
+            for alias in node.names:
+                nazwa = alias.name
+                if alias.asname:
+                    nazwa = alias.asname
+                nazwy.append(nazwa.split(".")[0])
+    return nazwy
+
+
+def _call_name(
+    call: ast.Call,
+    module_names: list[str],
+) -> str:
+    """Zwraca nazwę wywołania do szkieletu sterowania albo "", gdy wywołanie jest pomijane.
+
+    Po co: pokazujemy wywołania funkcji po nazwie (log, open) oraz funkcji modułów i metod obiektu
+    (shutil.move, requests.post, self.page.fill) - to kontakty z systemami i kroki procesu; metody na danych
+    (wiersz.strip, lista.append) to szum i są pomijane.
+    """
+    funkcja = call.func
+    if isinstance(funkcja, ast.Name):
+        return funkcja.id
+    poczatek = funkcja
+    while isinstance(poczatek, ast.Attribute):
+        poczatek = poczatek.value
+    if isinstance(poczatek, ast.Name):
+        if poczatek.id in module_names or poczatek.id == "self":
+            nazwa = ast.unparse(funkcja)
+            return nazwa
+    return ""
+
+
+def _statement_calls(
+    statements: list,
+    module_names: list[str],
+) -> list[str]:
+    """Zwraca nazwy wywołań stojących jako osobna instrukcja albo prawa strona przypisania, bez powtórzeń, w kolejności występowania.
+
+    Po co: wywołania schowane w argumentach i warunkach nie są osobnymi krokami - warunki widać w liniach if.
+    """
+    nazwy = []
+    for instrukcja in statements:
+        wywolanie = None
+        if isinstance(instrukcja, ast.Expr) and isinstance(instrukcja.value, ast.Call):
+            wywolanie = instrukcja.value
+        elif isinstance(instrukcja, (ast.Assign, ast.AugAssign, ast.AnnAssign)) and isinstance(instrukcja.value, ast.Call):
+            wywolanie = instrukcja.value
+        if wywolanie is None:
+            continue
+        nazwa = _call_name(wywolanie, module_names)
+        if nazwa and nazwa not in nazwy:
+            nazwy.append(nazwa)
+    return nazwy
+
+
+def _short(
+    node,
+    max_length: int = 60,
+) -> str:
+    """Zwraca kod wyrażenia (np. warunku) jako tekst skrócony do max_length znaków z "..." na końcu.
+
+    Po co: warunki bywają bardzo długie - w szkielecie wystarczy początek, pełny warunek jest w kodzie pod podaną linią.
+    """
+    tekst = ast.unparse(node)
+    if len(tekst) > max_length:
+        tekst = tekst[:max_length].rstrip() + "..."
+    return tekst
+
+
+def _is_control(
+    node,
+) -> bool:
+    """Sprawdza, czy instrukcja jest strukturą sterującą z własnymi blokami (if, pętla, try, with, match).
+
+    Po co: tylko takie instrukcje dostają w szkielecie osobną linię z wcięciem; reszta jest sklejana.
+    """
+    struktury = (ast.If, ast.For, ast.AsyncFor, ast.While, ast.Try, ast.TryStar, ast.With, ast.AsyncWith, ast.Match)
+    czy_struktura = isinstance(node, struktury)
+    return czy_struktura
+
+
+def _jump_text(
+    node,
+) -> str:
+    """Zwraca opis instrukcji wyjścia (return, raise z nazwą wyjątku, break, continue) albo "", gdy to nie wyjście.
+
+    Po co: wyjścia z bloku pokazują ścieżki błędów i pominięć - kluczowe dla diagramu i opisu procesu.
+    """
+    if isinstance(node, ast.Return):
+        return "return"
+    if isinstance(node, ast.Break):
+        return "break"
+    if isinstance(node, ast.Continue):
+        return "continue"
+    if isinstance(node, ast.Raise):
+        if isinstance(node.exc, ast.Call):
+            opis_raise = f"raise {ast.unparse(node.exc.func)}"
+            return opis_raise
+        if node.exc is not None:
+            opis_raise = f"raise {ast.unparse(node.exc)}"
+            return opis_raise
+        return "raise"
+    return ""
+
+
+def _block_has_control(
+    body: list,
+) -> bool:
+    """Sprawdza, czy blok zawiera choć jedną strukturę sterującą.
+
+    Po co: blok bez struktur sterujących jest pokazywany w jednej linii z nagłówkiem - szkielet jest krótszy.
+    """
+    for instrukcja in body:
+        if _is_control(instrukcja):
+            return True
+    return False
+
+
+def _block_suffix(
+    body: list,
+    module_names: list[str],
+) -> str:
+    """Zwraca dopisek do linii prostego bloku: wywołania i wyjście na końcu, np. "  [log, shutil.move; -> continue]"; "" gdy nic do pokazania.
+
+    Po co: prosty blok (np. walidacja z continue) mieści się w jednej linii zamiast kilku.
+    """
+    czesci = []
+    wywolania = _statement_calls(body, module_names)
+    if len(wywolania) > 0:
+        czesci.append(", ".join(wywolania))
+    if len(body) > 0:
+        wyjscie = _jump_text(body[-1])
+        if wyjscie:
+            czesci.append("-> " + wyjscie)
+    dopisek = ""
+    if len(czesci) > 0:
+        dopisek = "  [" + "; ".join(czesci) + "]"
+    return dopisek
+
+
+def _block_lines(
+    line: int,
+    header: str,
+    body: list,
+    indent: str,
+    module_names: list[str],
+) -> list[str]:
+    """Zwraca linie szkieletu jednego bloku: prosty blok - jedna linia z dopiskiem; blok ze strukturami - nagłówek i wcięta zawartość.
+
+    Po co: wspólny sposób wypisywania każdego bloku (if, pętla, try, except, with, case).
+    """
+    if not _block_has_control(body):
+        linie_prostego = [f"{indent}{line}: {header}{_block_suffix(body, module_names)}"]
+        return linie_prostego
+    linie = [f"{indent}{line}: {header}"]
+    linie.extend(_control_lines(body, indent + "  ", module_names))
+    return linie
+
+
+def _if_lines(
+    node: ast.If,
+    indent: str,
+    module_names: list[str],
+) -> list[str]:
+    """Zwraca linie szkieletu instrukcji if z łańcuchem elif i blokiem else, wszystkie na jednym poziomie wcięcia.
+
+    Po co: łańcuch elif czyta się jak lista przypadków, a nie jak coraz głębsze zagnieżdżenie.
+    """
+    linie = _block_lines(node.lineno, "if " + _short(node.test), node.body, indent, module_names)
+    dalej = node.orelse
+    while len(dalej) == 1 and isinstance(dalej[0], ast.If):
+        elif_node = dalej[0]
+        linie.extend(_block_lines(elif_node.lineno, "elif " + _short(elif_node.test), elif_node.body, indent, module_names))
+        dalej = elif_node.orelse
+    if len(dalej) > 0:
+        linie.extend(_block_lines(dalej[0].lineno, "else", dalej, indent, module_names))
+    return linie
+
+
+def _try_lines(
+    node,
+    indent: str,
+    module_names: list[str],
+) -> list[str]:
+    """Zwraca linie szkieletu instrukcji try: blok try, każdy except z typem wyjątku, else i finally.
+
+    Po co: obsługa błędów to osobne ścieżki procesu - każdy except jest widoczny z linią i typem wyjątku.
+    """
+    linie = _block_lines(node.lineno, "try", node.body, indent, module_names)
+    for obsluga in node.handlers:
+        naglowek = "except"
+        if obsluga.type is not None:
+            naglowek = "except " + _short(obsluga.type)
+        linie.extend(_block_lines(obsluga.lineno, naglowek, obsluga.body, indent, module_names))
+    if len(node.orelse) > 0:
+        linie.extend(_block_lines(node.orelse[0].lineno, "else", node.orelse, indent, module_names))
+    if len(node.finalbody) > 0:
+        linie.extend(_block_lines(node.finalbody[0].lineno, "finally", node.finalbody, indent, module_names))
+    return linie
+
+
+def _calls_line(
+    statements: list,
+    indent: str,
+    module_names: list[str],
+) -> list[str]:
+    """Zwraca jedną linię z wywołaniami ciągu zwykłych instrukcji (numer linii pierwszej z nich) albo pustą listę, gdy wywołań brak.
+
+    Po co: kolejne zwykłe instrukcje między strukturami sterującymi są sklejane w jedną linię - kroki procesu
+    bez treści przypisań.
+    """
+    linie = []
+    wywolania = _statement_calls(statements, module_names)
+    if len(wywolania) > 0:
+        linie.append(f"{indent}{statements[0].lineno}: {', '.join(wywolania)}")
+    return linie
+
+
+def _control_lines(
+    body: list,
+    indent: str,
+    module_names: list[str],
+) -> list[str]:
+    """Zwraca linie szkieletu sterowania ciągu instrukcji: struktury sterujące z wcięciem, wyjścia i sklejone wywołania.
+
+    Po co: rdzeń szkieletu sterowania - przechodzi bloki rekurencyjnie i pomija treść gałęzi.
+    """
+    linie = []
+    zwykle = []
+    for node in body:
+        wyjscie = _jump_text(node)
+        czy_definicja = isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+        if _is_control(node) or wyjscie or czy_definicja:
+            linie.extend(_calls_line(zwykle, indent, module_names))
+            zwykle = []
+        if isinstance(node, ast.If):
+            linie.extend(_if_lines(node, indent, module_names))
+        elif isinstance(node, (ast.For, ast.AsyncFor)):
+            naglowek = f"for {_short(node.target, 30)} in {_short(node.iter, 50)}"
+            linie.extend(_block_lines(node.lineno, naglowek, node.body, indent, module_names))
+            if len(node.orelse) > 0:
+                linie.extend(_block_lines(node.orelse[0].lineno, "else (pętla bez break)", node.orelse, indent, module_names))
+        elif isinstance(node, ast.While):
+            linie.extend(_block_lines(node.lineno, "while " + _short(node.test), node.body, indent, module_names))
+            if len(node.orelse) > 0:
+                linie.extend(_block_lines(node.orelse[0].lineno, "else (pętla bez break)", node.orelse, indent, module_names))
+        elif isinstance(node, (ast.Try, ast.TryStar)):
+            linie.extend(_try_lines(node, indent, module_names))
+        elif isinstance(node, (ast.With, ast.AsyncWith)):
+            konteksty = []
+            for element in node.items:
+                konteksty.append(_short(element.context_expr, 40))
+            linie.extend(_block_lines(node.lineno, "with " + ", ".join(konteksty), node.body, indent, module_names))
+        elif isinstance(node, ast.Match):
+            linie.append(f"{indent}{node.lineno}: match {_short(node.subject)}")
+            for przypadek in node.cases:
+                naglowek = "case " + _short(przypadek.pattern, 40)
+                linie.extend(_block_lines(przypadek.pattern.lineno, naglowek, przypadek.body, indent + "  ", module_names))
+        elif wyjscie:
+            linie.append(f"{indent}{node.lineno}: {wyjscie}")
+        elif czy_definicja:
+            linie.append(f"{indent}{node.lineno}: def/class {node.name} (definicja zagnieżdżona)")
+        else:
+            zwykle.append(node)
+    linie.extend(_calls_line(zwykle, indent, module_names))
+    return linie
+
+
+def _max_depth(
+    statements: list,
+    depth: int,
+) -> int:
+    """Zwraca najgłębsze zagnieżdżenie bloków (if, pętle, try, with, match) w ciągu instrukcji; elif liczy się na poziomie swojego if.
+
+    Po co: głębokie zagnieżdżenie to najczęstsza przyczyna błędów przy zmianach w kodzie "spaghetti".
+    """
+    najglebiej = depth
+    for node in statements:
+        bloki = []
+        bloki_na_tym_poziomie = []
+        if isinstance(node, ast.If):
+            bloki.append(node.body)
+            if len(node.orelse) == 1 and isinstance(node.orelse[0], ast.If):
+                bloki_na_tym_poziomie.append(node.orelse)
+            elif len(node.orelse) > 0:
+                bloki.append(node.orelse)
+        elif isinstance(node, (ast.For, ast.AsyncFor, ast.While)):
+            bloki.append(node.body)
+            bloki.append(node.orelse)
+        elif isinstance(node, (ast.Try, ast.TryStar)):
+            bloki.append(node.body)
+            for obsluga in node.handlers:
+                bloki.append(obsluga.body)
+            bloki.append(node.orelse)
+            bloki.append(node.finalbody)
+        elif isinstance(node, (ast.With, ast.AsyncWith)):
+            bloki.append(node.body)
+        elif isinstance(node, ast.Match):
+            for przypadek in node.cases:
+                bloki.append(przypadek.body)
+        for blok in bloki:
+            najglebiej = max(najglebiej, _max_depth(blok, depth + 1))
+        for blok in bloki_na_tym_poziomie:
+            najglebiej = max(najglebiej, _max_depth(blok, depth))
+    return najglebiej
+
+
+def _count_branches(
+    statements: list,
+) -> int:
+    """Liczy punkty decyzji w ciągu instrukcji: if/elif, pętle, except, wyrażenia warunkowe, operatory and/or, warunki w wyrażeniach listowych, przypadki match.
+
+    Po co: liczba rozgałęzień (jak w złożoności cyklomatycznej) mówi, ile ścieżek trzeba przetestować i opisać.
+    """
+    licznik = 0
+    for instrukcja in statements:
+        for node in ast.walk(instrukcja):
+            if isinstance(node, (ast.If, ast.For, ast.AsyncFor, ast.While, ast.IfExp, ast.ExceptHandler, ast.match_case)):
+                licznik += 1
+            elif isinstance(node, ast.BoolOp):
+                licznik += len(node.values) - 1
+            elif isinstance(node, ast.comprehension):
+                licznik += len(node.ifs)
+    return licznik
+
+
+def _module_code_metrics(
+    tree: ast.Module,
+    path: str,
+) -> list[_schemas.FunctionMetrics]:
+    """Zwraca miary kodu poza funkcjami jako jedną pozycję "<kod poza funkcjami>" albo pustą listę, gdy takiego kodu nie ma.
+
+    Po co: w skryptach "spaghetti" logika bywa luzem na poziomie modułu - też musi trafić do miar.
+    """
+    odcinki = _module_level_segments(tree)
+    miary = []
+    if len(odcinki) == 0:
+        return miary
+    instrukcje = _flatten_segments(odcinki)
+    liczba_linii = 0
+    for odcinek in odcinki:
+        liczba_linii += odcinek[-1].end_lineno - odcinek[0].lineno + 1
+    miary.append(
+        _schemas.FunctionMetrics(
+            path=path,
+            name="<kod poza funkcjami>",
+            start_line=odcinki[0][0].lineno,
+            end_line=odcinki[-1][-1].end_lineno,
+            lines=liczba_linii,
+            max_depth=_max_depth(instrukcje, 0),
+            branches=_count_branches(instrukcje),
+        )
+    )
+    return miary
+
+
 # --- Technologia ---
 
 
 class PythonTechnology(_base.Technology):
     """Projekty w Pythonie: implementacja kontraktu Technology.
 
-    Po co: towar opisuje głównie roboty w Pythonie - ta klasa dostarcza rdzeniowi szkielety plików,
-    a w kolejnych krokach także importy, wykrywanie technologii i punkty wejścia.
+    Po co: towar opisuje głównie roboty w Pythonie - ta klasa dostarcza rdzeniowi szkielety plików, importy,
+    szkielety sterowania i miary złożoności, a w kolejnych krokach także wykrywanie technologii i punkty wejścia.
     """
 
     name = "python"
@@ -522,6 +917,78 @@ class PythonTechnology(_base.Technology):
         for nazwa_grupy, wpisy in grupy.items():
             importy_w_grupach[nazwa_grupy] = sorted(wpisy)
         return importy_w_grupach
+
+    def control_outline(
+        self,
+        root: str,
+        path: str,
+        function_name: str,
+    ) -> str:
+        """Zwraca szkielet sterowania funkcji ("run", "Klasa.metoda") albo kodu poza funkcjami (""): nagłówek z zakresem linii, potem struktury sterujące, wyjścia i wywołania.
+
+        Po co: implementacja kontraktu Technology.control_outline() dla Pythona - mapa logiki długiej funkcji
+        w ok. 1/3 jej długości, ze wszystkimi poziomami warunków i numerami linii.
+
+        Uwaga: przy błędzie składni zwraca linię z przyczyną; przy nieznanej nazwie - linię z listą dostępnych funkcji.
+        """
+        tekst = _files.read_text_safe(os.path.join(root, path))
+        try:
+            drzewo = _parse_python(tekst)
+        except SyntaxError as blad:
+            szkielet_bledu = _syntax_error_outline(blad)
+            return szkielet_bledu
+        nazwy_modulow = _imported_names(drzewo)
+
+        if function_name == "":
+            odcinki = _module_level_segments(drzewo)
+            linie = [_describe_module_code(odcinki)]
+            linie.extend(_control_lines(_flatten_segments(odcinki), "  ", nazwy_modulow))
+            szkielet_modulu = "\n".join(linie)
+            return szkielet_modulu
+
+        dostepne = []
+        for nazwa, node in _functions(drzewo.body):
+            dostepne.append(nazwa)
+            if nazwa == function_name:
+                linie = [f"def {nazwa}({ast.unparse(node.args)})  {_line_range(node)}"]
+                linie.extend(_control_lines(node.body, "  ", nazwy_modulow))
+                szkielet_funkcji = "\n".join(linie)
+                return szkielet_funkcji
+        komunikat = f"Brak funkcji '{function_name}' w pliku {path}. Dostępne: {', '.join(dostepne)}"
+        return komunikat
+
+    def metrics(
+        self,
+        root: str,
+        path: str,
+    ) -> list[_schemas.FunctionMetrics]:
+        """Zwraca miary złożoności kodu poza funkcjami (jeśli jest) i każdej funkcji oraz metody pliku, w kolejności w pliku.
+
+        Po co: implementacja kontraktu Technology.metrics() dla Pythona - liczby do tabeli "Ryzykowne miejsca"
+        i do decyzji o analizie długich funkcji po kawałkach.
+
+        Uwaga: przy błędzie składni zwraca pustą listę (przyczynę pokazuje outline() tego pliku).
+        """
+        tekst = _files.read_text_safe(os.path.join(root, path))
+        try:
+            drzewo = _parse_python(tekst)
+        except SyntaxError:
+            miary_bledu = []
+            return miary_bledu
+        miary = _module_code_metrics(drzewo, path)
+        for nazwa, node in _functions(drzewo.body):
+            miary.append(
+                _schemas.FunctionMetrics(
+                    path=path,
+                    name=nazwa,
+                    start_line=node.lineno,
+                    end_line=node.end_lineno,
+                    lines=node.end_lineno - node.lineno + 1,
+                    max_depth=_max_depth(node.body, 0),
+                    branches=_count_branches(node.body),
+                )
+            )
+        return miary
 
 
 # --- Test ręczny ---
@@ -648,16 +1115,98 @@ if __name__ == "__main__":
             komunikat += f" (zwykłe ast.parse dałoby: {plain_warning_count})"
         print(f"\n{komunikat}\n")
 
-    def manual_test():
-        """Z argumentami <katalog> <plik> - szkielet i importy jednego pliku; bez argumentów - plików robotów testowych i plików tymczasowych.
+    def _print_control_outline(
+        title: str,
+        outline_text: str,
+        function_lines: int,
+    ) -> None:
+        """Wypisuje szkielet sterowania z nagłówkiem i stosunkiem jego długości do długości funkcji.
 
-        Po co: sprawdzenie szkieletu i importów na prawdziwym kodzie, wyciszenia SyntaxWarning i obsługi błędu składni.
+        Po co: od razu widać, ile razy szkielet jest krótszy od kodu; function_lines <= 0 oznacza brak porównania.
+        """
+        print(f"=== Szkielet sterowania: {title} ===")
+        print(outline_text)
+        liczba_linii_szkieletu = len(outline_text.splitlines())
+        if function_lines > 0:
+            print(f"\nLinii szkieletu: {liczba_linii_szkieletu} z {function_lines} linii kodu\n")
+        else:
+            print(f"\nLinii szkieletu: {liczba_linii_szkieletu}\n")
+
+    def _print_metrics(
+        title: str,
+        metrics: list,
+    ) -> None:
+        """Wypisuje miary złożoności jako tabelę: nazwa, linie od-do, długość, głębokość, rozgałęzienia.
+
+        Po co: czytelne porównanie funkcji pliku; tylko formatuje gotowe dane.
+        """
+        print(f"=== Miary: {title} ===")
+        if len(metrics) == 0:
+            print("(brak danych)\n")
+            return
+        print(f"{'funkcja':<40} {'linie':<10} {'długość':>8} {'głębokość':>10} {'rozgałęzienia':>14}")
+        for miara in metrics:
+            zakres = f"{miara.start_line}-{miara.end_line}"
+            print(f"{miara.name:<40} {zakres:<10} {miara.lines:>8} {miara.max_depth:>10} {miara.branches:>14}")
+        print()
+
+    def _function_length(
+        metrics: list,
+        name: str,
+    ) -> int:
+        """Zwraca liczbę linii funkcji o podanej nazwie z listy miar albo 0, gdy jej nie ma.
+
+        Po co: do porównania długości szkieletu sterowania z długością funkcji.
+        """
+        for miara in metrics:
+            if miara.name == name:
+                return miara.lines
+        return 0
+
+    def _run_complexity_cases(
+        technology: PythonTechnology,
+        temp_dir: str,
+    ) -> None:
+        """Wypisuje szkielet sterowania run() i kodu poza funkcjami robota 02 oraz miary plików robotów 01 i 02 i pliku w Pythonie 2.
+
+        Po co: sprawdzenie szkieletu sterowania i miar na kodzie "spaghetti" i na kodzie uporządkowanym.
+        """
+        katalog_repo = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        katalog_testow = os.path.normpath(os.path.join(katalog_repo, "..", "..", "tests"))
+        robot_01 = os.path.join(katalog_testow, "01_rpa_challange_roboforge")
+        robot_02 = os.path.join(katalog_testow, "02_robot_bez_frameworku")
+        if os.path.exists(os.path.join(robot_02, "przetwarzanie.py")):
+            miary_02 = technology.metrics(robot_02, "przetwarzanie.py")
+            _print_control_outline("robot 02 przetwarzanie.py, run()", technology.control_outline(robot_02, "przetwarzanie.py", "run"), _function_length(miary_02, "run"))
+            _print_control_outline("robot 02 przetwarzanie.py, kod poza funkcjami", technology.control_outline(robot_02, "przetwarzanie.py", ""), -1)
+        przypadki_miar = [
+            ("robot 01 Main.py", robot_01, "Main.py"),
+            ("robot 01 src/parabank_page.py", robot_01, "src/parabank_page.py"),
+            ("robot 02 przetwarzanie.py", robot_02, "przetwarzanie.py"),
+            ("robot 02 raport.py", robot_02, "raport.py"),
+            ("składnia Pythona 2", temp_dir, "python2.py"),
+        ]
+        for opis, root, path in przypadki_miar:
+            if not os.path.exists(os.path.join(root, path)):
+                print(f"=== Miary: {opis} - brak pliku, pomijam ===\n")
+                continue
+            _print_metrics(opis, technology.metrics(root, path))
+
+    def manual_test():
+        """Z argumentami <katalog> <plik> [funkcja] - szkielet, importy i miary pliku albo szkielet sterowania funkcji; bez argumentów - przypadki testowe.
+
+        Po co: sprawdzenie szkieletu, importów, szkieletu sterowania i miar na prawdziwym kodzie, wyciszenia
+        SyntaxWarning i obsługi błędu składni.
         """
         technology = PythonTechnology()
+        if len(sys.argv) == 4:
+            _print_control_outline(f"{sys.argv[2]}, {sys.argv[3]!r}", technology.control_outline(sys.argv[1], sys.argv[2], sys.argv[3]), -1)
+            return
         if len(sys.argv) == 3:
             szkielet, liczba = _outline_with_warning_count(technology, sys.argv[1], sys.argv[2])
             importy = technology.imports(sys.argv[1], sys.argv[2])
             _print_case("plik", sys.argv[1], sys.argv[2], szkielet, importy, liczba, -1)
+            _print_metrics(sys.argv[2], technology.metrics(sys.argv[1], sys.argv[2]))
             return
 
         temp_dir = tempfile.mkdtemp()
@@ -673,6 +1222,7 @@ if __name__ == "__main__":
                 if path == "sciezka_windows.py":
                     liczba_bez_wyciszenia = _plain_parse_warning_count(tresci[path])
                 _print_case(opis, root, path, szkielet, importy, liczba, liczba_bez_wyciszenia)
+            _run_complexity_cases(technology, temp_dir)
         finally:
             shutil.rmtree(temp_dir)
 
