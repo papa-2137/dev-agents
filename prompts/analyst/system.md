@@ -9,6 +9,7 @@ Co dostajesz w wiadomości użytkownika (każda część w osobnym tagu):
 - <kod_jednostki> - pełny kod plików jednostki; przed każdą linią stoi jej numer (np. "   45| kod"). Numer nie należy do kodu.
 - <pliki_tekstowe> - zależności, konfiguracja i pliki uruchamiające robota przepisane dosłownie, też z numerami linii.
 - <baza_wiedzy> - wiedza o technologii i frameworku robota. Jeśli framework woła kod robota po nazwie (np. metody cyklu życia), uwzględnij to w roli jednostki w przepływie.
+- <kawalek> - tylko przy długiej jednostce: który kawałek kodu analizujesz (numer, zakres linii) i podsumowanie poprzednich kawałków.
 - <czesc_notatki> - która część notatki jest teraz do wypełnienia. Notatka powstaje w dwóch odpowiedziach (dwa schematy: część 1 - przebieg jednostki, część 2 - ustawienia, wymagania i ryzyka); oba wywołania dostają ten sam kod. Zasady poniżej dotyczą pól schematu, który dostajesz w tej odpowiedzi - zasady o polach z drugiej części pomiń.
 
 Jak wypełnić notatkę (schemat odpowiedzi opisuje każde pole):

@@ -19,7 +19,7 @@ Rola: moduł używany przez punkt wejścia programu i przez warstwy, które potr
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.config
 Najpierw wypisuje wczytany config jako JSON (ścieżki w `paths` mają być bezwzględne), potem komunikaty
-błędów dla dwunastu celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
+błędów dla piętnastu celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
 """
 
 import os
@@ -111,13 +111,15 @@ class FlowConfig(BaseModel):
 
 
 class AnalysisConfig(BaseModel):
-    """Sekcja `analysis`: progi analizy robota - ryzykowne miejsca (bez modelu) i największy plik czytany przez analityka.
+    """Sekcja `analysis`: progi analizy robota - ryzykowne miejsca (bez modelu), największy plik i podział długich jednostek na kawałki.
 
     Po co: progi zespół ustawia w configu, bez zmian w kodzie.
     """
 
     long_unit_lines: int  # jednostka (funkcja, klasa) dłuższa niż tyle linii → wiersz w „Ryzykownych miejscach”
-    max_file_size_kb: int  # plik jednostki większy niż tyle KB nie jest podawany analitykowi w całości (krok 51: po kawałkach)
+    max_file_size_kb: int  # plik jednostki większy niż tyle KB nie jest czytany (ValueError z nazwą pliku)
+    chunk_lines: int  # jednostka dłuższa niż tyle linii jest analizowana po kawałkach (krok 51)
+    chunk_overlap_lines: int  # zakład przy cięciu w środku funkcji: następny kawałek zaczyna się tyle linii wcześniej
 
 
 class AppConfig(BaseModel):
@@ -233,16 +235,25 @@ def _check_guide_template(
 def _check_analysis(
     app_config: AppConfig,
 ) -> None:
-    """Sprawdza, czy analysis.long_unit_lines i analysis.max_file_size_kb są dodatnie; przy błędzie rzuca ValueError.
+    """Sprawdza progi analysis: long_unit_lines, max_file_size_kb i chunk_lines dodatnie, chunk_overlap_lines nieujemny i mniejszy niż połowa chunk_lines; przy błędzie rzuca ValueError.
 
-    Po co: próg 0 albo ujemny oznaczałby „każda funkcja jest długa” i zalałby tabelę ryzykownych miejsc, a limit
-    rozmiaru 0 odrzuciłby każdy plik przed analizą.
+    Po co: próg 0 albo ujemny oznaczałby „każda funkcja jest długa” i zalałby tabelę ryzykownych miejsc, limit
+    rozmiaru 0 odrzuciłby każdy plik przed analizą, a kawałki z zakładem większym niż połowa długości nie posuwałyby się naprzód.
     """
     if app_config.analysis.long_unit_lines < 1:
         komunikat_bledu = f"analysis.long_unit_lines musi być dodatni, jest: {app_config.analysis.long_unit_lines}"
         raise ValueError(komunikat_bledu)
     if app_config.analysis.max_file_size_kb < 1:
         komunikat_bledu = f"analysis.max_file_size_kb musi być dodatni, jest: {app_config.analysis.max_file_size_kb}"
+        raise ValueError(komunikat_bledu)
+    if app_config.analysis.chunk_lines < 1:
+        komunikat_bledu = f"analysis.chunk_lines musi być dodatni, jest: {app_config.analysis.chunk_lines}"
+        raise ValueError(komunikat_bledu)
+    if app_config.analysis.chunk_overlap_lines < 0 or app_config.analysis.chunk_overlap_lines * 2 >= app_config.analysis.chunk_lines:
+        komunikat_bledu = (
+            f"analysis.chunk_overlap_lines musi być nieujemny i mniejszy niż połowa analysis.chunk_lines, "
+            f"jest: {app_config.analysis.chunk_overlap_lines} (chunk_lines: {app_config.analysis.chunk_lines})"
+        )
         raise ValueError(komunikat_bledu)
 
 
@@ -346,7 +357,7 @@ if __name__ == "__main__":
             _print_error(title, blad)
 
     def manual_test():
-        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla dwunastu zepsutych kopii.
+        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla piętnastu zepsutych kopii.
 
         Po co: szybkie sprawdzenie, czy config się wczytuje, ścieżki są bezwzględne, a błędy w configu
         dają czytelne komunikaty.
@@ -402,5 +413,17 @@ if __name__ == "__main__":
         brak_limitu = copy.deepcopy(raw_config)
         del brak_limitu["analysis"]["max_file_size_kb"]
         _try_broken_config("Config bez analysis.max_file_size_kb", brak_limitu, repo_dir)
+
+        zly_kawalek = copy.deepcopy(raw_config)
+        zly_kawalek["analysis"]["chunk_lines"] = 0
+        _try_broken_config("Długość kawałka analysis.chunk_lines równa 0", zly_kawalek, repo_dir)
+
+        zly_zaklad = copy.deepcopy(raw_config)
+        zly_zaklad["analysis"]["chunk_overlap_lines"] = zly_zaklad["analysis"]["chunk_lines"]
+        _try_broken_config("Zakład analysis.chunk_overlap_lines nie mniejszy niż połowa kawałka", zly_zaklad, repo_dir)
+
+        brak_kawalka = copy.deepcopy(raw_config)
+        del brak_kawalka["analysis"]["chunk_lines"]
+        _try_broken_config("Config bez analysis.chunk_lines", brak_kawalka, repo_dir)
 
     manual_test()

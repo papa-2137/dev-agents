@@ -4,8 +4,10 @@ Co robi:
     - collect_knowledge_files() zwraca nazwy plików wiedzy dla agenta: najpierw plik technologii projektu, potem pliki
       wykrytych frameworków (z config.scan.frameworks), na końcu pliki wybrane przez plannera - bez powtórzeń,
     - format_knowledge() składa treść tych plików w jeden tekst do promptu (każdy plik w znaczniku <plik_wiedzy>),
-    - number_lines() dopisuje do każdej linii tekstu jej numer, żeby odwołania agenta do linii były dokładne,
-      a count_lines() podaje liczbę linii tekstu (do sprawdzenia, czy numer linii od agenta mieści się w pliku).
+    - number_lines() dopisuje do każdej linii tekstu jej numer (od podanej linii - przy kawałku pliku), żeby odwołania
+      agenta do linii były dokładne,
+    - cut_lines() wycina zakres linii (kawałek długiego pliku),
+    - count_lines() podaje liczbę linii tekstu (do sprawdzenia, czy numer linii od agenta mieści się w pliku).
 
 Dlaczego istnieje: analityk, autor diagramu i pisarze dostają wiedzę i kod tak samo - jedna implementacja zamiast
 trzech kopii. Pliki technologii i frameworków dołącza kod (planner ich nie wybiera), pliki planera sprawdza już
@@ -76,10 +78,12 @@ def format_knowledge(
 
 def number_lines(
     text: str,
+    first_line: int = 1,
 ) -> str:
-    """Zwraca tekst z numerem przed każdą linią w formacie "   12| treść" (numeracja od 1); pusty tekst daje pusty tekst.
+    """Zwraca tekst z numerem przed każdą linią w formacie "   12| treść" (pierwsza linia ma numer first_line); pusty tekst daje pusty tekst.
 
     Po co: model nie liczy linii wiarygodnie - numer podany w kodzie pozwala mu wskazać funkcję i linię dokładnie.
+    Przy kawałku długiego pliku numeracja zaczyna się od numeru pierwszej linii kawałka, więc numery są bezwzględne.
     """
     if text == "":
         return ""
@@ -87,10 +91,27 @@ def number_lines(
     if linie[-1] == "":
         linie = linie[:-1]
     ponumerowane = []
-    for numer, linia in enumerate(linie, start=1):
+    for numer, linia in enumerate(linie, start=first_line):
         ponumerowane.append(f"{numer:5d}| {linia}")
     wynik = "\n".join(ponumerowane)
     return wynik
+
+
+def cut_lines(
+    text: str,
+    first_line: int,
+    last_line: int,
+) -> str:
+    """Zwraca linie od first_line do last_line włącznie (numeracja od 1, liczona jak w number_lines) jako tekst bez końcowego znaku nowej linii.
+
+    Po co: kawałek długiego pliku to zakres linii; ta sama zasada liczenia linii co przy numerowaniu sprawia,
+    że numery w kawałku zgadzają się z numerami w pliku.
+    """
+    linie = text.split("\n")
+    if linie[-1] == "":
+        linie = linie[:-1]
+    fragment = "\n".join(linie[first_line - 1:last_line])
+    return fragment
 
 
 def count_lines(
@@ -161,6 +182,9 @@ if __name__ == "__main__":
             ("nazwa poza bazą wiedzy odrzucona (ValueError)", zly_plik_odrzucony),
             ("numerowanie: numery od 1, bez pustej linii na końcu", number_lines("a\nb\n") == "    1| a\n    2| b"),
             ("numerowanie: pusty tekst", number_lines("") == ""),
+            ("numerowanie od podanej linii (kawałek pliku)", number_lines("a\nb\n", 10) == "   10| a\n   11| b"),
+            ("cut_lines: zakres linii włącznie, bez końcowego znaku nowej linii", cut_lines("a\nb\nc\nd\n", 2, 3) == "b\nc"),
+            ("cut_lines: cały tekst i pusty tekst", cut_lines("a\nb\n", 1, 2) == "a\nb" and cut_lines("", 1, 0) == ""),
             ("liczenie linii: z końcowym znakiem nowej linii, bez niego i pusty tekst", count_lines("a\nb\n") == 2 and count_lines("a\nb") == 2 and count_lines("") == 0),
         ]
         return wyniki

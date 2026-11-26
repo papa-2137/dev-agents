@@ -76,9 +76,13 @@ flow:
   max_nodes: 30
   max_decisions: 8
 
-# Analiza robota: progi, według których kod wskazuje ryzykowne miejsca w przewodniku, i limit czytania pliku przez analityka.
+# Analiza robota: progi, według których kod wskazuje ryzykowne miejsca w przewodniku, limit pliku i podział długich jednostek na kawałki.
 analysis:
   # Jednostka kodu (funkcja, klasa) dłuższa niż tyle linii trafia do tabeli „Ryzykowne miejsca”.
   long_unit_lines: 100
-  # Plik jednostki większy niż tyle KB nie jest podawany analitykowi w całości (czytanie po kawałkach: krok 51).
+  # Plik jednostki większy niż tyle KB nie jest czytany (błąd z nazwą pliku; podnieś limit, jeśli plik ma być analizowany).
   max_file_size_kb: 100
+  # Jednostka kodu dłuższa niż tyle linii jest analizowana po kawałkach (każdy kawałek to osobne wywołania modelu).
+  chunk_lines: 300
+  # Przy cięciu w środku funkcji (gdy nie ma granicy jednostki) następny kawałek zaczyna się tyle linii wcześniej.
+  chunk_overlap_lines: 10

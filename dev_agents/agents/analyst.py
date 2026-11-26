@@ -1,6 +1,7 @@
 """Agent analityk: czyta kod jednej jednostki i zwraca notatkę ModuleNote (bez grafu).
 
-Co robi: dla zadania z planu (AnalysisTask) składa prompt z pełnym kodem jednostki (każda linia z numerem),
+Co robi: dla zadania z planu (AnalysisTask) składa prompt z kodem jednostki (każda linia z numerem; jednostka dłuższa
+niż analysis.chunk_lines jest czytana po kawałkach - patrz niżej),
 faktami o plikach jednostki i jej powiązaniach, plikami tekstowymi robota (zależności, konfiguracja, pliki
 uruchamiające - dosłownie, z numerami linii), podsumowaniem i wskazówką plannera oraz wiedzą (technologia,
 frameworki, pliki wybrane przez plannera), woła model agenta analyst DWA razy (schemat NoteFlow: przebieg jednostki,
@@ -8,14 +9,18 @@ potem NoteDetails: ustawienia, wymagania, ryzyka - ten sam kod, inna część no
 i poprawia ją: nazwa jednostki jest zawsze z zadania, a numer linii czynności spoza pliku (też ujemny) zamieniany jest
 na 0. Każda poprawka jest zgłaszana jako uwaga.
 
+Długie jednostki: kod dłuższy niż analysis.chunk_lines linii kod dzieli na kawałki (chunks.py: po granicach funkcji
+i klas, a bez granicy w środku z zakładem), analizuje je po kolei - każdy z listą jednostek pliku (kontekst projektu),
+podsumowaniem poprzednich kawałków i kodem z bezwzględnymi numerami linii - i składa notatki kawałków w jedną
+(chunks.merge_chunk_notes). Postęp ("kawałek 3/7") analityk zgłasza przez funkcję note podaną przez wołającego.
+
 Dlaczego istnieje: analityk jest jedynym agentem, który czyta kod - jego notatka to surowiec dla autora diagramu
 i wszystkich pisarzy. Numery linii w kodzie sprawiają, że odwołania w notatce (funkcja, linia) są dokładne, a nie
 policzone przez model "na oko". Pliki o roli secret nigdy nie są czytane, a plik większy niż analysis.max_file_size_kb
-kończy się ValueError z nazwą pliku (czytanie dużych plików po kawałkach dochodzi w kroku 51). Notatka jest zwracana
+kończy się ValueError z nazwą pliku. Notatka kawałka jest zwracana
 w dwóch odpowiedziach, bo bramka odrzuca schematy powyżej 48 pól, a cała notatka ma ich 54 (pomiar: scripts/probe_schema.py).
 
-Czego NIE robi: nie jest węzłem grafu (równoległych analityków dokłada krok 52), niczego nie zapisuje na dysku,
-nie dzieli długich plików na kawałki (krok 51).
+Czego NIE robi: nie jest węzłem grafu (równoległych analityków dokłada krok 52), niczego nie zapisuje na dysku.
 
 Rola: agent grafu (faza F); wołają go węzeł analityków (krok 52) i test ręczny.
 
@@ -24,9 +29,11 @@ Test ręczny (z katalogu głównego repo):
         offline, na udawanym modelu: prompt (kod z numerami linii, plik konfiguracyjny z numerami, wiedza technologii,
         wskazówka plannera, brak ścieżki dysku), odmowa czytania pliku sekretu, odmowa dla pliku większego niż limit,
         nieznana jednostka, dwa wywołania modelu (część 1 i część 2 notatki), składanie notatki, poprawianie notatki
-        z dwoma błędami; na końcu "zgodne z oczekiwaniem: True"
+        z dwoma błędami, jednostka długa analizowana po kawałkach (liczba wywołań, kod z bezwzględnymi numerami linii,
+        podsumowanie poprzednich kawałków w prompcie, linie postępu, złożona notatka); na końcu
+        "zgodne z oczekiwaniem: True"
     python -m dev_agents.agents.analyst <katalog robota> <nazwa jednostki>
-        dodatkowo woła PRAWDZIWY model: skanuje robota w pamięci, bierze plan z <katalog robota>/dev_agents_doc/plan.json
+        dodatkowo woła PRAWDZIWY model (długą jednostkę po kawałkach, z liniami postępu): skanuje robota w pamięci, bierze plan z <katalog robota>/dev_agents_doc/plan.json
         (gdy go nie ma - plan minimalny), wypisuje notatkę jako JSON i ostrzeżenia o liniach; NICZEGO nie zapisuje
         (można podać robota 01 - czytany jest tylko kod jednostki i pliki tekstowe, nie pliki sekretów).
         Wymaga zmiennych środowiskowych z kluczem i adresem modeli (nazwy w config.yaml).
@@ -34,9 +41,11 @@ Test ręczny (z katalogu głównego repo):
 
 import json
 import os
+import typing
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
+import dev_agents.agents.chunks as _chunks
 import dev_agents.agents.common as _common
 import dev_agents.context as _context
 import dev_agents.files as _files
@@ -73,22 +82,21 @@ def find_unit(
     raise ValueError(komunikat_bledu)
 
 
-def read_unit_code(
+def read_unit_files(
     project_map: _schemas.ProjectMap,
     unit: _schemas.CodeUnit,
     max_file_size_kb: int,
-) -> tuple[str, int]:
-    """Zwraca (kod jednostki z numerami linii w znacznikach <plik>, największa liczba linii wśród plików jednostki).
+) -> dict[str, str]:
+    """Zwraca teksty plików jednostki (ścieżka -> tekst) w kolejności jednostki.
 
-    Po co: analityk dostaje pełny kod każdego pliku jednostki; liczba linii służy do sprawdzenia numerów linii
-    w odpowiedzi. Plik spoza mapy, plik o roli secret (nigdy nie czytany) i plik większy niż limit w KB kończą
-    się ValueError z nazwą pliku - nic nie jest czytane po cichu ani przycinane.
+    Po co: analityk czyta każdy plik jednostki w całości (potem dzieli go na kawałki). Plik spoza mapy, plik o roli
+    secret (nigdy nie czytany) i plik większy niż limit w KB kończą się ValueError z nazwą pliku - nic nie jest
+    czytane po cichu ani przycinane.
     """
     wpisy = {}
     for wpis in project_map.files:
         wpisy[wpis.path] = wpis
-    bloki = []
-    najwiecej_linii = 0
+    teksty = {}
     for sciezka in unit.files:
         wpis = wpisy.get(sciezka)
         if wpis is None:
@@ -98,16 +106,51 @@ def read_unit_code(
         if wpis.size_bytes > max_file_size_kb * 1024:
             raise ValueError(
                 f"Plik {sciezka} ma {wpis.size_bytes} B - więcej niż analysis.max_file_size_kb ({max_file_size_kb} KB); "
-                "czytanie dużych plików po kawałkach dochodzi w kroku 51"
+                "podnieś limit w config.yaml, jeśli plik ma być analizowany"
             )
-        tekst = _files.read_text_safe(os.path.join(project_map.root, *sciezka.split("/")))
+        teksty[sciezka] = _files.read_text_safe(os.path.join(project_map.root, *sciezka.split("/")))
+    return teksty
+
+
+def unit_cut_points(
+    project_map: _schemas.ProjectMap,
+    unit: _schemas.CodeUnit,
+) -> dict[str, list[int]]:
+    """Zwraca dla plików jednostki numery linii kończących funkcje i klasy (ścieżka -> końce jednostek z units()).
+
+    Po co: to są dozwolone miejsca cięcia długiego pliku na kawałki - kawałek kończy się na końcu funkcji albo klasy.
+    Plik bez faktów w mapie (np. technologia bez units()) nie ma granic i będzie cięty w środku.
+    """
+    granice = {}
+    for plik in project_map.source_files:
+        if plik.path in unit.files:
+            konce = []
+            for jednostka in plik.units:
+                konce.append(jednostka.end_line)
+            granice[plik.path] = konce
+    return granice
+
+
+def format_chunk_code(
+    texts: dict[str, str],
+    chunk: list[tuple[str, int, int]],
+) -> str:
+    """Zwraca kod kawałka: dla każdego segmentu blok <plik> z liniami od-do ponumerowanymi bezwzględnie (numer z całego pliku).
+
+    Po co: model wskazuje linie dokładnie, a numery w notatce zgadzają się z plikiem, także dla kawałka ze środka pliku.
+    Atrybut linii to liczba linii całego pliku, a fragment (tylko przy części pliku) - zakres kawałka.
+    """
+    bloki = []
+    for sciezka, od_linii, do_linii in chunk:
+        tekst = texts[sciezka]
         liczba_linii = _common.count_lines(tekst)
-        if liczba_linii > najwiecej_linii:
-            najwiecej_linii = liczba_linii
-        bloki.append(f'<plik sciezka="{sciezka}" linii="{liczba_linii}">\n{_common.number_lines(tekst)}\n</plik>')
+        atrybut_fragmentu = ""
+        if od_linii != 1 or do_linii != liczba_linii:
+            atrybut_fragmentu = f' fragment="{od_linii}-{do_linii}"'
+        fragment = _common.cut_lines(tekst, od_linii, do_linii)
+        bloki.append(f'<plik sciezka="{sciezka}" linii="{liczba_linii}"{atrybut_fragmentu}>\n{_common.number_lines(fragment, od_linii)}\n</plik>')
     kod = "\n\n".join(bloki)
-    wynik = (kod, najwiecej_linii)
-    return wynik
+    return kod
 
 
 def format_text_files(
@@ -164,8 +207,12 @@ def build_analyst_variables(
     unit_code: str,
     knowledge_text: str,
     note_part: str,
+    chunk: dict,
 ) -> dict:
-    """Zwraca zmienne do szablonu prompts/analyst/user.md: zadanie, kontekst, kod z numerami linii, pliki tekstowe, wiedzę i opis części notatki.
+    """Zwraca zmienne do szablonu prompts/analyst/user.md: zadanie, kontekst, kod z numerami linii, pliki tekstowe, wiedzę, opis części notatki i dane kawałka.
+
+    Argumenty: chunk - słownik z kluczami index (numer kawałka od 1), total (liczba kawałków), range (opis zakresu
+    linii) i previous_summary (podsumowanie poprzednich kawałków); przy jednym kawałku szablon pomija sekcję kawałka.
 
     Po co: w jednym miejscu widać, co dokładnie analityk dostaje. Pusta wskazówka plannera zamieniana jest na zdanie
     "brak wskazówki", żeby w prompcie nie było pustego miejsca. Ścieżki bezwzględnej katalogu projektu w prompcie nie ma.
@@ -184,6 +231,10 @@ def build_analyst_variables(
         "text_files": format_text_files(project_map),
         "knowledge": knowledge_text,
         "note_part": note_part,
+        "chunk_index": chunk["index"],
+        "chunk_total": chunk["total"],
+        "chunk_range": chunk["range"],
+        "previous_summary": chunk["previous_summary"],
     }
     return zmienne_promptu
 
@@ -235,28 +286,25 @@ def merge_note(
     return notatka
 
 
-def analyze_unit(
+def analyze_chunk(
     task: _schemas.AnalysisTask,
     project_map: _schemas.ProjectMap,
     plan: _schemas.Plan,
+    unit: _schemas.CodeUnit,
+    chunk_code: str,
+    knowledge_text: str,
+    chunk: dict,
     context: _context.RunContext,
-) -> tuple[_schemas.ModuleNote, list[str]]:
-    """Analizuje jednostkę z zadania: czyta kod, woła model agenta analyst dwa razy (NoteFlow, NoteDetails), składa i poprawia notatkę; zwraca (notatka, uwagi).
+) -> _schemas.ModuleNote:
+    """Analizuje jeden kawałek jednostki: dwa wywołania modelu (NoteFlow, NoteDetails) z tym samym kodem i złożenie ich w notatkę kawałka.
 
-    Po co: cała logika analityka w jednej funkcji, z której korzystają węzeł grafu (krok 52) i test ręczny. Wiedza
-    to pliki technologii i frameworków (dołącza kod) oraz pliki wybrane przez plannera dla analityków. Oba wywołania
-    dostają ten sam kod i różnią się opisem części (prompts/analyst/part_*.md) oraz schematem. Błędy (nieznana
-    jednostka, plik sekretu, plik za duży, odpowiedź niezgodna ze schematem - z nazwą schematu) kończą się wyjątkiem.
+    Po co: kawałek to najmniejsza porcja analizy; jednostka krótka ma jeden kawałek i przechodzi tędy raz.
     """
-    jednostka = find_unit(project_map, task.unit)
-    kod, najwiecej_linii = read_unit_code(project_map, jednostka, context.config.analysis.max_file_size_kb)
-    pliki_wiedzy = _common.collect_knowledge_files(context.config, project_map, plan.analyst_knowledge)
-    tekst_wiedzy = _common.format_knowledge(context.config, pliki_wiedzy)
     metoda = _llm.get_structured_output_method(context.config, _AGENT_NAME)
     odpowiedzi = []
     for plik_czesci, schemat in _NOTE_PARTS:
         opis_czesci = _prompts.read_prompt_file(context.config.paths.prompts, _AGENT_NAME, plik_czesci)
-        zmienne = build_analyst_variables(project_map, plan, task, jednostka, kod, tekst_wiedzy, opis_czesci)
+        zmienne = build_analyst_variables(project_map, plan, task, unit, chunk_code, knowledge_text, opis_czesci, chunk)
         tekst_system, tekst_user = _prompts.render_prompt(context.config.paths.prompts, _AGENT_NAME, zmienne)
         odpowiedz = _llm.invoke_structured(
             context.models[_AGENT_NAME],
@@ -266,6 +314,56 @@ def analyze_unit(
         )
         odpowiedzi.append(odpowiedz)
     notatka = merge_note(odpowiedzi[0], odpowiedzi[1])
+    return notatka
+
+
+def analyze_unit(
+    task: _schemas.AnalysisTask,
+    project_map: _schemas.ProjectMap,
+    plan: _schemas.Plan,
+    context: _context.RunContext,
+    note: typing.Callable[[str], None],
+) -> tuple[_schemas.ModuleNote, list[str]]:
+    """Analizuje jednostkę z zadania po kawałkach (jeden, gdy kod jest krótki): czyta kod, analizuje kolejne kawałki, składa i poprawia notatkę; zwraca (notatka, uwagi).
+
+    Po co: cała logika analityka w jednej funkcji, z której korzystają węzeł grafu (krok 52) i test ręczny. Wiedza
+    to pliki technologii i frameworków (dołącza kod) oraz pliki wybrane przez plannera dla analityków. Kawałki
+    (analysis.chunk_lines, chunk_overlap_lines) idą po kolei, każdy z podsumowaniem poprzednich; przy więcej niż jednym
+    kawałku analityk zgłasza przez note linię "kawałek 3/7: zakres" (węzeł poda Stage.note). Błędy (nieznana jednostka,
+    plik sekretu, plik za duży, odpowiedź niezgodna ze schematem - z nazwą schematu) kończą się wyjątkiem.
+    """
+    jednostka = find_unit(project_map, task.unit)
+    teksty = read_unit_files(project_map, jednostka, context.config.analysis.max_file_size_kb)
+    pliki = []
+    najwiecej_linii = 0
+    for sciezka, tekst in teksty.items():
+        liczba_linii = _common.count_lines(tekst)
+        pliki.append((sciezka, liczba_linii))
+        najwiecej_linii = max(najwiecej_linii, liczba_linii)
+    kawalki = _chunks.plan_chunks(
+        pliki,
+        unit_cut_points(project_map, jednostka),
+        context.config.analysis.chunk_lines,
+        context.config.analysis.chunk_overlap_lines,
+    )
+    pliki_wiedzy = _common.collect_knowledge_files(context.config, project_map, plan.analyst_knowledge)
+    tekst_wiedzy = _common.format_knowledge(context.config, pliki_wiedzy)
+    notatki = []
+    opisy = []
+    for numer, kawalek in enumerate(kawalki, start=1):
+        opis_zakresu = _chunks.describe_chunk(kawalek)
+        if len(kawalki) > 1:
+            note(f"kawałek {numer}/{len(kawalki)}: {opis_zakresu}")
+        dane_kawalka = {
+            "index": numer,
+            "total": len(kawalki),
+            "range": opis_zakresu,
+            "previous_summary": _chunks.build_previous_summary(notatki, opisy),
+        }
+        kod = format_chunk_code(teksty, kawalek)
+        notatki.append(analyze_chunk(task, project_map, plan, jednostka, kod, tekst_wiedzy, dane_kawalka, context))
+        opisy.append(opis_zakresu)
+    notatka = _chunks.merge_chunk_notes(notatki)
     wynik = fix_note(notatka, task.unit, najwiecej_linii)
     return wynik
 
@@ -273,6 +371,7 @@ def analyze_unit(
 # --- Test ręczny ---
 
 if __name__ == "__main__":
+    import re
     import shutil
     import sys
     import tempfile
@@ -285,6 +384,7 @@ if __name__ == "__main__":
     import dev_agents.scanner as _scanner
 
     _HASLO = "Haslo123!"
+    _TEST_CHUNK = {"index": 1, "total": 1, "range": "main.py: linie 1-10", "previous_summary": "(brak - to pierwszy kawałek)"}
     _CODE_MARKER = "KOD_MARKER_TESTOWY"
 
     def _write_temp_project(
@@ -304,6 +404,74 @@ if __name__ == "__main__":
         with open(os.path.join(projekt, "requirements.txt"), "w", encoding="utf-8") as plik:
             plik.write("requests\n")
         return projekt
+
+    def _write_long_project(
+        temp_dir: str,
+    ) -> str:
+        """Tworzy w katalogu tymczasowym robota z jednym długim plikiem main.py (12 funkcji po 9 linii przedzielonych pustą linią, razem 119 linii) i zwraca jego ścieżkę.
+
+        Po co: test podziału na kawałki na prawdziwej mapie z prawdziwego skanu - funkcje kończą się w liniach 9, 19, ..., 119.
+        """
+        projekt = os.path.join(temp_dir, "dlugi_robot")
+        os.makedirs(projekt)
+        bloki = []
+        for numer in range(12):
+            linie = [f"def funkcja_{numer}():"]
+            for linia in range(7):
+                linie.append(f"    # linia kodu {numer}.{linia}")
+            linie.append(f"    return {numer}")
+            bloki.append("\n".join(linie))
+        kod = "\n\n".join(bloki) + "\n"
+        with open(os.path.join(projekt, "main.py"), "w", encoding="utf-8") as plik:
+            plik.write(kod)
+        return projekt
+
+    def _make_chunk_answer_function(
+        seen_prompts: list[str],
+    ):
+        """Zwraca funkcję odpowiedzi udawanego modelu dla kawałków: część 1 z celem i jedną czynnością kawałka (linia 10 razy numer kawałka), część 2 pusta; zapamiętuje prompty.
+
+        Po co: test sprawdza, że każdy kawałek dostaje własny prompt, a notatki kawałków są składane w kolejności.
+        """
+
+        def answer(
+            messages,
+        ):
+            """Zapamiętuje prompt użytkownika i zwraca odpowiedź dla części i kawałka wskazanych w prompcie.
+
+            Po co: odpowiedź udawanego modelu zależna od wiadomości.
+            """
+            tekst = messages[1].content
+            seen_prompts.append(tekst)
+            numer = int(re.search(r"kawałek (\d+) z", tekst).group(1))
+            czynnosc = _schemas.NoteAction(title=f"Czynność kawałka {numer}", kind="step", function="funkcja", line=10 * numer, description="", reads=[], writes=[], certain=True)
+            odpowiedz = _schemas.NoteDetails(
+                settings=[],
+                requirements=[],
+                external_dependencies=[],
+                risky_places=[],
+                possible_failures=[],
+                extension_points=[],
+                conventions=[],
+                maintainer_hints=[],
+                glossary_candidates=[],
+            )
+            if "CZĘŚĆ 1 z 2" in tekst:
+                odpowiedz = _schemas.NoteFlow(
+                    unit_name="main.py",
+                    purpose=f"Cel kawałka {numer}.",
+                    flow_role="",
+                    automated_application="",
+                    key_functions=[],
+                    actions=[czynnosc],
+                    process_steps=[],
+                    error_handling=[],
+                    inputs=[],
+                    outputs=[],
+                )
+            return odpowiedz
+
+        return answer
 
     def _messy_note() -> _schemas.ModuleNote:
         """Zwraca notatkę z dwoma błędami: zła nazwa jednostki i czynność z linią spoza pliku.
@@ -429,7 +597,8 @@ if __name__ == "__main__":
         zepsuta = _messy_note()
         widziane_prompty = []
         model = _fakes.FakeStructuredModel(_make_answer_function(zepsuta, widziane_prompty))
-        notatka, uwagi = analyze_unit(zadanie, project_map, plan, _context_for(app_config, model))
+        postep = []
+        notatka, uwagi = analyze_unit(zadanie, project_map, plan, _context_for(app_config, model), postep.append)
         prompt_user = widziane_prompty[0]
         prompt_user_czesc_2 = widziane_prompty[1]
         prompt_system = model.messages[0].content
@@ -438,10 +607,10 @@ if __name__ == "__main__":
         for wpis in project_map.files:
             wpisy[wpis.path] = wpis
         mapa_z_sekretem = project_map.model_copy(update={"files": [wpisy["main.py"].model_copy(update={"role": "secret"})]})
-        komunikat_sekretu = _raises(read_unit_code, mapa_z_sekretem, project_map.code_units[0], 100)
-        komunikat_limitu = _raises(read_unit_code, project_map, project_map.code_units[0], 0)
+        komunikat_sekretu = _raises(read_unit_files, mapa_z_sekretem, project_map.code_units[0], 100)
+        komunikat_limitu = _raises(read_unit_files, project_map, project_map.code_units[0], 0)
         komunikat_nieznanej = _raises(find_unit, project_map, "nie_ma.py")
-        bez_wskazowki = build_analyst_variables(project_map, plan, _schemas.AnalysisTask(unit="main.py"), project_map.code_units[0], "kod", "wiedza", "opis części")
+        bez_wskazowki = build_analyst_variables(project_map, plan, _schemas.AnalysisTask(unit="main.py"), project_map.code_units[0], "kod", "wiedza", "opis części", _TEST_CHUNK)
         wyniki = [
             ("prompt: kod z numerami linii", f"    5|     # {_CODE_MARKER}" in prompt_user and '<plik sciezka="main.py" linii="10">' in prompt_user),
             ("prompt: plik konfiguracyjny z numerami i hasłem dosłownie", f"    3|   password: {_HASLO}" in prompt_user),
@@ -451,6 +620,7 @@ if __name__ == "__main__":
             ("prompt: bez ścieżki dysku katalogu projektu", root not in prompt_user and root not in prompt_system),
             ("prompt: brak wskazówki zamieniony na zdanie", bez_wskazowki["hint"] == "(brak wskazówki)"),
             ("model zawołany dwa razy: wiadomości system i człowiek", model.calls == 2 and len(model.messages) == 2),
+            ("krótka jednostka: jeden kawałek, bez sekcji kawałka w prompcie i bez linii postępu", "<kawalek>" not in prompt_user and postep == []),
             ("prompty: część 1 i część 2 mają swój opis, ten sam kod i ten sam system", "CZĘŚĆ 1 z 2" in prompt_user and "CZĘŚĆ 2 z 2" not in prompt_user and "CZĘŚĆ 2 z 2" in prompt_user_czesc_2 and "CZĘŚĆ 1 z 2" not in prompt_user_czesc_2 and _CODE_MARKER in prompt_user_czesc_2),
             ("merge_note: dwie części dają notatkę równą oryginałowi", merge_note(flow_zepsuty, details_zepsute) == zepsuta),
             ("notatka złożona: czynności z części 1, ustawienia z części 2", notatka.actions[0].title == "Pobierz stronę" and notatka.settings[0].key == "password"),
@@ -463,6 +633,48 @@ if __name__ == "__main__":
             ("nieznana jednostka: ValueError z listą jednostek", "nie_ma.py" in komunikat_nieznanej and "main.py" in komunikat_nieznanej),
         ]
         return wyniki
+
+    def _chunk_checks(
+        app_config: _config.AppConfig,
+        temp_dir: str,
+    ) -> list[tuple[str, bool]]:
+        """Sprawdza analizę długiej jednostki (119 linii, kawałki po 50 linii) na udawanym modelu: wywołania, prompty kawałków, postęp i złożoną notatkę; zwraca (opis, zgodne).
+
+        Po co: kawałki muszą iść po kolei, każdy z własnym kodem (numery bezwzględne) i podsumowaniem poprzednich,
+        a notatki kawałków mają złożyć się w jedną.
+        """
+        root = _write_long_project(temp_dir)
+        konfiguracja_kawalkow = app_config.analysis.model_copy(update={"chunk_lines": 50, "chunk_overlap_lines": 5})
+        config_kawalkow = app_config.model_copy(update={"analysis": konfiguracja_kawalkow})
+        project_map = _scanner.build_project_map(root, config_kawalkow.scan)
+        plan = _schemas.Plan(summary="Plan testowy.", tasks=[])
+        widziane_prompty = []
+        model = _fakes.FakeStructuredModel(_make_chunk_answer_function(widziane_prompty))
+        postep = []
+        notatka, uwagi = analyze_unit(_schemas.AnalysisTask(unit="main.py"), project_map, plan, _context_for(config_kawalkow, model), postep.append)
+        kolejnosc_linii = []
+        for czynnosc in notatka.actions:
+            kolejnosc_linii.append(czynnosc.line)
+        wyniki = [
+            ("kawałki: 3 kawałki po 2 wywołania modelu", model.calls == 6),
+            (f"kawałki: linie postępu 'kawałek k/3' z zakresem ({postep})", postep == ["kawałek 1/3: main.py: linie 1-49", "kawałek 2/3: main.py: linie 50-99", "kawałek 3/3: main.py: linie 100-119"]),
+            ("kawałek 1: kod od linii 1, zdanie o braku poprzednich kawałków", '<plik sciezka="main.py" linii="119" fragment="1-49">' in widziane_prompty[0] and "to pierwszy kawałek" in widziane_prompty[0]),
+            ("kawałek 2: kod z bezwzględnymi numerami (od 50), bez linii z kawałka 1", 'fragment="50-99"' in widziane_prompty[2] and "   50| " in widziane_prompty[2] and "    1| def funkcja_0" not in widziane_prompty[2]),
+            ("kawałek 2: podsumowanie kawałka 1 w prompcie (cel i czynność)", "Cel kawałka 1." in widziane_prompty[2] and "Czynność kawałka 1" in widziane_prompty[2]),
+            ("kawałek 3: podsumowanie kawałków 1 i 2", "Cel kawałka 2." in widziane_prompty[4]),
+            ("notatka złożona: czynności z trzech kawałków w kolejności linii", kolejnosc_linii == [10, 20, 30]),
+            ("notatka złożona: cele kawałków połączone, bez uwag o poprawkach", notatka.purpose == "Cel kawałka 1. Cel kawałka 2. Cel kawałka 3." and uwagi == []),
+        ]
+        return wyniki
+
+    def _print_note(
+        text: str,
+    ) -> None:
+        """Wypisuje linię postępu analityka (kawałek k/n) z wcięciem.
+
+        Po co: funkcja note podawana analizie w teście z prawdziwym modelem; w grafie zastąpi ją Stage.note.
+        """
+        print(f"  {text}", flush=True)
 
     def _real_model_run(
         project_dir: str,
@@ -494,7 +706,7 @@ if __name__ == "__main__":
             sys.exit(f"BŁĄD: {blad}")
         print(f"\n=== Prawdziwy model analityka: {unit_name} ===")
         try:
-            notatka, uwagi = analyze_unit(zadanie, project_map, plan, kontekst)
+            notatka, uwagi = analyze_unit(zadanie, project_map, plan, kontekst, _print_note)
         except (ValueError, RuntimeError) as blad:
             sys.exit(f"BŁĄD: {blad}")
         print(notatka.model_dump_json(indent=2))
@@ -513,7 +725,7 @@ if __name__ == "__main__":
         app_config = _config.load_config(os.path.join(katalog_repo, "config.yaml"))
         temp_dir = tempfile.mkdtemp()
         try:
-            wyniki = _offline_checks(app_config, temp_dir)
+            wyniki = _offline_checks(app_config, temp_dir) + _chunk_checks(app_config, temp_dir)
             print("=== Sprawdzenia offline ===")
             wszystkie_zgodne = True
             for opis, zgodne in wyniki:

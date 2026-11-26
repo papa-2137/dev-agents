@@ -12,7 +12,7 @@
 | C - Mapa projektu bez modelu (9-29) | ✅ zakończona (M3) |
 | D - Szablon przewodnika i HTML bez modelu (30-39) | ✅ zakończona (M4) |
 | E - Prompty i baza wiedzy (40-42) | ✅ zakończona |
-| F - Graf i agenci (43-59) | 🟡 w toku (43-49 ✅) |
+| F - Graf i agenci (43-59) | 🟡 w toku (43-50 ✅) |
 | G - Ergonomia (60-63) | ⬜ |
 | H - Miasto (64-68) | ⬜ |
 
@@ -32,6 +32,12 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ✅ makieta `dev_log/guide_mockup.htm
 -->
 
 Wpisy kroków 1-29 (fazy A-C) są w archiwum: `dev_log/raport_wykonania_fazy_A-C.md`; wpisy kroków 30-39a (faza D) w archiwum: `dev_log/raport_wykonania_fazy_D.md`; wpisy kroków 40-42 (faza E) w archiwum: `dev_log/raport_wykonania_fazy_E.md`; wpisy kroków 43-49 (faza F, część 1) w archiwum: `dev_log/raport_wykonania_fazy_F_43-49.md`.
+
+### Krok 50. Agent analityk (bez grafu) - ✅
+- `dev_agents/agents/analyst.py`: `analyze_unit()` czyta kod jednostki z numerami linii, pliki tekstowe robota, fakty ze skanu i wiedzę (technologia, frameworki, pliki plannera), woła model `analyst` i poprawia odpowiedź (`fix_note`: nazwa jednostki z zadania, linia spoza pliku -> 0, każda poprawka jako uwaga); pliki `secret` nigdy nie są czytane, plik większy niż `analysis.max_file_size_kb` (100) - `ValueError`. Nowe: `agents/common.py` (wybór i skład plików wiedzy, numerowanie linii), prompty `analyst/system.md`, `user.md`, `part_flow.md`, `part_details.md`.
+- Pierwsze prawdziwe wywołania odrzuciła bramka: 400 `minimum is not supported`, potem `compiled grammar is too large`. Hipoteza o polach opcjonalnych była błędna; `scripts/probe_schema.py` zmierzył limit: **48 pól schematu po rozwinięciu klas** przechodzi, 49 nie; osobno max 16 pól "tekst albo null"; głębokość, enumy, ponowne użycie klasy i pola domyślne nie mają znaczenia (zmierzone na profilu small).
+- Rozwiązanie: notatka zwracana w **dwóch odpowiedziach** (`NoteFlow` 22 pola, `NoteDetails` 32 pola), `merge_note()` składa `ModuleNote` (54 pola, nie idzie do modelu); `schemas.count_schema_properties()` i limit testowy `MAX_MODEL_SCHEMA_PROPERTIES` = 40. Test schematów ostrzega, że `GuideBlock` (45) i `GuideTab` (47) przekroczą limit - do odchudzenia przed krokiem 55.
+- Wybory: rekomendowane (tryb pracy fazy F). Test użytkownika: OK (prawdziwy model, `main.py` robota 01). Commit `cc62725`.
 
 ---
 
@@ -92,3 +98,5 @@ Wpisy kroków 1-29 (fazy A-C) są w archiwum: `dev_log/raport_wykonania_fazy_A-C
 | 2026-11-26 | Krok 48: (1) wspólny udawany model `FakeStructuredModel` w `dev_agents/fakes.py` zamiast kopii w testach każdego agenta; (2) test grafu woła planner na udawanym modelu z pustym planem (kod uzupełnia wszystkie jednostki), bez sieci i kluczy; (3) `main.py` wypisuje jedną linię o planie po przebiegu, pełny plan jest w `plan.json`; `plan_kroki.md` krok 48 zaktualizowany | (1) analityk, autor diagramu, pisarze i recenzent będą testowani tak samo, jedna klasa zamiast pięciu kopii; (2) test grafu ma być powtarzalny i darmowy, prawdziwy model sprawdza test plannera z argumentem; (3) szybki ślad, że planner zadziałał, bez wypisywania całego planu; wybór: rekomendowane (tryb pracy fazy F) |
 | 2026-11-26 | Krok 49: (1) ustawienia w notatce jako `ConfigItem`, dane czynności jako `DataRef` (klasy z `guide_content.py`) zamiast nowych klas; (2) `process_steps` (zdania) zostają obok `actions` (czynności z linią i danymi); (3) tylko `unit_name` i `purpose` wymagane, pozostałe pola mają wartości domyślne; (4) `part`/`parts` od razu w schemacie z minimum 1; `plan_kroki.md` krok 49 zaktualizowany | (1) pisarz przepisuje wpisy do metryczki i diagramu bez konwersji, jedno źródło zasad; (2) `actions` karmią diagram i „Krok po kroku”, `process_steps` ścieżki procesu - dwie potrzeby, krótkie listy; (3) schemat nie zmusza modelu do wymyślania, brak przeznaczenia to błąd walidacji; (4) krok 51 nie zmienia schematu; wybór: rekomendowane (tryb pracy fazy F) |
 | 2026-11-26 | Raport podzielony po raz czwarty: wpisy kroków 43-49 (faza F, część 1) przeniesione bez zmian do `dev_log/raport_wykonania_fazy_F_43-49.md`; w `raport_wykonania.md` zostają podsumowanie, kroki od 50 i tabela decyzji | Raport (46 KB) zbliżał się do 48 KB, powyżej którego nie da się go przeczytać jednym odczytem i podmienić kopii na claude.ai; wybór: rekomendowane (tryb pracy fazy F) |
+| 2026-11-26 | Krok 50: (1) notatka analityka w dwóch wywołaniach modelu (`NoteFlow` + `NoteDetails`), składana kodem w `ModuleNote`; (2) limit schematu dla modelu 40 pól (zmierzony limit bramki 48); (3) `analysis.max_file_size_kb: 100`; (4) wspólne `agents/common.py`; (5) skrypt `scripts/probe_schema.py` do mierzenia limitów bramki; `plan_kroki.md` kroki 49, 50 zaktualizowane | (1) cała notatka (54 pola) przekracza limit bramki, a przycinanie gubiłoby treść; koszt: kod jednostki idzie do modelu dwa razy; (2) zapas względem pomiaru tylko na profilu small; (3) większy plik analizuje krok 51; (4) jedna logika wiedzy dla wszystkich agentów; (5) pomiar zamiast zgadywania; wybór: rekomendowane (tryb pracy fazy F) |
+| 2026-11-26 | **Do omówienia na koniec fazy F (decyzja użytkownika, teraz brak czasu):** konsekwencje zmian z kroku 50: podwójny koszt tokenów analityka (kod dwa razy), limit 48 pól zmierzony tylko na small (sprawdzić medium), odchudzenie `GuideBlock`/`GuideTab` i ewentualne rozbicie zakładek na wiele wywołań, wpływ na czas i koszt całego przebiegu | Decyzja użytkownika: jedziemy dalej, omówienie po zakończeniu fazy F |
