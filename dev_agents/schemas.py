@@ -2,8 +2,10 @@
 
 Co zawiera: opis kształtu danych, które jeden etap produkuje, a następny odbiera. Na tym etapie:
 mapa projektu - wynik skanera: pliki z rolami (FileEntry), jednostki kodu do analizy (CodeUnit) i całość
-(ProjectMap) - oraz miary złożoności funkcji liczone przez technologię (FunctionMetrics). Kolejne schematy (pliki zależności, konfiguracja robota, graf zależności, plan, notatki
-analityków, diagram przepływu, treść przewodnika, recenzja) dochodzą w krokach, które ich potrzebują.
+(ProjectMap) - oraz minimalne fakty o pliku źródłowym podawane przez technologię: jednostki z zakresami
+linii (SourceUnit) i odwołania do innych plików i pakietów (References). Kolejne schematy (pliki zależności,
+konfiguracja robota, graf zależności, plan, notatki analityków, diagram przepływu, treść przewodnika,
+recenzja) dochodzą w krokach, które ich potrzebują.
 
 Dlaczego istnieje: jasna umowa między skanerem, technologiami, agentami i rendererem - każdy wie, co
 dostaje i co oddaje. Każdy obiekt da się zapisać do JSON (model_dump_json) i wczytać z powrotem
@@ -77,25 +79,32 @@ class ProjectMap(pydantic.BaseModel):
 
 
 
-# --- Miary złożoności (wynik technologii) ---
+# --- Fakty o pliku źródłowym (wynik technologii) ---
 
 
-class FunctionMetrics(pydantic.BaseModel):
-    """Miary złożoności jednej funkcji albo kodu poza funkcjami: zakres linii, długość, głębokość zagnieżdżenia, rozgałęzienia.
+class SourceUnit(pydantic.BaseModel):
+    """Jednostka pliku źródłowego - funkcja, klasa, metoda, workflow, zadanie - z nazwą i zakresem linii.
 
-    Po co: liczby wskazują, gdzie kod jest trudny - bez zgadywania przez model. Z nich powstaje tabela
-    "Ryzykowne miejsca", a długie funkcje są analizowane po kawałkach.
-
-    Uwaga: same liczby, bez ocen - progi (co jest "długie") stosuje kod, który z miar korzysta.
+    Po co: pewne numery linii dla analityka i przewodnika, granice podziału długich plików na kawałki
+    i długość jednostek do tabeli "Ryzykowne miejsca" - bez zgadywania przez model.
     """
 
-    path: str  # ścieżka względna pliku
-    name: str  # nazwa funkcji, "Klasa.metoda" albo "<kod poza funkcjami>"
+    name: str  # np. "run", "Klasa.metoda", "Main.xaml", nazwa zadania Robot Framework
     start_line: int
     end_line: int
-    lines: int  # liczba linii (dla kodu poza funkcjami - suma odcinków)
-    max_depth: int  # najgłębsze zagnieżdżenie bloków (if, pętle, try, with); elif na poziomie swojego if
-    branches: int  # punkty decyzji: if/elif, pętle, except, wyrażenia warunkowe, and/or - jak w złożoności cyklomatycznej
+
+
+class References(pydantic.BaseModel):
+    """Odwołania pliku źródłowego: inne pliki projektu i pakiety spoza projektu.
+
+    Po co: z plików powstaje graf zależności i kolejność czytania, z pakietów - wykrywanie frameworków.
+
+    Uwaga: same fakty z kodu; podział pakietów na standardowe i do zainstalowania oraz ich opis robią agenci.
+    """
+
+    files: list[str] = []  # ścieżki względne plików projektu (separator "/")
+    packages: list[str] = []  # nazwy pakietów spoza projektu (w Pythonie bez biblioteki standardowej)
+
 
 # --- Test ręczny ---
 

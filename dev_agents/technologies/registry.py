@@ -147,18 +147,18 @@ if __name__ == "__main__":
         return linie
 
     def _empty_class_lines() -> list[str]:
-        """Zwraca linie zachowania pustej klasy UiPath: outline() (NotImplementedError) i metrics() (domyślne "brak danych").
+        """Zwraca linie zachowania pustej klasy UiPath: find_entrypoints() (NotImplementedError) i metody opcjonalne ("brak danych").
 
-        Po co: pokazuje, że pusta klasa zgłasza czytelny błąd z nazwą technologii, a metody z domyślnym zachowaniem działają.
+        Po co: pusta klasa zgłasza czytelny błąd z nazwą technologii, a metody opcjonalne działają z domyślną odpowiedzią.
         """
         uipath = get_technology("uipath")
         linie = []
         try:
-            uipath.outline("", "Main.xaml")
+            uipath.find_entrypoints("", ["Main.xaml"])
         except NotImplementedError as blad:
-            linie.append(f"outline(): NotImplementedError: {blad}")
-        linie.append(f"metrics(): {uipath.metrics('', 'Main.xaml')}")
-        linie.append(f"control_outline(): {uipath.control_outline('', 'Main.xaml', '')}")
+            linie.append(f"find_entrypoints(): NotImplementedError: {blad}")
+        linie.append(f"units(): {uipath.units('', 'Main.xaml')}")
+        linie.append(f"references(): {uipath.references('', 'Main.xaml')!r}")
         return linie
 
     def _print_section(

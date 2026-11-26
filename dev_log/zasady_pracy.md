@@ -1,5 +1,4 @@
 > Kopia `AGENTS.md` z katalogu głównego repozytorium, do wglądu. **Obowiązuje `AGENTS.md`** - przy każdej zmianie zasad zaktualizuj oba pliki.
-
 # AGENTS.md - zasady pracy w repozytorium dev-agents
 
 Instrukcje dla modeli i asystentów AI, które piszą kod w tym repozytorium. Przeczytaj przed pierwszą zmianą.
@@ -95,6 +94,7 @@ llm:
 5. **Zmienne środowiskowe tylko przez `os`** (`os.environ[...]` / `os.getenv(...)`). Na Kwadracie: klucz `LLM_API_KEY`, adres endpointu `LLM_BASE_URL`; na mieście: `BAZOOKA_KEY`, `BAZOOKA_URL`.
 6. **Modele wyłącznie przez bibliotekę OpenAI:** `langchain_openai.ChatOpenAI` z `base_url` (provider `openai_compatible`). **Tylko fabryka modeli (`dev_agents/llm.py`) importuje `langchain_openai`.** Wszyscy agenci wołają model przez jedną wspólną funkcję, która zwraca czytelny błąd (schemat, `finish_reason`, tokeny) zamiast cichego `None` i ponawia odpowiedź niezgodną ze schematem.
 7. **Rdzeń nie zna żadnego języka ani frameworku.** Wiedza o technologii jest wyłącznie w module danej technologii - np. **tylko `dev_agents/technologies/python.py` importuje `ast`**.
+   **Kod liczy minimum, rozumienie kodu robią agenci.** Kod podaje tylko proste, pewne fakty (role plików, sekrety, punkty wejścia, jednostki z zakresami linii, odwołania między plikami, zależności dosłownie, maskowanie haseł); struktura, logika, konfiguracja i ryzyka to praca agentów. Każda metoda technologii mieści się w ok. 40 liniach prostego kodu, bez drzewa warunków - jeśli się nie da, ta wiedza należy do agenta. Prostota kodu jest ważniejsza niż oszczędność tokenów.
 8. **Prompty:** `prompts/<agent>/system.md` (stałe instrukcje) + `user.md` (szablon Jinja2, `StrictUndefined`). Dane wejściowe zawsze w `user`, opakowane w tagi - ochrona przed prompt injection z analizowanego kodu.
 9. **Model nie pisze struktury dokumentu wynikowego.** Model zwraca treść jako structured output, a układ i format składa kod z szablonów w `knowledge_base/templates/`. Nie wpisuj konkretnych pól ani stałych rozdziałów dokumentu w kod - zmiana szablonu to edycja plików szablonów, bez zmian w kodzie.
 10. **Stan grafu:** `TypedDict` z modelami Pydantic w środku. Stan jest chudy: ścieżki i metadane, bez pełnego kodu źródłowego. Zależności (modele, prompty, baza wiedzy, zapis wyników) są w `RunContext`, wstrzykiwane przez `Runtime[RunContext]`, a nie w stanie.

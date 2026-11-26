@@ -19,9 +19,9 @@ Przewodnik musi pozwolić deweloperowi **zainstalować i uruchomić robota, opow
 | W3 | **Przepływ krok po kroku pod diagramem:** dla każdego klocka co czyta, co się dzieje (moduł, funkcje w kolejności), co zapisuje lub zwraca; szczegóły także po najechaniu na klocek; kliknięcie przenosi do kroku. | zakładka **Przepływ działania**, dół | te same dane co W1 (jedno źródło - diagram i wiersze nie mogą się rozjechać) | 36, 37 |
 | W4 | **Zmiany i rozszerzenia:** przepisy dopasowane do robota (np. nowa strona, nowy format pliku wsadowego, zmiana algorytmu wyszukiwania maila) oraz tabela „gdzie co zmienić”. | zakładka **Zmiany i rozszerzenia** | notatki analityków (punkty rozszerzeń) | 34, 49, 55 |
 | W5 | **Jak czytać przewodnik** - na samym początku. | zakładka **Przegląd i uruchomienie**, zaraz po metryczce | kod (karty z opisów zakładek w szablonie) | 33 |
-| W6 | **Potencjalne błędy i naprawa:** objaw, przyczyna, gdzie szukać, jak naprawić; znane ograniczenia i pułapki; **ryzykowne miejsca w kodzie** (najdłuższe i najbardziej zagnieżdżone funkcje, liczone przez kod). | zakładka **Błędy i naprawa** | notatki analityków (obsługa błędów, pułapki) | 15, 34, 35, 49, 55 |
+| W6 | **Potencjalne błędy i naprawa:** objaw, przyczyna, gdzie szukać, jak naprawić; znane ograniczenia i pułapki; **ryzykowne miejsca w kodzie** (najdłuższe jednostki - długość liczy kod, komentarz pisze model z notatek). | zakładka **Błędy i naprawa** | notatki analityków (obsługa błędów, pułapki, trudne miejsca) + kod (długość jednostek) | 13, 34, 35, 49, 55 |
 | W7 | **Wszystkie ścieżki procesu** jako listy punktowane (główna, alternatywne, błędy), z odwołaniem do numerów klocków diagramu. | zakładka **Ścieżki procesu** | model, na podstawie gotowego diagramu | 34, 55, 56 |
-| W8 | **Metryczka robota** (z pliku konfiguracyjnego, a gdy go nie ma albo nie wszystko w nim jest - także ze stałych w kodzie, np. `URL = "https://..."`): plik i miejsce jego wczytania w kodzie, systemy zewnętrzne (adresy), pliki wejściowe i wyjściowe, logi, konta i zmienne środowiskowe, przełączniki; pod spodem pełna konfiguracja: klucz, wartość (wrażliwe zamaskowane), znaczenie, gdzie używany w kodzie. Ustawienia ze stałych oznaczone „w kodzie” z plikiem i linią. Brak pliku i stałych → jedno zdanie, że robot nie ma konfiguracji. | zakładka **Przegląd i uruchomienie**, zaraz pod tytułem | skaner i kod (wartości, typy, miejsca użycia) + model (znaczenie kluczy) | 24, 25, 26, 30, 31, 35, 55, 56 |
+| W8 | **Metryczka robota** (z pliku konfiguracyjnego, a gdy go nie ma albo nie wszystko w nim jest - także ze stałych w kodzie, np. `URL = "https://..."`): plik i miejsce jego wczytania w kodzie, systemy zewnętrzne (adresy), pliki wejściowe i wyjściowe, logi, konta i zmienne środowiskowe, przełączniki; pod spodem pełna konfiguracja: klucz, wartość (wrażliwe zamaskowane), znaczenie, gdzie używany w kodzie. Ustawienia ze stałych oznaczone „w kodzie” z plikiem i linią. Brak pliku i stałych → jedno zdanie, że robot nie ma konfiguracji. | zakładka **Przegląd i uruchomienie**, zaraz pod tytułem | skaner (pliki konfiguracyjne z zamaskowanymi hasłami) + model (wpisy, rodzaje, znaczenie, miejsca użycia i ustawienia ze stałych - z notatek analityków) + kod (układ, pilnowanie `***`) | 20, 24, 30, 31, 35, 49, 55, 56 |
 
 Dodatkowo (ze wzorca): **Struktura projektu** (drzewo z opisami po najechaniu, graf zależności modułów) i **Dla dewelopera** (architektura w pięciu zdaniach, warstwy, kolejność czytania kodu, konwencje, zależności zewnętrzne).
 
@@ -41,10 +41,10 @@ Dodatkowo (ze wzorca): **Struktura projektu** (drzewo z opisami po najechaniu, g
 | Wynik | `dev_agents_doc/guide.html` w **katalogu głównym analizowanego projektu**, razem z artefaktami pośrednimi. HTML samowystarczalny: CSS i JS w środku, fonty systemowe, bez zasobów z internetu (na mieście sieć może je blokować). |
 | Treść a forma | **Model zwraca treść, nie HTML.** Treść przewodnika to structured output z ogólnych bloków; układ HTML składa kod z szablonu Jinja2, wygląd według makiety. |
 | Szablon przewodnika | Zakładki i sekcje w `knowledge_base/templates/guide_template.yaml` (id, tytuł, typ bloku, źródło `llm`/`scanner`/`code`, wymagane, instrukcja). Kod zna tylko **typy bloków**, nie konkretne sekcje - nowa sekcja to edycja YAML. |
-| Dane bez modelu | Drzewo projektu, role plików, sekrety, punkty wejścia (także z plików `.bat`/`.ps1`/`.cmd`), **pliki zależności (dosłownie)**, **metryczka z pliku konfiguracyjnego i ze stałych w kodzie** (wartości, typy, miejsca użycia kluczy w kodzie), **szkielet sterowania i miary złożoności funkcji**, **graf zależności modułów**, szkic kolejności czytania kodu, karty „jak czytać” - wylicza kod. |
+| Podział pracy kod - agenci | **Kod robi tylko to, co musi być pewne i jest proste dla każdej technologii:** drzewo projektu, role plików, sekrety (tylko metadane), punkty wejścia, **jednostki plików z zakresami linii**, **odwołania między plikami** (graf zależności, kolejność czytania), **pliki zależności dosłownie**, **maskowanie haseł** w plikach konfiguracyjnych i uruchamiających, sprawdzenie spójności i układ diagramu, składanie HTML, karty „jak czytać”. **Rozumienie kodu należy do agentów:** struktura i logika, sposób uruchomienia z `.bat`/`.ps1`, metryczka (znaczenie kluczy, miejsca użycia, ustawienia w stałych), komentarze do ryzykownych miejsc. Metoda technologii, której nie da się napisać w ok. 40 liniach prostego kodu, oznacza wiedzę dla agenta - przewaga prostoty kodu nad oszczędnością tokenów. |
 | Konfiguracja robota a sekrety | Pliki konfiguracyjne robota trafiają do modelu (potrzebne do opisu uruchomienia i dostępów) **z zamaskowanymi wartościami kluczy wrażliwych** (`password`, `token`, `secret`, `key` itp. - wzorce w configu narzędzia). Pliki sekretów - tylko metadane. |
-| Rozszerzalność | Rdzeń (skaner, graf, renderer) **nie zna żadnej technologii**. Wszystko, co zależy od technologii - pliki źródłowe, punkty wejścia, szkielet, importy, **pliki konfiguracyjne i ich odczyt**, **pliki zależności**, miejsca użycia kluczy - daje klasa technologii z rejestru. Nowa technologia (UiPath, NICE, Robot Framework) = nowa klasa + plik wiedzy + ewentualnie sekcje szablonu z filtrem `technologies`. Nowy framework Pythona (także instalowany jako paczka w venv) = wpis w `scan.frameworks` + plik wiedzy, **bez zmian w kodzie**. W MVP implementujemy tylko Pythona; pozostałe technologie mają puste klasy z opisanym kontraktem. |
-| Różne style robotów | Narzędzie nie zakłada porządku w kodzie robota. Robot bez frameworku, uruchamiany z `.bat`/`.ps1`, z ustawieniami w stałych w kodzie albo napisany jako „spaghetti” (funkcje na setki linii, warunki w warunkach) ma być opisany równie rzetelnie. Pomaga temu kod, nie model: **szkielet sterowania** długich funkcji (same rozgałęzienia, pętle i wywołania z liniami), **miary złożoności** funkcji, **analiza długich funkcji po kawałkach**, **limit szczegółowości diagramu** (szczegóły techniczne schodzą do wierszy „krok po kroku”). Pole, którego nie da się wypełnić z kodu, zostaje uczciwie puste („nie wynika z kodu”) - recenzent nie karze za brak, karze za wymysł. Najbardziej złożone funkcje trafiają do przewodnika jako „ryzykowne miejsca”. |
+| Rozszerzalność | Rdzeń (skaner, graf, renderer) **nie zna żadnej technologii**. Technologia z rejestru podaje tylko minimalne fakty: czy projekt jest w tej technologii, pliki źródłowe, punkty wejścia, opcjonalnie jednostki z zakresami linii i odwołania do plików i pakietów. Nowa technologia (UiPath, NICE, Robot Framework) = nowa klasa na kilkadziesiąt linii + plik wiedzy dla agentów + ewentualnie sekcje szablonu z filtrem `technologies`. Nowy framework Pythona (także instalowany jako paczka w venv) = wpis w `scan.frameworks` + plik wiedzy, **bez zmian w kodzie**. W MVP implementujemy tylko Pythona; pozostałe technologie mają puste klasy z opisanym kontraktem. |
+| Różne style robotów | Narzędzie nie zakłada porządku w kodzie robota. Robot bez frameworku, uruchamiany z `.bat`/`.ps1`, z ustawieniami w stałych w kodzie albo napisany jako „spaghetti” (funkcje na setki linii, warunki w warunkach) ma być opisany równie rzetelnie. Pomaga temu: **kod z numerami linii** dla analityka, **długość jednostek** liczona przez kod, **analiza długich plików po kawałkach** wzdłuż granic jednostek, **limit szczegółowości diagramu** (szczegóły techniczne schodzą do wierszy „krok po kroku”). Pole, którego nie da się wypełnić z kodu, zostaje uczciwie puste („nie wynika z kodu”) - recenzent nie karze za brak, karze za wymysł. Najdłuższe jednostki i trudne miejsca wskazane przez analityków trafiają do przewodnika jako „ryzykowne miejsca”. |
 | Bezpieczeństwo zapisu | W analizowanym projekcie zapisujemy wyłącznie w `dev_agents_doc/`; czyszczenie tylko katalogu ze znacznikiem narzędzia; skaner zawsze pomija `dev_agents_doc/`. |
 | Testy | Ręczne, pod `if __name__ == "__main__":` w każdym module. Biblioteka testów poza zakresem MVP. |
 | Dobór modeli | Planner i analityk na `small`; autor diagramu, pisarze i recenzent na `medium`. |
@@ -104,13 +104,14 @@ dev-agents/
 ├── dev_agents/
 │   ├── __init__.py
 │   ├── config.py                 # modele Pydantic configu + load_config()
-│   ├── files.py                  # bezpieczny odczyt obcych plików (BOM, UTF-16)
+│   ├── files.py                  # bezpieczny odczyt obcych plików (BOM, UTF-16, cp1250)
+│   ├── masking.py                # maskowanie wartości wrażliwych w tekście (konfiguracja, pliki uruchamiające)
 │   ├── llm.py                    # fabryka modeli + wspólne wywołanie structured output
 │   ├── prompts.py                # renderowanie promptów
 │   ├── knowledge.py              # spis i odczyt bazy wiedzy
 │   ├── guide_template.py         # wczytanie i sprawdzenie guide_template.yaml
 │   ├── schemas.py                # mapa projektu, graf zależności, plan, notatka, diagram, treść przewodnika, recenzja
-│   ├── scanner.py                # pliki, role, sekrety, pliki uruchamiające, frameworki, zależności, konfiguracja → ProjectMap
+│   ├── scanner.py                # pliki, role, sekrety, frameworki, jednostki i odwołania, zależności, zamaskowana konfiguracja i pliki uruchamiające → ProjectMap
 │   ├── dependencies.py           # graf zależności modułów i kolejność czytania (bez modelu)
 │   ├── flow.py                   # sprawdzenie spójności diagramu i wyliczenie układu (bez modelu)
 │   ├── output.py                 # RunStore: dev_agents_doc/ w analizowanym projekcie
@@ -129,9 +130,8 @@ dev-agents/
 │       ├── __init__.py           # pakiet (bez importów)
 │       ├── registry.py           # rejestr technologii: kolejność sprawdzania, detect_technology(), get_technology()
 │       ├── base.py               # kontrakt technologii
-│       ├── config_parsers.py     # wspólne parsery YAML/JSON/TOML/INI → ConfigEntry (do użycia przez technologie)
-│       ├── python.py             # szkielet, szkielet sterowania, miary, importy, punkty wejścia, konfiguracja i stałe, użycia kluczy
-│       ├── robotframework.py     # pusta klasa z opisem kontraktu (.robot + biblioteki .py)
+│       ├── python.py             # detect, is_source, punkty wejścia, jednostki z zakresami linii, odwołania (jedyny moduł z `ast`)
+│       ├── robotframework.py     # pusta klasa z opisem kontraktu (.robot + biblioteki .py przez delegację)
 │       ├── uipath.py             # pusta klasa z opisem kontraktu (XAML, project.json, Config.xlsx)
 │       └── nice.py               # pusta klasa z opisem kontraktu (NICE APA)
 │
@@ -157,7 +157,7 @@ dev-agents/
 
 ## 5. Plan krok po kroku
 
-Kroki są w osobnym pliku **`dev_log/plan_kroki.md`** (68 kroków w fazach A-H, faza I to rozwój po MVP). Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy (krok 8) · **M3** mapa projektu, metryczka i graf zależności bez modelu, na obu robotach testowych (krok 29) · **M4** wygląd przewodnika zatwierdzony na danych bez modelu (krok 39) · **M5** pierwszy pełny przewodnik z modelu (krok 59) · **M6** działa na mieście (krok 68).
+Kroki są w osobnym pliku **`dev_log/plan_kroki.md`** (68 kroków w fazach A-H, faza I to rozwój po MVP). Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy (krok 8) · **M3** mapa projektu, zamaskowana konfiguracja i graf zależności bez modelu, na obu robotach testowych (krok 29) · **M4** wygląd przewodnika zatwierdzony na danych bez modelu (krok 39) · **M5** pierwszy pełny przewodnik z modelu (krok 59) · **M6** działa na mieście (krok 68).
 
 ---
 
@@ -203,7 +203,8 @@ scan:                     # od kroku 18
   ignore: [".git", "__pycache__", ".pytest_cache", ".idea", ".vscode", "node_modules", "venv", ".venv", "*.pyc", "Thumbs.db", "desktop.ini", "~$*"]
   secret_patterns: ["*.pfx", "*.p12", "*.pem", "*.key", "*.crt", ".env*"]
   role_patterns:          # od kroku 19
-    config: ["*.yml", "*.yaml", "*.json", "*.toml", "*.ini", "*.cfg", "requirements*.txt"]
+    dependency: ["requirements*.txt", "pyproject.toml"]   # od kroku 23: przepisywane dosłownie
+    config: ["*.yml", "*.yaml", "*.json", "*.toml", "*.ini", "*.cfg"]
     docs: ["*.md", "*.rst", "README*", "*.docx", "*.pdf"]
     data: ["*.csv", "*.txt", "*.xlsx", "*.xls", "*.db", "*.sqlite", "*.xml", "*.log"]
     launcher: ["*.bat", "*.cmd", "*.ps1"]
@@ -214,18 +215,14 @@ scan:                     # od kroku 18
       paths: ["roboforge_framework/*"]
       packages: ["roboforge"]
       knowledge: frameworks/roboforge.md
-  dependency_files: ["requirements*.txt", "pyproject.toml"]                        # od kroku 23, używane przez technologię python
-  sensitive_keys: ["*password*", "*passwd*", "*pwd*", "*token*", "*secret*", "*apikey*", "*api_key*"]   # od kroku 24
-  max_config_size_kb: 50   # od kroku 24, większy plik konfiguracyjny - tylko metadane
+  sensitive_keys: ["*password*", "*passwd*", "*pwd*", "*token*", "*secret*", "*apikey*", "*api_key*"]   # od kroku 20
+  max_text_file_kb: 50     # od kroku 24, większy plik konfiguracyjny albo uruchamiający - tylko metadane
 
 analysis:                 # od kroku 50
   max_file_size_kb: 100
   max_concurrency: 5
-  complexity:             # od kroku 15: progi „długiej funkcji” i „ryzykownego miejsca”
-    long_function_lines: 150
-    max_nesting: 4
-    max_branches: 20
-  chunk_lines: 250        # od kroku 51: rozmiar kawałka długiej funkcji
+  long_unit_lines: 150    # od kroku 35: jednostka dłuższa trafia do „Ryzykownych miejsc”
+  chunk_lines: 250        # od kroku 51: rozmiar kawałka długiego pliku
 
 flow:                     # od kroku 32
   max_nodes: 30

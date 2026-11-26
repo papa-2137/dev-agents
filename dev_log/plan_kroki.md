@@ -6,7 +6,7 @@ Każdy krok: **Funkcja** (co i po co), **Robimy**, **Sprawdzamy**. Roboty testow
 
 ---
 
-Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy (krok 8) · **M3** mapa projektu, metryczka i graf zależności bez modelu (krok 29) · **M4** wygląd przewodnika zatwierdzony na danych bez modelu (krok 39) · **M5** pierwszy pełny przewodnik z modelu (krok 59) · **M6** działa na mieście (krok 68).
+Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy (krok 8) · **M3** mapa projektu, zamaskowana konfiguracja i graf zależności bez modelu (krok 29) · **M4** wygląd przewodnika zatwierdzony na danych bez modelu (krok 39) · **M5** pierwszy pełny przewodnik z modelu (krok 59) · **M6** działa na mieście (krok 68).
 
 ### Faza A - Fundament
 
@@ -70,34 +70,32 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 - **Sprawdzamy:** test składa mapę ręcznie, wypisuje JSON i sprawdza zgodność po odczycie z JSON.
 
 **Krok 12. Przenieś z doc-agents: `technologies/base.py`**
-- **Funkcja:** kontrakt technologii - rdzeń nie zna żadnego języka, pyta technologię o pliki źródłowe, punkty wejścia, szkielet i importy.
-- **Robimy:** klasa `Technology` z docstringiem-kontraktem: `name`, `detect`, `is_source`, `find_entrypoints`, `outline`, `imports` (przeniesione); pusty `technologies/__init__.py` (rejestr w kroku 17). Kolejne metody kontraktu (`control_outline` i `metrics` - krok 15, `dependency_files` - krok 23, `config_files` i `parse_config` - krok 24, `config_usages` - krok 25, `code_settings` - krok 26, `knowledge_file` - krok 42) dochodzą w swoich krokach, każda od razu z **domyślnym zachowaniem ogólnym** w klasie bazowej (np. `parse_config` korzysta ze wspólnych parserów), żeby nowa technologia mogła nadpisać tylko to, co ma inaczej. Klasa demonstracyjna w bloku testowym.
-- **Sprawdzamy:** test wypisuje wyniki klasy demonstracyjnej i `NotImplementedError` klasy bazowej.
+- **Funkcja:** kontrakt technologii - rdzeń nie zna żadnego języka, pyta technologię tylko o proste, pewne fakty; rozumienie kodu należy do agentów.
+- **Robimy:** klasa `Technology` z docstringiem-kontraktem. Metody **wymagane** (w klasie bazowej `NotImplementedError`): `name`, `detect`, `is_source`, `find_entrypoints`. Metody **opcjonalne** (w klasie bazowej odpowiedź „brak danych”): `units` (jednostki pliku z zakresami linii, krok 13) i `references` (pliki projektu i pakiety, krok 14); później `knowledge_file` (krok 42). **Zasada: każda metoda mieści się w ok. 40 liniach prostego kodu, bez drzewa warunków** - jeśli się nie da, ta wiedza należy do agenta. Pusty `technologies/__init__.py`. Klasa demonstracyjna w bloku testowym implementuje tylko metody wymagane.
+- **Sprawdzamy:** test wypisuje wyniki klasy demonstracyjnej (metody opcjonalne - „brak danych”) i `NotImplementedError` klasy bazowej.
 
-**Krok 13. Przenieś z doc-agents: `technologies/python.py` - szkielet pliku**
-- **Funkcja:** „spis treści” pliku Pythona bez treści funkcji - podstawa dla plannera i analityka, tania w tokenach.
-- **Robimy:** `outline()` przez `ast` (klasy, metody, funkcje, sygnatury, pierwszy akapit docstringu, zakresy linii, kod poza funkcjami); odczyt przez `files.read_text_safe`; parsowanie cudzego kodu przez jedną funkcję modułu, która wycisza `SyntaxWarning` (Python 3.12+ ostrzega przy każdym parsowaniu napisów typu `"C:\folder"` bez `r` - na mieście zasypywało to ekran).
-- **Sprawdzamy:** szkielet `src/parabank_page.py` i `main.py` robota testowego; plik ze ścieżką Windows w zwykłym napisie parsowany bez ostrzeżeń.
+**Krok 13. `technologies/python.py` - parsowanie i jednostki kodu**
+- **Funkcja:** pewne numery linii funkcji i metod - analityk, przewodnik i podział długich plików nie zgadują, gdzie jest kod.
+- **Robimy:** `_parse_python(root, path)` - odczyt przez `files.read_text_safe`, parsowanie przez `ast` z wyciszonym `SyntaxWarning` (Python 3.12+ ostrzega przy każdym napisie typu `"C:\folder"` bez `r` - na mieście zasypywało to ekran), błąd składni → „brak danych”; `units()` - funkcje i metody (`Klasa.metoda`) z zakresami linii; schemat `SourceUnit` (`name`, `start_line`, `end_line`) w `schemas.py`.
+- **Sprawdzamy:** jednostki `main.py` robota 01 i `przetwarzanie.py` robota 02 (`run` - linie 41-411); plik ze ścieżką Windows w zwykłym napisie bez ostrzeżeń; plik z błędem składni → brak danych.
 
-**Krok 14. Przenieś z doc-agents: `technologies/python.py` - importy**
-- **Funkcja:** podział importów na moduły projektu, biblioteki zewnętrzne i standardowe - źródło grafu zależności i rozpoznawania frameworków.
-- **Robimy:** `imports()` z trzema grupami: `internal` jako **ścieżki względne plików projektu** (technologia sama zamienia odwołania na pliki - w Pythonie `src.report` → `src/report.py`, w UiPath ścieżka z *Invoke Workflow File*), `external` i `stdlib` jako pełne nazwy modułów; do `stdlib` należą też moduły usunięte z biblioteki standardowej w Pythonie 3.12-3.13 (stała w kodzie). Zdanie o `internal` w kontrakcie `base.py` zaktualizowane.
-- **Sprawdzamy:** importy `Main.py` robota 01 (`roboforge.*` w zewnętrznych, `src/*.py` w plikach projektu); pakiet tymczasowy - import względny, importy w funkcji i w `try`, `telnetlib` w `stdlib`.
+**Krok 14. `technologies/python.py` - odwołania do plików i pakietów**
+- **Funkcja:** powiązania między plikami projektu (źródło grafu zależności i kolejności czytania) i pakiety spoza projektu (źródło wykrywania frameworków).
+- **Robimy:** `references()` - importy z całego pliku (także w funkcjach i `try`), importy względne zamienione na pełne nazwy; `files` jako **ścieżki względne plików projektu** (`src.report` → `src/report.py`), `packages` jako nazwy główne pakietów spoza projektu bez biblioteki standardowej (`sys.stdlib_module_names`); schemat `References` w `schemas.py`. Podział pakietów na „do zainstalowania” i inne oraz ich opis robią agenci.
+- **Sprawdzamy:** `main.py` robota 01 → 6 plików `src/*.py`, pakiet `roboforge`; robot 02 → pakiet `requests`; pakiet tymczasowy - import względny i import w funkcji.
 
-**Krok 15. `technologies/python.py` - szkielet sterowania i miary złożoności**
-- **Funkcja:** mapa rozgałęzień długich funkcji i liczby mówiące, gdzie kod jest trudny - liczone przez kod, tanie w tokenach, bez zgadywania. Podstawa obsługi robotów „spaghetti”.
-- **Robimy:** `control_outline(root, path, function_name)` przez `ast` (`function_name`: `run`, `Klasa.metoda`, `""` = kod poza funkcjami): drzewo samych `if`/`elif`/`else`, `for`/`while`, `try`/`except`/`finally`, `with`, `match`, `return`/`raise`/`break`/`continue` i wywołań funkcji po nazwie oraz funkcji modułów i `self` (bez metod na danych, np. `.append`, `.strip`), z numerami linii i tekstem warunku (`ast.unparse`, skrócony), **bez treści gałęzi**; prosty blok sklejony w jedną linię z dopiskiem `[wywołania; -> wyjście]`. `metrics(root, path)` dla każdej funkcji i kodu poza funkcjami: zakres linii, liczba linii, maksymalna głębokość zagnieżdżenia, liczba rozgałęzień (jak w złożoności cyklomatycznej) - schemat `FunctionMetrics` w `schemas.py`, same liczby. Obie metody w kontrakcie `base.py` z opisem i domyślną odpowiedzią „brak danych”. Progi `analysis.complexity` w configu dochodzą w kroku 35 (pierwszy użytkownik: tabela „Ryzykowne miejsca”).
-- **Sprawdzamy:** szkielet sterowania `run()` robota 02 ma ok. 1/3 długości funkcji i pokazuje wszystkie poziomy warunków z liniami; miary `run()` wyraźnie odstają (371 linii, głębokość 6, kilkadziesiąt rozgałęzień); funkcje robota 01 krótkie i płytkie.
+**Krok 15. (wycofany 2026-11-26) Szkielet sterowania i miary złożoności**
+- **Funkcja:** przejęta przez agentów - analityk czyta pełny kod z numerami linii; do „Ryzykownych miejsc” i podziału długich plików wystarcza długość jednostek z `units()` (krok 13). Kod z tego kroku usunięty przy uproszczeniu analizy deterministycznej (tabela decyzji w raporcie).
 
 **Krok 16. Przenieś z doc-agents: `technologies/python.py` - wykrywanie i punkty wejścia**
 - **Funkcja:** rozpoznanie projektu Pythona i miejsc, od których zaczyna się wykonanie.
-- **Robimy:** `detect()`, `is_source()`, `find_entrypoints()` (`if __name__ == "__main__":` i pliki wołane z plików uruchamiających - te dochodzą w kroku 20).
-- **Sprawdzamy:** dla robota 01 `detect` → `True`, punkt wejścia `main.py`; dla robota 02 - kilka skryptów z `__main__`, każdy wypisany.
+- **Robimy:** `detect()`, `is_source()` (`.py`, `.pyw`), `find_entrypoints()` (blok `if __name__ == "__main__":` i `main.py`/`__main__.py`, najpierw najbardziej prawdopodobny start). Prawdziwe uruchomienia z plików `.bat`/`.ps1` rozpoznaje agent z ich treści (kroki 24, 47-50).
+- **Sprawdzamy:** dla robota 01 `detect` → `True`, punkt wejścia `main.py`; dla robota 02 - oba skrypty z `__main__`.
 
 **Krok 17. Przenieś z doc-agents: `technologies/uipath.py` + rejestr (`technologies/registry.py`); puste klasy Robot Framework i NICE**
 - **Funkcja:** przygotowane, dobrze opisane miejsca na kolejne technologie (implementacja osobno) i wybór technologii dla projektu.
-- **Robimy:** puste klasy z opisem w każdej metodzie, czego technologia ma dostarczyć: `uipath.py` (pliki `.xaml`, `project.json` jako punkt wejścia i zależności, `Config.xlsx` jako konfiguracja - arkusze Settings/Constants/Assets), `robotframework.py` (pliki `.robot`/`.resource`, sekcje Settings/Variables/Keywords, pliki zmiennych; biblioteki `.py` przez **delegację do `PythonTechnology`**, bez kopiowania kodu), `nice.py` (NICE APA - formaty plików do potwierdzenia przez osobę, która będzie ją implementować; opis kontraktu i otwarte pytania w docstringu). `technologies/registry.py` z rejestrem, `detect_technology()` i `get_technology()` (osobny moduł, nie `__init__.py` - importy technologii na górze pliku bez podwójnego ładowania modułu uruchamianego przez `-m`): technologie sprawdzane w ustalonej kolejności (bardziej szczegółowe przed ogólnymi - Robot Framework przed Pythonem), wygrywa pierwsza pasująca; puste klasy mają `detect` zwracające `False`, dopóki nie są zaimplementowane.
-- **Sprawdzamy:** `detect_technology(robot)` → `python`; wypisanie rejestru pokazuje cztery technologie, w tym trzy niezaimplementowane; wywołanie metody pustej klasy → `NotImplementedError` z nazwą technologii.
+- **Robimy:** puste klasy (`detect` → `False`, metody wymagane → `NotImplementedError` z nazwą technologii, opcjonalne → „brak danych”) z opisem w docstringu modułu, jak prosto zrealizować każdą metodę kontraktu: `uipath.py` (`project.json`: `main`, `entryPoints`, `dependencies`; `.xaml`; *Invoke Workflow File* jako `files`), `robotframework.py` (`.robot`/`.resource`, sekcje Tasks/Keywords, `Resource`/`Library`; pliki `.py` przez **delegację do `PythonTechnology`**), `nice.py` (NICE APA - otwarte pytania o formaty plików w docstringu). `technologies/registry.py` z rejestrem, `detect_technology()` i `get_technology()` (osobny moduł, nie `__init__.py` - importy technologii na górze pliku bez podwójnego ładowania modułu uruchamianego przez `-m`): technologie bardziej szczegółowe przed Pythonem, wygrywa pierwsza pasująca.
+- **Sprawdzamy:** `detect_technology` dla listy plików robota → `python`; rejestr pokazuje cztery technologie, w tym trzy puste; metoda wymagana pustej klasy → `NotImplementedError`, opcjonalne → „brak danych”.
 
 **Krok 18. Przenieś z doc-agents: `scanner.py` - lista plików**
 - **Funkcja:** lista plików projektu bez śmieci (cache, venv, repozytorium gita) i bez wyników narzędzia.
@@ -105,44 +103,40 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 - **Sprawdzamy:** lista plików robota bez `test-venv`, `__pycache__`; ręcznie utworzony `dev_agents_doc/` w kopii robota nie pojawia się na liście.
 
 **Krok 19. Przenieś z doc-agents: `scanner.py` - role plików i sekrety**
-- **Funkcja:** każdy plik dostaje rolę (kod, config, uruchamianie, dane, dokumentacja, binarny, sekret); sekrety nigdy nie są otwierane.
-- **Robimy:** `scan.secret_patterns`, `scan.role_patterns` w configu; wykrywanie plików binarnych.
-- **Sprawdzamy:** tabela `ścieżka | rola | rozmiar`; `client.pfx` → `secret`, `config.yml` → `config`; w robocie 02 `run.bat` → `launcher`.
+- **Funkcja:** każdy plik dostaje rolę (kod, config, zależności, uruchamianie, dane, dokumentacja, binarny, sekret); sekrety nigdy nie są otwierane.
+- **Robimy:** `scan.secret_patterns`, `scan.role_patterns` w configu (w tym rola `dependency` - np. `requirements*.txt`, `pyproject.toml`); kod wg technologii (`is_source`); wykrywanie plików binarnych.
+- **Sprawdzamy:** tabela `ścieżka | rola | rozmiar`; `client.pfx` → `secret`, `config.yml` → `config`, `requirements.txt` → `dependency`; w robocie 02 `run.bat` → `launcher`.
 
-**Krok 20. `scanner.py` - pliki uruchamiające i prawdziwe punkty wejścia**
-- **Funkcja:** diagram i instrukcja uruchomienia zaczynają się od tego, jak robot jest naprawdę startowany (np. `run.bat`, skrypt z Harmonogramu zadań), a nie od zgadywania, który z kilku skryptów jest główny.
-- **Robimy:** pliki o roli `launcher` (`.bat`, `.cmd`, `.ps1` - treść czytana przez `files.read_text_safe`, są krótkie i tekstowe; do limitu rozmiaru) przeszukiwane zwykłym kodem pod kątem wywołań `python`/`py`/`pythonw` i ścieżek `.py`; w `ProjectMap` lista uruchomień: plik uruchamiający, linia, wołany skrypt, kolejność. Punkty wejścia z technologii są oznaczane, jeśli wołają je pliki uruchamiające. Wartości wyglądające na hasła w liniach `set`/`$env:` - maskowane jak w konfiguracji (krok 24).
-- **Sprawdzamy:** robot 02: `run.bat` → `przetwarzanie.py` (1), `raport.py` (2); robot 01 bez plików uruchamiających → pusta lista, punkt wejścia `main.py` bez zmian.
+**Krok 20. `masking.py` - maskowanie wartości wrażliwych w tekście**
+- **Funkcja:** hasło wpisane wprost w plik konfiguracyjny albo uruchamiający nigdy nie trafi do modelu ani do przewodnika - jedna prosta funkcja dla wszystkich formatów.
+- **Robimy:** `mask_sensitive(text, patterns)` - maskowanie liniowe: w liniach `klucz: wartość`, `klucz = wartość`, `"klucz": "wartość"`, `set KLUCZ=wartość`, `$env:KLUCZ = "wartość"` wartość klucza pasującego do `scan.sensitive_keys` zamieniana na `***`; klucze kończące się na `_env` nie są maskowane (wartość to nazwa zmiennej środowiskowej, nie hasło); wynik: tekst i liczba zamaskowanych wartości. Bez parserów formatów - plik z błędną składnią też jest maskowany.
+- **Sprawdzamy:** przykłady YAML, JSON, INI, `.bat`, `.ps1` z hasłem → `***`; `password_env: FAKE_PASSWD` bez zmian; linia bez klucza wrażliwego bez zmian.
 
-**Krok 21. `scanner.py` - frameworki po ścieżkach i po importach**
+**Krok 21. `scanner.py` - frameworki po ścieżkach i po pakietach**
 - **Funkcja:** odróżnienie kodu frameworku od kodu robota - także gdy framework jest zainstalowany jako pakiet (np. edytowalnie) i nie leży w projekcie. Rozszerzenie względem doc-agents.
-- **Robimy:** `scan.frameworks` w configu: dla każdego frameworku `technology` (do której technologii należy), `paths` (wzorce ścieżek, gdy skopiowany do projektu), `packages` (nazwy importowanych pakietów - działa także dla paczek w venv i instalowanych edytowalnie) i `knowledge` (plik wiedzy o frameworku, przekazywany agentom zawsze, gdy framework wykryto); oznaczanie plików `framework_name`; lista frameworków wykrytych po importach. **Nowy framework Pythona = nowy wpis w configu + plik wiedzy, bez zmian w kodzie.**
-- **Sprawdzamy:** robot testowy z `roboforge: {packages: [roboforge]}` → Roboforge wykryty po importach, żaden plik robota nie jest oznaczony jako framework; dopisany w configu sztuczny framework z pakietem `selenium` → wykryty bez zmiany kodu.
+- **Robimy:** `scan.frameworks` w configu: dla każdego frameworku `technology`, `paths` (wzorce ścieżek, gdy skopiowany do projektu), `packages` (nazwy pakietów porównywane z `references().packages` - działa także dla paczek w venv i instalowanych edytowalnie) i `knowledge` (plik wiedzy o frameworku, przekazywany agentom zawsze, gdy framework wykryto); oznaczanie plików `framework_name`; lista wykrytych frameworków. **Nowy framework = nowy wpis w configu + plik wiedzy, bez zmian w kodzie.**
+- **Sprawdzamy:** robot testowy z `roboforge: {packages: [roboforge]}` → Roboforge wykryty, żaden plik robota nie jest oznaczony jako framework; dopisany w configu sztuczny framework z pakietem `requests` → wykryty w robocie 02 bez zmiany kodu.
 
 **Krok 22. Przenieś z doc-agents: `scanner.py` - `build_project_map()`**
 - **Funkcja:** kompletna mapa projektu w jednym obiekcie.
-- **Robimy:** złożenie `ProjectMap`: technologia, punkty wejścia, pliki, jednostki kodu (pliki źródłowe spoza frameworku), frameworki.
-- **Sprawdzamy:** JSON mapy robota testowego.
+- **Robimy:** złożenie `ProjectMap`: technologia (`registry.detect_technology`), punkty wejścia, pliki, jednostki kodu do analizy (pliki źródłowe spoza frameworku), frameworki, dla każdego pliku źródłowego `units()` i `references()`.
+- **Sprawdzamy:** JSON mapy robotów 01 i 02.
 
 **Krok 23. `scanner.py` - pliki zależności (W2)**
 - **Funkcja:** pełna lista zależności robota przepisana dosłownie, do skopiowania z zakładki Przegląd - bez udziału modelu, więc bez ryzyka przekłamania.
-- **Robimy:** metoda technologii `dependency_files(project, files)` - dla Pythona wzorce z `scan.dependency_files` w configu (np. `requirements*.txt`, `pyproject.toml`); skaner tylko woła technologię i zapisuje wynik; odczyt przez `files.read_text_safe` (UTF-16!); treść w `ProjectMap.dependency_files` (ścieżka + tekst).
-- **Sprawdzamy:** mapa robota zawiera czytelną treść `requirements.txt` z linią `-e git+...roboforge`.
+- **Robimy:** pliki o roli `dependency` czytane przez `files.read_text_safe` (UTF-16!) i zapisane dosłownie w `ProjectMap.dependency_files` (ścieżka + tekst). Bez metody technologii - wzorce w `scan.role_patterns`.
+- **Sprawdzamy:** mapa robota 01 zawiera czytelną treść `requirements.txt` z linią `-e git+...roboforge`; robot 02 - `openpyxl`, `requests`.
 
-**Krok 24. `scanner.py` - pliki konfiguracyjne: wpisy z typami i maskowaniem (W2, W8)**
-- **Funkcja:** konfiguracja robota rozłożona na wpisy, z których kod składa metryczkę, a model opisuje uruchomienie i dostępy. **Hasło wpisane wprost w plik nigdy nie trafi do modelu ani do przewodnika.**
-- **Robimy:** metody technologii `config_files()` (domyślnie: pliki o roli `config` bez plików zależności, do `scan.max_config_size_kb`) i `parse_config()` (domyślnie: wspólne parsery z `technologies/config_parsers.py` według rozszerzenia - YAML, JSON, TOML, INI/CFG; UiPath nadpisze to odczytem `Config.xlsx`, Robot Framework - sekcją Variables). Skaner tylko woła technologię. Schemat `ConfigEntry` w `schemas.py`: plik, klucz z pełną ścieżką (np. `parabank.url`; dla arkusza albo sekcji - `arkusz.nazwa`), wartość, komentarz z końca linii (jeśli parser go daje - YAML przez odczyt linii), `kind` wyliczany zwykłym kodem: `url` (http/https), `path` (separator albo rozszerzenie), `env_var` (klucz kończy się na `_env` albo wartość wygląda jak nazwa zmiennej i klucz to sugeruje), `flag` (bool), `number`, `account` (klucze typu `user`, `username`, `login`), `secret` (klucz pasuje do `scan.sensitive_keys` - wartość → `***`), `text`. Wynik w `ProjectMap.config_files` (plik + lista wpisów albo `parsed=false` z samymi metadanymi).
-- **Sprawdzamy:** `config.yml` robota: `parabank.url` → `url`, `input.excel_path` → `path`, `parabank.password_env` → `env_var` z wartością `FAKE_PASSWD`, `logger.debug` → `flag`, `parabank.username` → `account`; w kopii robota dopisany `password: abc123` → `secret` z `***`; uszkodzony YAML → `parsed=false`, bez błędu przebiegu; robot 02 (bez pliku konfiguracyjnego) → pusta lista, bez błędu.
+**Krok 24. `scanner.py` - pliki konfiguracyjne i uruchamiające z maskowaniem (W2, W8)**
+- **Funkcja:** agenci dostają konfigurację robota i sposób jego uruchamiania (np. `run.bat`) w postaci tekstu, z zamaskowanymi hasłami - na tej podstawie opisują metryczkę, uruchomienie i dostępy.
+- **Robimy:** pliki o roli `config` i `launcher` (do `scan.max_text_file_kb`) czytane przez `files.read_text_safe`, maskowane `masking.mask_sensitive` i zapisane w `ProjectMap.text_files` (ścieżka, rola, zamaskowany tekst, liczba zamaskowanych wartości); większy plik - tylko metadane. Bez parserów i typów wpisów - znaczenie kluczy opisują agenci.
+- **Sprawdzamy:** `config.yml` robota 01 w mapie, `password_env: FAKE_PASSWD` widoczne; w kopii robota dopisany `password: abc123` → `password: ***`; `run.bat` robota 02 w mapie z treścią; uszkodzony YAML zapisany i zamaskowany bez błędu.
 
-**Krok 25. `technologies/python.py` - gdzie używane są klucze konfiguracji (W8)**
-- **Funkcja:** przy każdym kluczu metryczki widać, w którym pliku i linii kod go czyta - deweloper od razu wie, co zmiana wartości ruszy. Liczone przez kod, więc bez ryzyka zmyślenia.
-- **Robimy:** metoda kontraktu `config_usages(path, keys)` (w `base.py` z opisem i domyślną odpowiedzią „brak danych”; w `python.py` przez `ast`): stałe tekstowe równe nazwie klucza w indeksowaniu (`cfg["excel_path"]`) i w wywołaniach `.get("excel_path")`; dodatkowo nazwy zmiennych środowiskowych czytanych w kodzie (`os.environ[...]`, `os.environ.get(...)`, `os.getenv(...)`) jako stałe tekstowe. Skaner dopisuje do każdego `ConfigEntry` listę `used_in` (`plik:linia`) i do `ProjectMap` listę zmiennych środowiskowych czytanych w kodzie z miejscami odczytu.
-- **Sprawdzamy:** dla robota `input.excel_path` → `main.py:57`, `parabank.url` → `main.py:139`; zmienna odczytywana przez `os.environ.get(bank_cfg["password_env"])` - nazwy nie da się wyliczyć ze stałej, więc wpis `password_env` ma `used_in` = `main.py:135` (klucz), a lista zmiennych z kodu jej nie zawiera (bez zgadywania); klucz nieużywany w kodzie → pusta lista.
+**Krok 25. (wycofany 2026-11-26) Gdzie używane są klucze konfiguracji**
+- **Funkcja:** przejęta przez agentów - analityk wskazuje miejsca użycia kluczy w notatce (plik:linia z kodu z numerami linii, krok 49).
 
-**Krok 26. `technologies/python.py` - ustawienia zaszyte w kodzie (W8)**
-- **Funkcja:** metryczka nie jest pusta, gdy robot trzyma ustawienia w stałych zamiast w pliku konfiguracyjnym - deweloper widzi adresy, ścieżki i nazwy zmiennych środowiskowych z plikiem i linią.
-- **Robimy:** `code_settings(path)` przez `ast`: przypisania na poziomie modułu (i atrybuty klas na poziomie klasy) do stałych tekstowych, liczbowych i logicznych; typ (`url`, `path`, `env_var`, `flag`, `number`, `secret`...) wyliczany **tą samą funkcją co w kroku 24**; nazwy zmiennych środowiskowych ze stałych w `os.environ`/`os.getenv` z kroku 25; wynik jako `ConfigEntry` ze źródłem `code` (plik, linia, nazwa stałej). Hasło wpisane w stałą → `secret` z `***`. Stałe bez związku z ustawieniami (np. krotki komunikatów) odfiltrowane prostą regułą: zostają tylko wpisy o typie innym niż `text` albo o nazwie pisanej WIELKIMI_LITERAMI.
-- **Sprawdzamy:** robot 02: `URL` → `url`, `INPUT_DIR` → `path`, `ENV_PASSWORD` → `env_var` (`ROBOT02_PASS`), każdy z plikiem i linią; dopisana w kopii stała `PASSWORD = "abc"` → `secret` z `***`; robot 01 → stałe ścieżek z `main.py` (np. `CONFIG_FILE`) jako `path`.
+**Krok 26. (wycofany 2026-11-26) Ustawienia zaszyte w kodzie**
+- **Funkcja:** przejęta przez agentów - analityk wypisuje w notatce ustawienia ze stałych w kodzie (adresy, ścieżki, nazwy zmiennych środowiskowych) z plikiem i linią (krok 49); hasło w stałej trafia do modelu, dlatego przewodnik pokazuje je zawsze jako `***` (reguła w promptach i sprawdzenie w `assemble`).
 
 **Krok 27. `output.py` - wyniki w `dev_agents_doc/` analizowanego projektu**
 - **Funkcja:** bezpieczny zapis wyników w cudzym repozytorium: dokumentacja leży obok kodu, a narzędzie nigdy nie skasuje cudzych plików.
@@ -150,14 +144,14 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 - **Sprawdzamy:** na kopii robota: zapis i odczyt JSON; drugi start czyści katalog; katalog bez znacznika → błąd i nic nie usunięte; katalog tylko do odczytu → czytelny błąd.
 
 **Krok 28. `dependencies.py` - graf zależności i kolejność czytania**
-- **Funkcja:** dane do grafu zależności między modułami i szkic kolejności czytania kodu, z importów, bez modelu.
-- **Robimy:** schemat `DependencyGraph` (węzły = pliki projektu, punkt wejścia oznaczony; krawędzie = zależności `internal` z `imports()` technologii - pary ścieżek, bez wiedzy o technologii) w `schemas.py`; kolejność czytania: od punktu wejścia w głąb, cykle bez zawieszenia.
-- **Sprawdzamy:** graf robota (`main.py` → moduły `src/`) i lista kolejności; sztuczny cykl dwóch modułów nie zawiesza obliczeń.
+- **Funkcja:** dane do grafu zależności między plikami i szkic kolejności czytania kodu, bez modelu.
+- **Robimy:** schemat `DependencyGraph` (węzły = pliki projektu, punkt wejścia oznaczony; krawędzie = `references().files` - pary ścieżek, bez wiedzy o technologii) w `schemas.py`; kolejność czytania: od punktu wejścia w głąb, cykle bez zawieszenia.
+- **Sprawdzamy:** graf robota 01 (`main.py` → moduły `src/`) i lista kolejności; sztuczny cykl dwóch plików nie zawiesza obliczeń.
 
 **Krok 29. `main.py` - skan i zapis wyników**
 - **Funkcja:** pierwszy użyteczny przebieg: mapa projektu i graf zależności w katalogu wyników robota.
 - **Robimy:** `--project` wymagany; config → skan → graf zależności → `dev_agents_doc/project_map.json` i `dependency_graph.json`.
-- **Sprawdzamy:** `python main.py --project <robot>` tworzy oba pliki w `<robot>\dev_agents_doc\` - dla robota 01 i 02; w mapie robota 02 widać punkt wejścia z `run.bat`, ustawienia ze stałych i długą funkcję z miarami. ✅ **M3**
+- **Sprawdzamy:** `python main.py --project <robot>` tworzy oba pliki w `<robot>\dev_agents_doc\` - dla robota 01 i 02; w mapie robota 02 widać `run.bat` z treścią, jednostki z zakresami linii (`run` - 371 linii) i pliki zależności. ✅ **M3**
 
 ### Faza D - Szablon przewodnika i HTML bez modelu
 
@@ -168,7 +162,7 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 31. `schemas.py` - treść przewodnika i diagram**
 - **Funkcja:** ogólny kształt treści, niezależny od konkretnych sekcji, oraz osobny, ścisły schemat diagramu przepływu.
-- **Robimy:** `FlowNode` (`id`, `kind`: `start`/`end`/`step`/`system`/`decision`, `label` - krótki opis biznesowo-techniczny, `description`, `module`, `functions`, `reads`, `writes`, `certain`), `FlowEdge` (`from`, `to`, `label`, `kind`: `normal`/`branch`/`loop`), `FlowGraph`; `GuideBlock` (`section_id` + pola zależne od typu: `paragraphs`, `items`, `steps`, `rows`, `terms`, `paths`, `recipes`, `code`, `config_meanings` - znaczenie klucza konfiguracji: klucz → jedno zdanie), `GuideTab`, `GuideContent`; `Field(description=...)` dla modelu.
+- **Robimy:** `FlowNode` (`id`, `kind`: `start`/`end`/`step`/`system`/`decision`, `label` - krótki opis biznesowo-techniczny, `description`, `module`, `functions`, `reads`, `writes`, `certain`), `FlowEdge` (`from`, `to`, `label`, `kind`: `normal`/`branch`/`loop`), `FlowGraph`; `GuideBlock` (`section_id` + pola zależne od typu: `paragraphs`, `items`, `steps`, `rows`, `terms`, `paths`, `recipes`, `code`, `config_items` - wpisy metryczki od modelu: plik albo „w kodzie” z plik:linia, klucz, wartość jak w zamaskowanym tekście, rodzaj - adres, ścieżka, zmienna środowiskowa, konto, przełącznik, inne -, znaczenie, używany w, oznaczenie „wywnioskowane”), `GuideTab`, `GuideContent`; `Field(description=...)` dla modelu.
 - **Sprawdzamy:** przykładowa treść i diagram (dane z makiety) złożone ręcznie, wydruk JSON i zgodność po odczycie.
 
 **Krok 32. `flow.py` - spójność i układ diagramu (W1)**
@@ -186,10 +180,10 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 - **Robimy:** szablony bloków; kolumny tabel z `guide_template.yaml`; odwołania `paths` do numerów klocków diagramu (link do zakładki Przepływ); oznaczenie „wywnioskowane” dla wpisów z `certain = false`.
 - **Sprawdzamy:** przykładowa treść z każdym typem bloku wyświetla się jak w makiecie; tekst z `<script>` wyświetlany jako tekst (escapowanie); przycisk „Kopiuj” kopiuje blok kodu.
 
-**Krok 35. `render.py` - bloki ze skanera: metryczka, drzewo i zależności do skopiowania (W2, W8)**
-- **Funkcja:** fakty o projekcie wstawiane przez kod: metryczka z pliku konfiguracyjnego, drzewo plików z rolami i dosłowna treść plików zależności.
-- **Robimy:** blok `config` (metryczka jak w makiecie): nagłówek z plikiem i miejscem wczytania w kodzie, kafelki pogrupowane po `kind` (systemy zewnętrzne, pliki wejściowe i wyjściowe, logi, konta i zmienne środowiskowe, przełączniki), pod spodem tabela wszystkich wpisów pogrupowana po sekcjach (klucz, wartość, znaczenie, używany w); `secret` jako `***` z czerwonym znacznikiem, `env_var` ze znacznikiem „zmienna środowiskowa”; znaczenie na razie zaślepka (wypełnia pisarz w kroku 55); brak pliku konfiguracyjnego → jedno zdanie; kilka plików → osobna tabela na plik. Blok `tree` z `ProjectMap` (oznaczenia ról, sekrety „tylko metadane”, opisy po najechaniu - na razie zaślepki, treść z modelu w fazie F); blok `code` ze `scanner` dla plików zależności; tabela „Ryzykowne miejsca” z miar złożoności (funkcja, plik:linie, długość, zagnieżdżenie, rozgałęzienia; nowa sekcja `analysis.complexity` w configu z progami - tu po raz pierwszy potrzebna); w metryczce ustawienia ze stałych w kodzie ze znacznikiem „w kodzie”.
-- **Sprawdzamy:** robot 02: metryczka ze stałych, „Ryzykowne miejsca” z funkcją spaghetti; robot 01: metryczka, drzewo i `requirements.txt` robota testowego z prawdziwej `project_map.json` z kroku 29; kopia robota bez `config.yml` → zdanie o braku konfiguracji zamiast pustej tabeli.
+**Krok 35. `render.py` - bloki: metryczka, drzewo, zależności do skopiowania, ryzykowne miejsca (W2, W6, W8)**
+- **Funkcja:** fakty o projekcie wstawiane przez kod (drzewo, zależności, długość jednostek) i metryczka w stałym układzie.
+- **Robimy:** blok `config` (metryczka jak w makiecie) z `config_items` - w tej fazie na danych przykładowych, w fazie F od pisarza (krok 55): kafelki pogrupowane po rodzaju (systemy zewnętrzne, pliki, konta i zmienne środowiskowe, przełączniki), pod spodem tabela (klucz, wartość, znaczenie, używany w), `***` z czerwonym znacznikiem, „w kodzie” z plikiem i linią; brak konfiguracji → jedno zdanie. Blok `tree` z `ProjectMap` (role, sekrety „tylko metadane”, opisy po najechaniu - zaślepki do fazy F); blok `code` dla plików zależności; tabela „Ryzykowne miejsca” z jednostek dłuższych niż `analysis.long_unit_lines` (nowa sekcja w configu - tu po raz pierwszy potrzebna): jednostka, plik:linie, długość, komentarz (zaślepka - w fazie F od pisarza).
+- **Sprawdzamy:** robot 02: „Ryzykowne miejsca” z `run()`, drzewo z `run.bat`; robot 01: drzewo i `requirements.txt` z prawdziwej `project_map.json` z kroku 29; metryczka z danych przykładowych jak w makiecie; pusta lista wpisów → zdanie o braku konfiguracji.
 
 **Krok 36. Diagram przepływu w HTML (W1, W3)**
 - **Funkcja:** czytelny diagram całego procesu: start, klocki, strzałki, decyzje, pętle - z podpowiedzią po najechaniu (moduł, funkcje, czyta, zapisuje).
@@ -252,9 +246,9 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 - **Sprawdzamy:** ręcznie złożony plan, wydruk JSON.
 
 **Krok 47. Agent planner (bez grafu)**
-- **Funkcja:** decyzja, które jednostki kodu analizować i które pliki wiedzy są potrzebne.
-- **Robimy:** `agents/planner.py` (czysta funkcja `plan()` + węzeł), prompty `planner/*`.
-- **Sprawdzamy:** `python -m dev_agents.agents.planner` czyta `project_map.json` z `dev_agents_doc/` robota i wypisuje plan.
+- **Funkcja:** decyzja, które jednostki kodu analizować, w jakiej kolejności i które pliki wiedzy są potrzebne.
+- **Robimy:** `agents/planner.py` (czysta funkcja `plan()` + węzeł), prompty `planner/*`; planner dostaje mapę projektu: listę plików z rolami, jednostki z zakresami linii, odwołania między plikami, treść plików uruchamiających i konfiguracyjnych (zamaskowaną) - bez kodu źródłowego.
+- **Sprawdzamy:** `python -m dev_agents.agents.planner` czyta `project_map.json` z `dev_agents_doc/` robota i wypisuje plan; dla robota 02 plan zaczyna od `run.bat` → `przetwarzanie.py` → `raport.py`.
 
 **Krok 48. Graf: scan → planner**
 - **Funkcja:** planner jako etap przepływu.
@@ -263,18 +257,18 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 49. `schemas.py` - notatka analityka (W1-W7)**
 - **Funkcja:** ustrukturyzowana wiedza o jednej jednostce kodu - surowiec dla wszystkich zakładek.
-- **Robimy:** `ModuleNote` przeniesiony z doc-agents (przeznaczenie, automatyzowana aplikacja, kroki procesu, obsługa błędów, wejścia/wyjścia, konfiguracja, zależności, pułapki, wskazówki) i rozszerzony o: **czynności z odwołaniem do funkcji, z danymi czytanymi i zapisywanymi** (surowiec diagramu), **rolę w przepływie** (np. metoda wołana przez framework), **dostęp sieciowy** (adresy, porty, systemy), **wymagania uruchomieniowe** (aplikacje, sterowniki, konta, nazwy zmiennych), **punkty rozszerzeń**, **możliwe błędy z objawem i naprawą**, **konwencje**, **kandydatów do słowniczka**; przy wnioskach flaga pewności. Wszystkie listy mogą być puste, a pola tekstowe przyjmują „nie wynika z kodu” - schemat nie zmusza modelu do wymyślania. Dodatkowo `part`/`parts` dla notatek z kawałków długiej funkcji (krok 51).
+- **Robimy:** `ModuleNote` przeniesiony z doc-agents (przeznaczenie, automatyzowana aplikacja, kroki procesu, obsługa błędów, wejścia/wyjścia, konfiguracja, zależności, pułapki, wskazówki) i rozszerzony o: **czynności z odwołaniem do funkcji i linii, z danymi czytanymi i zapisywanymi** (surowiec diagramu), **ustawienia z konfiguracji i ze stałych w kodzie z miejscami użycia (plik:linia)** (surowiec metryczki), **trudne miejsca z uzasadnieniem** (surowiec „Ryzykownych miejsc”), **rolę w przepływie** (np. metoda wołana przez framework), **dostęp sieciowy** (adresy, porty, systemy), **wymagania uruchomieniowe** (aplikacje, sterowniki, konta, nazwy zmiennych), **punkty rozszerzeń**, **możliwe błędy z objawem i naprawą**, **konwencje**, **kandydatów do słowniczka**; przy wnioskach flaga pewności. Wszystkie listy mogą być puste, a pola tekstowe przyjmują „nie wynika z kodu” - schemat nie zmusza modelu do wymyślania. Dodatkowo `part`/`parts` dla notatek z kawałków długiej funkcji (krok 51).
 - **Sprawdzamy:** ręcznie złożona notatka, wydruk JSON; notatka z pustymi punktami rozszerzeń przechodzi walidację.
 
 **Krok 50. Agent analityk (bez grafu)**
-- **Funkcja:** zrozumienie jednej jednostki kodu: kod jednostki + szkielety całego projektu + zamaskowana konfiguracja + wybrana wiedza → notatka.
-- **Robimy:** `agents/analyst.py` przeniesiony z doc-agents i dostosowany do nowej notatki; analityk dostaje też **szkielet sterowania i miary** swojej jednostki; limit `analysis.max_file_size_kb` (większy plik - szkielet plus analiza po kawałkach z kroku 51); prompty `analyst/*`.
-- **Sprawdzamy:** notatka dla `main.py` robota: cykl życia Roboforge jako przepływ wołany przez framework, adresy stron w dostępie sieciowym, sensowne punkty rozszerzeń i błędy, niepewność oznaczona.
+- **Funkcja:** zrozumienie jednej jednostki kodu: pełny kod z numerami linii + jednostki z zakresami + zamaskowana konfiguracja i pliki uruchamiające + wybrana wiedza → notatka.
+- **Robimy:** `agents/analyst.py` przeniesiony z doc-agents i dostosowany do nowej notatki; kod podawany z numerami linii (żeby odwołania w notatce były dokładne); limit `analysis.max_file_size_kb` (większy plik - analiza po kawałkach z kroku 51); prompty `analyst/*`.
+- **Sprawdzamy:** notatka dla `main.py` robota 01: cykl życia Roboforge jako przepływ wołany przez framework, adresy stron w dostępie sieciowym, sensowne punkty rozszerzeń i błędy, odwołania do linii zgodne z kodem, niepewność oznaczona.
 
-**Krok 51. Analityk: długie funkcje po kawałkach**
-- **Funkcja:** funkcja na setki linii jest przeczytana w całości, w porcjach, zamiast zastąpiona szkieletem - opis robota „spaghetti” opiera się na kodzie, nie na domysłach.
-- **Robimy:** w `agents/analyst.py`: funkcja dłuższa niż `analysis.complexity.long_function_lines` dzielona zwykłym kodem na kawałki wzdłuż szkieletu sterowania (granice na blokach najwyższego poziomu, rozmiar do `analysis.chunk_lines`; za długi blok dzielony na jego podblokach); kawałki analizowane **po kolei**, każdy z: szkieletem sterowania całej funkcji (gdzie jest), krótkim podsumowaniem poprzednich kawałków i swoim kodem; notatki kawałków (`part`/`parts`) składane zwykłym kodem w jedną notatkę o jednostce (czynności w kolejności linii, błędy, wejścia i wyjścia bez duplikatów). Podgląd postępu pokazuje „kawałek 3/7”.
-- **Sprawdzamy:** robot 02: `run()` analizowana w kilku kawałkach; złożona notatka zawiera czynności ze wszystkich gałęzi szkieletu sterowania (porównanie ręczne: każda gałąź najwyższego poziomu ma odpowiednik w notatce); krótkie funkcje robota 01 analizowane jak dotąd, jednym wywołaniem.
+**Krok 51. Analityk: długie pliki po kawałkach**
+- **Funkcja:** plik na setki linii jest przeczytany w całości, w porcjach - opis robota „spaghetti” opiera się na kodzie, nie na domysłach.
+- **Robimy:** w `agents/analyst.py`: plik dłuższy niż `analysis.chunk_lines` dzielony zwykłym kodem po granicach jednostek z `units()`; jednostka dłuższa niż limit dzielona po liczbie linii (z małym zakładem); kawałki analizowane **po kolei**, każdy z: listą jednostek pliku (gdzie jest), krótkim podsumowaniem poprzednich kawałków i swoim kodem z numerami linii; notatki kawałków (`part`/`parts`) składane zwykłym kodem w jedną notatkę (czynności w kolejności linii, błędy, wejścia i wyjścia bez duplikatów). Podgląd postępu pokazuje „kawałek 3/7”.
+- **Sprawdzamy:** robot 02: `run()` analizowana w kilku kawałkach; złożona notatka zawiera czynności z całego zakresu linii (porównanie ręczne z kodem); krótkie pliki robota 01 analizowane jednym wywołaniem.
 
 **Krok 52. Graf: równolegli analitycy**
 - **Funkcja:** analiza wszystkich jednostek naraz.
@@ -294,12 +288,12 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 55. Agent pisarz zakładki (bez grafu) (W2, W4, W6, W7)**
 - **Funkcja:** treść jednej zakładki: sekcje z `guide_template.yaml`, napisane z notatek, mapy projektu, zamaskowanej konfiguracji i **gotowego diagramu** (ścieżki, błędy i przepisy odwołują się do numerów klocków).
-- **Robimy:** `agents/writer.py` (czysta funkcja `write_tab()` + węzeł); odpowiedź jako `GuideTab`; sekcje `scanner`/`code` wypełnia kod, model tylko sekcje `llm`; pisarz zakładki Przegląd dostaje listę kluczy metryczki (bez wartości `secret`) i zwraca `config_meanings` - po jednym zdaniu na klucz, z oznaczeniem „wywnioskowane”, gdy znaczenie nie wynika wprost z kodu lub komentarza; prompty `writer/*`.
+- **Robimy:** `agents/writer.py` (czysta funkcja `write_tab()` + węzeł); odpowiedź jako `GuideTab`; sekcje `scanner`/`code` wypełnia kod, model tylko sekcje `llm`; pisarz zakładki Przegląd dostaje zamaskowane pliki konfiguracyjne i ustawienia z notatek i zwraca `config_items` (metryczkę) - znaczenie po jednym zdaniu na klucz, z oznaczeniem „wywnioskowane”, gdy nie wynika wprost z kodu lub komentarza; pisarz zakładki Błędy - komentarze do „Ryzykownych miejsc” z trudnych miejsc w notatkach; prompty `writer/*`.
 - **Sprawdzamy:** zakładki „Przegląd i uruchomienie” i „Ścieżki procesu” z istniejących notatek i `flow.json` - wydruk JSON i podgląd HTML; ścieżki odwołują się do istniejących klocków; każdy klucz metryczki ma znaczenie.
 
 **Krok 56. Graf: równolegli pisarze + składanie treści**
 - **Funkcja:** wszystkie pozostałe zakładki pisane naraz, potem złożone w jedną treść ze sprawdzeniem kompletności.
-- **Robimy:** drugi `Send` (po jednym pisarzu na zakładkę poza Przepływem), zapis `tabs/<zakładka>.json`; węzeł `assemble` (kod): `GuideContent` z diagramem i blokami skanera, braki wymaganych sekcji, odwołania do nieistniejących klocków, klucze metryczki bez znaczenia, `guide_content.json`.
+- **Robimy:** drugi `Send` (po jednym pisarzu na zakładkę poza Przepływem), zapis `tabs/<zakładka>.json`; węzeł `assemble` (kod): `GuideContent` z diagramem i blokami skanera, braki wymaganych sekcji, odwołania do nieistniejących klocków, wpisy metryczki bez znaczenia, wartość wrażliwa (klucz pasujący do `scan.sensitive_keys`) inna niż `***` → zamaskowana z ostrzeżeniem, `guide_content.json`.
 - **Sprawdzamy:** wszystkie zakładki w `tabs/`, `guide_content.json` kompletny, braki (jeśli są) wypisane.
 
 **Krok 57. Graf: render i finalize**
