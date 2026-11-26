@@ -332,8 +332,9 @@ if __name__ == "__main__":
         """Tworzy projekt tymczasowy: kod, katalogi do pominięcia, sekret .env, plik binarny, plik nieznanego typu, skopiowany framework i pliki tekstowe.
 
         Po co: sprawdzenie pomijania, ról i mapy bez dotykania robotów testowych; plik frameworku importuje
-        requests, a kod robota nie - sztuczny framework z pakietem requests nie może zostać wykryty; duzy.json
-        (101 KB) przekracza limit plików tekstowych, a .env nie może trafić do plików tekstowych.
+        requests, a kod robota nie - sztuczny framework z pakietem requests nie może zostać wykryty; duzy.yml
+        (101 KB) przekracza limit plików tekstowych, wyniki.json ma rolę data, a .env nie może trafić do plików
+        tekstowych.
         """
         tresci = {
             "main.py": "import src.modul\n\nsrc.modul.pomoc()\n",
@@ -342,7 +343,8 @@ if __name__ == "__main__":
             ".env": "SEKRET=nie-moze-trafic-do-mapy\n",
             "config.yml": "adres: https://example.test\nhaslo: wpisane-wprost\n",
             "requirements.txt": "requests\n",
-            "duzy.json": "x" * (101 * 1024),
+            "duzy.yml": "x" * (101 * 1024),
+            "wyniki.json": "{\"wynik\": 1}\n",
         }
         pliki = [
             "main.py",
@@ -358,7 +360,8 @@ if __name__ == "__main__":
             "roboforge_framework/launcher.py",
             "config.yml",
             "requirements.txt",
-            "duzy.json",
+            "duzy.yml",
+            "wyniki.json",
         ]
         for sciezka in pliki:
             pelna = os.path.join(directory, sciezka)

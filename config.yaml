@@ -45,12 +45,14 @@ scan:
   secret_patterns: ["*.pfx", "*.p12", "*.pem", "*.key", "*.crt", ".env*"]
   # Role plików innych niż kod (kod rozpoznaje technologia projektu). Wygrywa PIERWSZA pasująca rola,
   # dlatego dependency stoi przed data (requirements.txt pasuje też do *.txt). Plik bez dopasowania -> other.
+  # JSON jako config tylko pod typowymi nazwami konfiguracji - pozostałe *.json to zwykle dane albo wyniki
+  # robota (data, nie trafiają do agentów jako tekst); nietypowo nazwaną konfigurację JSON dopisz do config.
   role_patterns:
     dependency: ["requirements*.txt", "pyproject.toml"]
-    config: ["*.yml", "*.yaml", "*.json", "*.toml", "*.ini", "*.cfg"]
+    config: ["*.yml", "*.yaml", "*.toml", "*.ini", "*.cfg", "config*.json", "settings*.json", "appsettings*.json", "*.config.json"]
     launcher: ["*.bat", "*.cmd", "*.ps1"]
     docs: ["*.md", "*.rst", "README*", "*.docx", "*.pdf"]
-    data: ["*.csv", "*.txt", "*.xlsx", "*.xls", "*.db", "*.sqlite", "*.xml", "*.log"]
+    data: ["*.csv", "*.txt", "*.json", "*.xlsx", "*.xls", "*.db", "*.sqlite", "*.xml", "*.log"]
     binary: ["*.png", "*.jpg", "*.ico", "*.exe", "*.dll", "*.zip", "*.whl"]
   # Role plików przepisywanych dosłownie do mapy projektu (dla agentów i przewodnika) - tylko role z role_patterns;
   # pliki sekretów i kod nigdy. Plik większy niż max_text_file_kb zostaje tylko jako wpis na liście plików.

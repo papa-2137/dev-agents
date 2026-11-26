@@ -203,9 +203,9 @@ scan:                     # od kroku 18
   secret_patterns: ["*.pfx", "*.p12", "*.pem", "*.key", "*.crt", ".env*"]
   role_patterns:          # od kroku 19
     dependency: ["requirements*.txt", "pyproject.toml"]   # od kroku 23: przepisywane dosłownie
-    config: ["*.yml", "*.yaml", "*.json", "*.toml", "*.ini", "*.cfg"]
+    config: ["*.yml", "*.yaml", "*.toml", "*.ini", "*.cfg", "config*.json", "settings*.json", "appsettings*.json", "*.config.json"]
     docs: ["*.md", "*.rst", "README*", "*.docx", "*.pdf"]
-    data: ["*.csv", "*.txt", "*.xlsx", "*.xls", "*.db", "*.sqlite", "*.xml", "*.log"]
+    data: ["*.csv", "*.txt", "*.json", "*.xlsx", "*.xls", "*.db", "*.sqlite", "*.xml", "*.log"]
     launcher: ["*.bat", "*.cmd", "*.ps1"]
     binary: ["*.png", "*.jpg", "*.ico", "*.exe", "*.dll", "*.zip", "*.whl"]
   frameworks:             # od kroku 21

@@ -146,8 +146,8 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 29. `main.py` - skan i zapis wyników**
 - **Funkcja:** pierwszy użyteczny przebieg: mapa projektu (z grafem zależności i kolejnością czytania) w katalogu wyników robota.
-- **Robimy:** `--project` wymagany; config → skan (`build_project_map`, graf w środku) → `dev_agents_doc/project_map.json`.
-- **Sprawdzamy:** `python main.py --project <robot>` tworzy `project_map.json` w `<robot>\dev_agents_doc\` - dla robota 01 i 02; w mapie robota 02 widać `run.bat` z treścią, jednostki z zakresami linii (`run` - 371 linii) i pliki zależności. ✅ **M3**
+- **Robimy:** `--project` wymagany; config → skan (`build_project_map`, graf w środku) → `output.create_run_store` → `dev_agents_doc/project_map.json`; podsumowanie na ekranie (technologia, role, punkty wejścia, frameworki, jednostki, najdłuższa jednostka, pliki tekstowe, ścieżka zapisu); nierozpoznana technologia → błąd (kod 1) przed założeniem `dev_agents_doc/`; katalog wyników obcy albo bez prawa zapisu → komunikat z `output.py`.
+- **Sprawdzamy:** `python main.py --project <robot 02>` tworzy `project_map.json` w `<robot 02>\dev_agents_doc\` (w mapie `run.bat` z treścią, `run` - linie 41-411, `requirements.txt`); drugi start - ten sam wynik, katalog wyczyszczony; bez `--project` - błąd argparse; katalog bez kodu - błąd, nic nie zapisane. Robot 01 tylko do odczytu - jego mapę pokazuje `python -m dev_agents.scanner` (bez zapisu). ✅ **M3**
 
 ### Faza D - Szablon przewodnika i HTML bez modelu
 
