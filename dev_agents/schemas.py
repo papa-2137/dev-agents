@@ -709,10 +709,12 @@ if __name__ == "__main__":
             print(f"  pola schematu {klasa.__name__} po rozwinięciu klas: {count_schema_properties(klasa)} (limit testu {MAX_MODEL_SCHEMA_PROPERTIES}, bramka odrzuca od 49)")
         for klasa in (_guide_content.FlowGraph, _guide_content.GuideBlock, _guide_content.GuideTab):
             liczba_pol = count_schema_properties(klasa)
-            if liczba_pol > MAX_MODEL_SCHEMA_PROPERTIES:
-                print(f"  UWAGA: schemat {klasa.__name__} ma {liczba_pol} pól - przed wysłaniem do modelu (kroki 53-55) trzeba go rozbić albo odchudzić")
-            else:
+            if klasa is _guide_content.FlowGraph and liczba_pol > MAX_MODEL_SCHEMA_PROPERTIES:
+                print(f"  UWAGA: schemat {klasa.__name__} ma {liczba_pol} pól - trzeba go odchudzić przed wysłaniem do modelu")
+            elif klasa is _guide_content.FlowGraph:
                 print(f"  schemat {klasa.__name__}: {liczba_pol} pól (mieści się w limicie)")
+            else:
+                print(f"  schemat {klasa.__name__}: {liczba_pol} pól (nie idzie do modelu w całości; pisarz dostaje schemat zakładki z agents/writer.py)")
         notatka_zgodna = True
         for opis, zgodne_sprawdzenie in sprawdzenia_notatki:
             print(f"  {opis}: {zgodne_sprawdzenie}")

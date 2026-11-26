@@ -7,7 +7,10 @@ Co robi: definiuje RunState - słownik (TypedDict) z polami wspólnymi dla całe
     task         - zadanie jednego analityka; wpisuje je do ładunku Send graf (graph.dispatch_analysts), nie węzły,
     notes        - notatki analityków (wynik równoległych węzłów analyst); pole z reducerem operator.add:
                    każdy analityk zwraca listę z jedną notatką, a LangGraph skleja listy w jedną,
-    flow         - diagram przepływu całego procesu (wynik węzła flow_writer, krok 53).
+    flow         - diagram przepływu całego procesu (wynik węzła flow_writer, krok 53),
+    tab_id       - id zakładki do napisania; wpisuje je do ładunku Send graf (krok 56), nie węzły; czyta writer_node,
+    tabs         - zakładki napisane przez pisarzy (wynik węzłów writer, krok 55); pole z reducerem operator.add:
+                   każdy pisarz zwraca listę z jedną zakładką, a LangGraph skleja listy w jedną.
 Kolejne etapy (diagram, treść przewodnika) dopisują tu swoje pola w swoich krokach.
 
 Dlaczego istnieje: w LangGraph węzeł dostaje stan i zwraca tylko te pola, które zmienia - słownik z polami
@@ -39,3 +42,5 @@ class RunState(typing.TypedDict, total=False):
     task: _schemas.AnalysisTask
     notes: typing.Annotated[list[_schemas.ModuleNote], operator.add]
     flow: _content.FlowGraph
+    tab_id: str
+    tabs: typing.Annotated[list[_content.GuideTab], operator.add]

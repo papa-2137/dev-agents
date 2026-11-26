@@ -60,6 +60,7 @@ class TemplateSection(BaseModel):
     instruction: str = ""  # polecenie dla pisarza albo opis danych
     columns: list[str] = []  # kolumny tabeli (wymagane przy type: table)
     technologies: list[str] = []  # [] = sekcja dla wszystkich technologii
+    writer_adds: bool = False  # True = sekcja ze źródłem scanner/code, do której pisarz dokłada wiersze albo zdania
 
 
 class TemplateTab(BaseModel):

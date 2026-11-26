@@ -15,6 +15,8 @@
 #   columns      - kolumny tabeli (wymagane przy type: table); komórkę wywnioskowaną (niezapisaną wprost w kodzie)
 #                  pisarz kończy znacznikiem [wywnioskowane] - przewodnik pokazuje w jej miejscu oznaczenie
 #   technologies - opcjonalnie: lista technologii, dla których sekcja się pojawia (np. [python]); brak = wszystkie
+#   writer_adds  - opcjonalnie, true: sekcja ze źródłem scanner albo code, do której pisarz dokłada wiersze (tree,
+#                  table) albo zdania (list); dane liczy kod, pisarz tylko dopisuje. Brak = pisarz sekcji nie dotyka
 #
 # Nowa sekcja albo zmiana polecenia = zmiana tego pliku, bez zmian w kodzie. Nowy TYP sekcji wymaga kodu w rendererze.
 
@@ -143,6 +145,7 @@ tabs:
         type: tree
         source: scanner
         required: true
+        writer_adds: true
         instruction: >-
           Drzewo plików z mapy projektu: znacznik roli, rozmiar i funkcje z liniami liczy kod; sekrety tylko jako
           metadane (nazwa i rozmiar). Pliki frameworku skopiowane do projektu są pominięte. Opcjonalnie pisarz zwraca
@@ -203,6 +206,7 @@ tabs:
         type: table
         source: code
         required: true
+        writer_adds: true
         columns: [Miejsce, Plik i linie, Rodzaj, Dlaczego ryzykowne]
         instruction: >-
           Kod wskazuje hasła wpisane wprost (z metryczki) i jednostki dłuższe niż analysis.long_unit_lines (nazwa,
@@ -241,6 +245,7 @@ tabs:
         type: list
         source: scanner
         required: true
+        writer_adds: true
         instruction: >-
           Lista plików i ich kolejność pochodzą z ProjectMap.reading_order (od punktu wejścia w głąb); pisarz zwraca w items
           tylko zdania w formacie „ścieżka: jedno zdanie, dlaczego czytać ten plik w tym miejscu” (ścieżka dokładnie jak w
