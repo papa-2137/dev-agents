@@ -14,7 +14,13 @@ Co robi: definiuje RunState - słownik (TypedDict) z polami wspólnymi dla całe
                    każdy pisarz zwraca listę z jedną zakładką, a LangGraph skleja listy w jedną,
     content      - cała treść przewodnika (wynik węzła assemble, krok 56): diagram i zakładki w kolejności szablonu,
     guide_path   - ścieżka zapisanego guide.html (wynik węzła finalize, krok 57),
-    review       - recenzja treści przewodnika (wynik węzła reviewer, krok 58; do grafu dołącza go krok 59).
+    review       - recenzja treści przewodnika (wynik węzła reviewer, kroki 58-59): uwagi oczyszczone przez kod,
+    review_round - numer ostatniej recenzji (1, 2, ...; wpisuje go reviewer, historia w review_NN.json),
+    fixes_pending - czy po tej recenzji trzeba poprawek: są uwagi, a limits.max_review_rounds nie jest wyczerpany
+                   (wpisuje reviewer, bo krawędź warunkowa widzi tylko stan, a limit jest w configu),
+    previous_tab - poprzednia wersja zakładki do poprawy; wpisuje ją do ładunku Send graf (krok 59), nie węzły; czyta writer_node,
+    review_issues - uwagi recenzenta (linie tekstu) dla poprawianej zakładki albo diagramu; w ładunku Send (writer_node) albo
+                   wyliczane przez flow_fix_node ze stanu; kolejne rundy nadpisują zakładki: w tabs wygrywa ostatnia wersja.
 Kolejne etapy (diagram, treść przewodnika) dopisują tu swoje pola w swoich krokach.
 
 Dlaczego istnieje: w LangGraph węzeł dostaje stan i zwraca tylko te pola, które zmienia - słownik z polami
@@ -52,3 +58,7 @@ class RunState(typing.TypedDict, total=False):
     content: _content.GuideContent
     guide_path: str
     review: _schemas.ReviewResult
+    review_round: int
+    fixes_pending: bool
+    previous_tab: _content.GuideTab
+    review_issues: list[str]

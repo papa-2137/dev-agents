@@ -453,6 +453,8 @@ def write_tab(
     notes: list[_schemas.ModuleNote],
     flow: _content.FlowGraph,
     context: _context.RunContext,
+    previous_tab: _content.GuideTab | None = None,
+    review_issues: list[str] | None = None,
 ) -> tuple[_content.GuideTab, list[str], int]:
     """Pisze zakładkę: zwraca (zakładka, problemy, liczba wywołań modelu - 1 albo 2).
 
@@ -462,9 +464,13 @@ def write_tab(
     wybranej wersji (niepuste znaczą, że zakładka ma braki - decyduje o tym wołający); odwołania do nieistniejących
     klocków są w zwróconej zakładce wyczyszczone.
 
+    Poprawka po recenzji (krok 59): gdy podano previous_tab i review_issues, już pierwsze wywołanie dostaje <poprawka> z poprzednią
+    wersją i uwagami recenzenta; ewentualne ponowienie z powodu problemów kodu niesie i problemy, i uwagi recenzenta.
+
     Uwaga: zakładka bez sekcji dla pisarza (np. sam diagram) albo brak notatek to ValueError. Argument tab to zakładka
     z szablonu po filtrze technologii (guide_template.sections_for_technology).
     """
+    uwagi_recenzenta = review_issues or []
     sekcje = writer_sections(tab)
     if not sekcje:
         komunikat_bledu = f"Zakładka '{tab.id}' nie ma sekcji do napisania przez pisarza"
@@ -477,12 +483,12 @@ def write_tab(
     tekst_wiedzy = _common.format_knowledge(context.config, pliki_wiedzy)
     prog = context.config.analysis.long_unit_lines
     klasa_odpowiedzi = tab_response_model(sekcje)
-    zmienne = build_writer_variables(tab, sekcje, project_map, plan, uporzadkowane, flow, tekst_wiedzy, prog, None, [])
+    zmienne = build_writer_variables(tab, sekcje, project_map, plan, uporzadkowane, flow, tekst_wiedzy, prog, previous_tab, uwagi_recenzenta)
     odpowiedz = _ask_model(context, klasa_odpowiedzi, zmienne)
     zakladka, problemy = _finish(odpowiedz, tab.id, sekcje, flow)
     wywolania = 1
     if problemy:
-        zmienne_poprawki = build_writer_variables(tab, sekcje, project_map, plan, uporzadkowane, flow, tekst_wiedzy, prog, zakladka, problemy)
+        zmienne_poprawki = build_writer_variables(tab, sekcje, project_map, plan, uporzadkowane, flow, tekst_wiedzy, prog, zakladka, problemy + uwagi_recenzenta)
         druga_odpowiedz = _ask_model(context, klasa_odpowiedzi, zmienne_poprawki)
         wywolania = 2
         druga_zakladka, problemy_2 = _finish(druga_odpowiedz, tab.id, sekcje, flow)
@@ -505,7 +511,9 @@ def writer_node(
 
     Po co: etap pisarzy - po jednym węźle na zakładkę (krok 56 uruchomi je równolegle przez Send z tab_id). Praca jest
     owinięta w Stage "writer <tab_id>": start, uwagi o problemach zakładki, koniec z czasem, liczbą bloków i wywołań
-    modelu. Zakładka z problemami nie przerywa przebiegu - kompletność sprawdzi składanie treści (krok 56).
+    modelu. Zakładka z problemami nie przerywa przebiegu - kompletność sprawdzi składanie treści (krok 56). Przy poprawce
+    po recenzji (krok 59) ładunek Send niesie previous_tab i review_issues - pisarz dostaje poprzednią wersję i uwagi, a etap
+    zgłasza liczbę uwag; nowa wersja nadpisuje tabs/<tab_id>.json.
     """
     kontekst = runtime.context
     tab_id = state["tab_id"]
@@ -518,7 +526,19 @@ def writer_node(
         komunikat_bledu = f"Zakładka '{tab_id}' nie istnieje w szablonie przewodnika"
         raise ValueError(komunikat_bledu)
     with _progress.Stage(kontekst.report, f"{_AGENT_NAME} {tab_id}") as etap:
-        zakladka, problemy, wywolania = write_tab(szablon_zakladki, state["project_map"], state["plan"], state["notes"], state["flow"], kontekst)
+        uwagi_recenzenta = state.get("review_issues", [])
+        if uwagi_recenzenta:
+            etap.note(f"poprawka po recenzji: uwag {len(uwagi_recenzenta)}")
+        zakladka, problemy, wywolania = write_tab(
+            szablon_zakladki,
+            state["project_map"],
+            state["plan"],
+            state["notes"],
+            state["flow"],
+            kontekst,
+            state.get("previous_tab"),
+            uwagi_recenzenta,
+        )
         for problem in problemy:
             etap.note(f"problem: {problem}")
         zapisany_plik = kontekst.store.save_json(f"tabs/{tab_id}.json", zakladka)
@@ -870,6 +890,25 @@ if __name__ == "__main__":
         kontekst = _context_for(app_config, szablon, model, linie.append, magazyn)
         writer_node(stan, types.SimpleNamespace(context=kontekst))
         wyniki.append(("węzeł: problem zakładki jako uwaga, przebieg się nie przerywa", len(linie) == 3 and "] writer sciezki: problem: " in linie[1]))
+
+        prompty = []
+        poprzednia = _content.GuideTab(tab_id="sciezki", blocks=[_content.GuideBlock(section_id="sciezki", paths=[_content.ProcessPath(name="POPRZEDNIA_SCIEZKA", kind="main", steps=[_content.PathStep(text="Krok.", node_id="n0")])])])
+        model = _model([_good_paths(sciezki, "n0")], prompty)
+        kontekst = _context_for(app_config, szablon, model, [].append, magazyn)
+        zakladka_wynik, problemy, wywolania = write_tab(sciezki, mapa, plan, notatki, diagram, kontekst, poprzednia, ["recenzent: [sciezki] UWAGA_RECENZENTA"])
+        wyniki.append(("poprawka po recenzji: jedno wywołanie, w prompcie poprzednia wersja i uwaga recenzenta", model.calls == 1 and wywolania == 1 and problemy == [] and "<poprawka>" in prompty[0] and "POPRZEDNIA_SCIEZKA" in prompty[0] and "recenzent: [sciezki] UWAGA_RECENZENTA" in prompty[0]))
+
+        prompty = []
+        model = _model([_good_paths(sciezki, "n99"), _good_paths(sciezki, "n0")], prompty)
+        kontekst = _context_for(app_config, szablon, model, [].append, magazyn)
+        zakladka_wynik, problemy, wywolania = write_tab(sciezki, mapa, plan, notatki, diagram, kontekst, poprzednia, ["recenzent: UWAGA_RECENZENTA"])
+        wyniki.append(("poprawka po recenzji i problem kodu: ponowienie niesie i problem kodu, i uwagę recenzenta", wywolania == 2 and "n99" in prompty[1] and "recenzent: UWAGA_RECENZENTA" in prompty[1] and problemy == []))
+
+        linie = []
+        model = _model([_good_paths(sciezki, "n0")], [])
+        kontekst = _context_for(app_config, szablon, model, linie.append, magazyn)
+        writer_node({**stan, "previous_tab": poprzednia, "review_issues": ["recenzent: UWAGA"]}, types.SimpleNamespace(context=kontekst))
+        wyniki.append(("węzeł: poprawka po recenzji - uwaga o liczbie uwag w postępie", len(linie) == 3 and "] writer sciezki: poprawka po recenzji: uwag 1" in linie[1]))
 
         blad = ""
         try:

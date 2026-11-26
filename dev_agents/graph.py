@@ -1,6 +1,6 @@
 """Graf agentów (LangGraph): skan projektu, plan pracy, równoległa analiza jednostek.
 
-Co robi: buduje graf START -> scan -> planner -> (analyst x N, równolegle) -> flow_writer -> plan_tabs -> (writer x M, równolegle) -> assemble -> finalize -> END. Węzeł scan woła scanner.build_project_map na projekcie ze stanu
+Co robi: buduje graf START -> scan -> planner -> (analyst x N, równolegle) -> flow_writer -> plan_tabs -> (writer x M, równolegle) -> assemble -> reviewer -> [pętla poprawek] -> finalize -> END. Węzeł scan woła scanner.build_project_map na projekcie ze stanu
 (project_path) z ustawieniami skanowania z kontekstu (runtime.context.config.scan) i dopisuje do stanu
 project_map. Węzeł niczego nie zapisuje na dysku - zapis wyników należy do wołającego (main.py, krok 44).
 Pracę węzła owija Stage z progress.py: linie "scan: start" i "scan: gotowe w X s - wynik" (albo "BŁĄD po X s")
@@ -17,6 +17,13 @@ Po diagramie węzeł plan_tabs (kod, bez modelu) wpisuje do stanu tab_ids: zakł
 krawędź warunkowa dispatch_writers wysyła Send("writer", ładunek z tab_id) na każdą z nich, a węzeł writer
 (agents/writer.py, krok 55) pisze zakładkę i zapisuje tabs/<zakładka>.json. Węzeł assemble (assemble.py, krok 56) czeka
 na wszystkich pisarzy, składa treść przewodnika w kolejności szablonu, sprawdza kompletność i zapisuje guide_content.json.
+Po assemble węzeł reviewer (agents/reviewer.py, krok 58) recenzuje treść i zapisuje review_NN.json; krawędź warunkowa
+dispatch_review (krok 59) kończy pracę (finalize), gdy nie ma uwag albo limits.max_review_rounds jest wyczerpany (decyzję
+wylicza reviewer w polu fixes_pending). Przy uwagach do diagramu najpierw węzeł flow_fix poprawia diagram, a krawędź
+dispatch_rewrites wysyła Send("writer", ...) do zakładek z uwagami i zakładek odwołujących się do klocków diagramu; przy uwagach
+tylko do zakładek Send idzie od razu z dispatch_review. Pisarz dostaje poprzednią wersję zakładki i uwagi (previous_tab,
+review_issues), a nowa wersja wchodzi do stanu na końcu listy tabs (assemble bierze ostatnią). Po pisarzach znów assemble
+i reviewer - pętla kończy się na limicie rund albo bez uwag (logika wyboru w review_loop.py).
 Na końcu węzeł finalize (finalize.py, krok 57) renderuje treść do guide.html i dopisuje do stanu guide_path.
 
 Dlaczego istnieje: kolejne etapy (analitycy, autor diagramu, pisarze, recenzent) dołączamy do tego
@@ -58,6 +65,7 @@ from langgraph.types import Send
 import dev_agents.agents.analyst as _analyst
 import dev_agents.agents.flow_writer as _flow_writer
 import dev_agents.agents.planner as _planner
+import dev_agents.agents.reviewer as _reviewer
 import dev_agents.agents.writer as _writer
 import dev_agents.assemble as _assemble
 import dev_agents.config as _config
@@ -65,6 +73,7 @@ import dev_agents.context as _context
 import dev_agents.finalize as _finalize
 import dev_agents.progress as _progress
 import dev_agents.guide_template as _template
+import dev_agents.review_loop as _review_loop
 import dev_agents.scanner as _scanner
 import dev_agents.state as _state
 
@@ -144,6 +153,73 @@ def dispatch_writers(
     return polecenia
 
 
+def _rewrite_commands(
+    state: _state.RunState,
+    tab_ids: list[str],
+    flow_changed: bool,
+) -> list[Send]:
+    """Zwraca polecenia Send("writer", ...) dla zakładek do poprawy: ładunek to mapa projektu, plan, notatki, aktualny diagram, tab_id, poprzednia wersja zakładki i uwagi.
+
+    Po co: wspólne dla obu krawędzi pętli recenzji. Uwagi zakładki to linie z recenzji (review_loop.issue_lines); po zmianie
+    diagramu dochodzi zdanie o dostosowaniu odwołań do klocków (review_loop.flow_changed_line).
+    """
+    poprzednie = {}
+    for zakladka in state["content"].tabs:
+        poprzednie[zakladka.tab_id] = zakladka
+    polecenia = []
+    for identyfikator in tab_ids:
+        uwagi = _review_loop.issue_lines(state["review"], identyfikator)
+        if flow_changed:
+            uwagi.append(_review_loop.flow_changed_line())
+        ladunek = {
+            "project_map": state["project_map"],
+            "plan": state["plan"],
+            "notes": state["notes"],
+            "flow": state["flow"],
+            "tab_id": identyfikator,
+            "review_issues": uwagi,
+        }
+        if identyfikator in poprzednie:
+            ladunek["previous_tab"] = poprzednie[identyfikator]
+        polecenia.append(Send("writer", ladunek))
+    return polecenia
+
+
+def dispatch_review(
+    state: _state.RunState,
+) -> str | list[Send]:
+    """Krawędź warunkowa za reviewer: "finalize", gdy poprawki niepotrzebne; "flow_fix", gdy są uwagi do diagramu; inaczej Send("writer", ...) do zakładek z uwagami.
+
+    Po co: poprawki celowane - recenzent mówi, co jest złe, a graf przepisuje tylko to. Brak poprawek (fixes_pending ustawia reviewer
+    z limitem rund) i uwagi tylko do zakładek spoza listy pisarzy (nie powinno się zdarzyć) kończą pętlę.
+    """
+    if not state.get("fixes_pending", False):
+        return "finalize"
+    recenzja = state["review"]
+    if _review_loop.has_flow_issues(recenzja):
+        return "flow_fix"
+    identyfikatory = _review_loop.tabs_to_rewrite(recenzja, state["content"], state["tab_ids"], False)
+    if not identyfikatory:
+        return "finalize"
+    polecenia = _rewrite_commands(state, identyfikatory, False)
+    return polecenia
+
+
+def dispatch_rewrites(
+    state: _state.RunState,
+) -> str | list[Send]:
+    """Krawędź warunkowa za flow_fix: Send("writer", ...) do zakładek z uwagami i zakładek odwołujących się do klocków diagramu; "assemble", gdy żadnej nie trzeba przepisywać.
+
+    Po co: poprawiony diagram zmienia id i czynności klocków, więc zakładki, które się do nich odwołują (ścieżki procesu), muszą
+    dostać nowy diagram, nawet bez własnych uwag.
+    """
+    identyfikatory = _review_loop.tabs_to_rewrite(state["review"], state["content"], state["tab_ids"], True)
+    if not identyfikatory:
+        return "assemble"
+    polecenia = _rewrite_commands(state, identyfikatory, True)
+    return polecenia
+
+
 def run_config(
     app_config: _config.AppConfig,
 ) -> dict:
@@ -159,7 +235,7 @@ def run_config(
 
 
 def build_graph():
-    """Buduje i kompiluje graf START -> scan -> planner -> analyst (po jednym na zadanie, równolegle) -> flow_writer -> plan_tabs -> writer (po jednym na zakładkę, równolegle) -> assemble -> finalize -> END; zwraca graf gotowy do invoke(stan, context=RunContext, config=run_config(...)).
+    """Buduje i kompiluje graf START -> scan -> planner -> analyst (po jednym na zadanie, równolegle) -> flow_writer -> plan_tabs -> writer (po jednym na zakładkę, równolegle) -> assemble -> reviewer -> (pętla: flow_fix i/lub writer z uwagami -> assemble -> reviewer) -> finalize -> END; zwraca graf gotowy do invoke(stan, context=RunContext, config=run_config(...)).
 
     Po co: jedno miejsce z układem grafu - kolejne kroki planu dopisują tu węzły i krawędzie.
     """
@@ -178,8 +254,12 @@ def build_graph():
     budowniczy.add_conditional_edges("plan_tabs", dispatch_writers, ["writer"])
     budowniczy.add_node("assemble", _assemble.assemble_node)
     budowniczy.add_edge("writer", "assemble")
+    budowniczy.add_node("reviewer", _reviewer.reviewer_node)
+    budowniczy.add_edge("assemble", "reviewer")
+    budowniczy.add_node("flow_fix", _flow_writer.flow_fix_node)
+    budowniczy.add_conditional_edges("reviewer", dispatch_review, ["flow_fix", "writer", "finalize"])
+    budowniczy.add_conditional_edges("flow_fix", dispatch_rewrites, ["writer", "assemble"])
     budowniczy.add_node("finalize", _finalize.finalize_node)
-    budowniczy.add_edge("assemble", "finalize")
     budowniczy.add_edge("finalize", END)
     graf = budowniczy.compile()
     return graf
@@ -315,6 +395,47 @@ if __name__ == "__main__":
 
         return answer
 
+    def _make_fake_reviewer_answer(
+        always_issues: bool,
+    ):
+        """Zwraca funkcję odpowiedzi udawanego recenzenta: nieparzyste wywołania zgłaszają uwagę do diagramu i do zakładki "bledy", parzyste nie mają uwag (przy always_issues - uwagi zawsze).
+
+        Po co: test pętli recenzji - pierwsza recenzja uruchamia poprawkę diagramu i zakładki, druga zatwierdza; z always_issues
+        sprawdzamy, że limit rund kończy pętlę mimo uwag.
+        """
+        liczniki = {"wywolania": 0}
+
+        def answer(
+            messages,
+        ):
+            """Zlicza wywołania i zwraca recenzję zależną od numeru wywołania.
+
+            Po co: odpowiedź udawanego modelu zależna od rundy.
+            """
+            liczniki["wywolania"] += 1
+            uwagi = []
+            if always_issues or liczniki["wywolania"] % 2 == 1:
+                uwagi.append(_schemas.ReviewIssue(target="flow", section_id="", description="Brak klocka dla wysyłki."))
+                uwagi.append(_schemas.ReviewIssue(target="bledy", section_id="awarie", description="Awaria bez przyczyny."))
+            odpowiedz = _schemas.ReviewResult(approved=len(uwagi) == 0, issues=uwagi, suggestions=[])
+            return odpowiedz
+
+        return answer
+
+    def _set_fake_models(
+        context: _context.RunContext,
+        reviewer_always_issues: bool,
+    ) -> None:
+        """Podmienia modele wszystkich agentów w kontekście na udawane (planner, analityk, autor diagramu, pisarz, recenzent).
+
+        Po co: test bez sieci i kluczy; wołany przed każdym przypadkiem, bo udawany recenzent liczy wywołania od zera.
+        """
+        context.models["planner"] = _fakes.FakeStructuredModel(_schemas.Plan(summary="Plan testowy", tasks=[]))
+        context.models["analyst"] = _fakes.FakeStructuredModel(_fake_analyst_answer)
+        context.models["flow_writer"] = _fakes.FakeStructuredModel(_fake_flow())
+        context.models["writer"] = _fakes.FakeStructuredModel(_make_fake_writer_answer(context.template))
+        context.models["reviewer"] = _fakes.FakeStructuredModel(_make_fake_reviewer_answer(reviewer_always_issues))
+
     def _context_lines(
         context: _context.RunContext,
     ) -> list[str]:
@@ -421,9 +542,12 @@ if __name__ == "__main__":
         napisane = []
         for zakladka in stan.get("tabs", []):
             napisane.append(zakladka.tab_id)
-        zakladki_zgodne = sorted(napisane) == sorted(oczekiwane_zakladki)
-        zakladki_zapisane = True
+        zakladki_zgodne = sorted(napisane) == sorted(oczekiwane_zakladki + ["bledy"])
+        ostatnie_wersje = {}
         for zakladka in stan.get("tabs", []):
+            ostatnie_wersje[zakladka.tab_id] = zakladka
+        zakladki_zapisane = len(ostatnie_wersje) == len(oczekiwane_zakladki)
+        for zakladka in ostatnie_wersje.values():
             if context.store.load_json(f"tabs/{zakladka.tab_id}.json", _content.GuideTab) != zakladka:
                 zakladki_zapisane = False
         start_pisarzy = 0
@@ -436,7 +560,7 @@ if __name__ == "__main__":
                 koniec_pisarzy += 1
             if "] assemble: " in linia_postepu:
                 linie_assemble.append(linia_postepu)
-        postep_pisarzy = start_pisarzy == len(oczekiwane_zakladki) and koniec_pisarzy == len(oczekiwane_zakladki)
+        postep_pisarzy = start_pisarzy == len(oczekiwane_zakladki) + 1 and koniec_pisarzy == len(oczekiwane_zakladki) + 1
         tresc = stan["content"]
         kolejnosc_tresci = []
         for zakladka in tresc.tabs:
@@ -445,8 +569,8 @@ if __name__ == "__main__":
             kolejnosc_tresci == wszystkie_zakladki
             and tresc.flow == diagram
             and context.store.load_json("guide_content.json", _content.GuideContent) == tresc
-            and len(linie_assemble) == 2
-            and "problemów: 0" in linie_assemble[1]
+            and len(linie_assemble) == 4
+            and "problemów: 0" in linie_assemble[3]
         )
         sciezka_przewodnika = stan.get("guide_path", "")
         przewodnik_zgodny = sciezka_przewodnika == context.store.path("guide.html") and os.path.isfile(sciezka_przewodnika)
@@ -458,8 +582,35 @@ if __name__ == "__main__":
             if "] finalize: " in linia_postepu:
                 linie_finalize.append(linia_postepu)
         przewodnik_zgodny = przewodnik_zgodny and len(linie_finalize) == 2 and "] finalize: gotowe w " in linie_finalize[1]
+        linie_flow_fix = []
+        linie_recenzji = []
+        poprawka_bledy = False
+        for linia_postepu in nowe_linie:
+            if "] flow_fix: " in linia_postepu:
+                linie_flow_fix.append(linia_postepu)
+            if "] reviewer: " in linia_postepu:
+                linie_recenzji.append(linia_postepu)
+            if "] writer bledy: poprawka po recenzji: uwag 2" in linia_postepu:
+                poprawka_bledy = True
+        recenzja = stan["review"]
+        pierwsza_recenzja = context.store.load_json("review_01.json", _schemas.ReviewResult)
+        druga_recenzja = context.store.load_json("review_02.json", _schemas.ReviewResult)
+        petla_zgodna = (
+            stan["review_round"] == 2
+            and stan["fixes_pending"] is False
+            and recenzja.approved is True
+            and recenzja == druga_recenzja
+            and len(pierwsza_recenzja.issues) == 2
+            and not os.path.exists(context.store.path("review_03.json"))
+            and len(linie_flow_fix) == 3
+            and linie_flow_fix[0].endswith("] flow_fix: start")
+            and "] flow_fix: gotowe w " in linie_flow_fix[2]
+            and len(linie_recenzji) == 6
+            and poprawka_bledy
+        )
         zgodne = (
-            mapa == bezposrednio
+            petla_zgodna
+            and mapa == bezposrednio
             and diagram_zgodny
             and zakladki_zgodne
             and zakladki_zapisane
@@ -496,9 +647,52 @@ if __name__ == "__main__":
             f"  pisarze: start i koniec z czasem dla każdej zakładki: {postep_pisarzy}",
             f"  treść: zakładki w kolejności szablonu, diagram ze stanu, guide_content.json, assemble bez problemów: {tresc_zgodna}",
             f"  guide.html w magazynie (guide_path), z nazwą projektu, linie postępu finalize: {przewodnik_zgodny}",
+            f"  pętla recenzji: 2 rundy, review_01/02.json, poprawka diagramu (flow_fix) i zakładki bledy, koniec bez uwag: {petla_zgodna}",
         ]
         for linia_postepu in nowe_linie:
             linie.append(f"    {linia_postepu}")
+        wynik_przypadku = (linie, zgodne)
+        return wynik_przypadku
+
+    def _run_limit_case(
+        app_config: _config.AppConfig,
+        temp_dir: str,
+    ) -> tuple[list[str], bool]:
+        """Uruchamia graf z limits.max_review_rounds = 1 i recenzentem, który zawsze ma uwagi; zwraca (linie opisu, czy zgodne).
+
+        Po co: limit rund musi kończyć pętlę mimo uwag - jedna recenzja, bez poprawek (bez flow_fix, bez dodatkowych pisarzy),
+        uwagi zostają w review_01.json, a przewodnik i tak powstaje.
+        """
+        projekt = _write_temp_project(os.path.join(temp_dir, "limit"))
+        poprzedni_limit = app_config.limits.max_review_rounds
+        app_config.limits.max_review_rounds = 1
+        try:
+            magazyn = _output.create_run_store(projekt)
+            linie_postepu = []
+            kontekst = _context.build_context(app_config, magazyn, linie_postepu.append)
+            _set_fake_models(kontekst, True)
+            stan = build_graph().invoke({"project_path": projekt}, context=kontekst, config=run_config(app_config))
+        finally:
+            app_config.limits.max_review_rounds = poprzedni_limit
+        start_pisarzy = 0
+        flow_fix = 0
+        for linia_postepu in linie_postepu:
+            if "] writer " in linia_postepu and linia_postepu.endswith(": start"):
+                start_pisarzy += 1
+            if "] flow_fix: " in linia_postepu:
+                flow_fix += 1
+        recenzja = magazyn.load_json("review_01.json", _schemas.ReviewResult)
+        zgodne = (
+            stan["review_round"] == 1
+            and stan["fixes_pending"] is False
+            and len(recenzja.issues) == 2
+            and recenzja.approved is False
+            and not os.path.exists(magazyn.path("review_02.json"))
+            and flow_fix == 0
+            and start_pisarzy == len(stan["tab_ids"])
+            and os.path.isfile(stan["guide_path"])
+        )
+        linie = [f"=== limit rund 1: jedna recenzja z uwagami, bez poprawek, przewodnik powstaje: {zgodne} ==="]
         wynik_przypadku = (linie, zgodne)
         return wynik_przypadku
 
@@ -520,10 +714,6 @@ if __name__ == "__main__":
             magazyn = _output.create_run_store(temp_dir)
             linie_postepu = []
             kontekst = _context.build_context(app_config, magazyn, linie_postepu.append)
-            kontekst.models["planner"] = _fakes.FakeStructuredModel(_schemas.Plan(summary="Plan testowy", tasks=[]))
-            kontekst.models["analyst"] = _fakes.FakeStructuredModel(_fake_analyst_answer)
-            kontekst.models["flow_writer"] = _fakes.FakeStructuredModel(_fake_flow())
-            kontekst.models["writer"] = _fakes.FakeStructuredModel(_make_fake_writer_answer(kontekst.template))
             graf = build_graph()
             for linia in _context_lines(kontekst):
                 print(linia)
@@ -537,11 +727,17 @@ if __name__ == "__main__":
                 if not os.path.isdir(root):
                     print(f"=== {tytul}: brak katalogu {root} - pomijam ===")
                     continue
+                _set_fake_models(kontekst, False)
                 linie, zgodne = _run_case(graf, kontekst, linie_postepu, tytul, root)
                 for linia in linie:
                     print(linia)
                 if not zgodne:
                     wszystkie_zgodne = False
+            linie, zgodne = _run_limit_case(app_config, temp_dir)
+            for linia in linie:
+                print(linia)
+            if not zgodne:
+                wszystkie_zgodne = False
             print(f"\nzgodne z oczekiwaniem: {wszystkie_zgodne}")
         finally:
             shutil.rmtree(temp_dir)

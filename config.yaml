@@ -88,3 +88,9 @@ analysis:
   chunk_overlap_lines: 10
   # Ilu analityków (jednostek kodu) pracuje naraz. Każdy woła model, więc to także limit równoczesnych zapytań do bramki.
   max_concurrency: 4
+
+# Limity przebiegu.
+limits:
+  # Ile razy recenzent ocenia przewodnik. 1 = tylko ocena (bez poprawek); 2 = ocena, jedna runda poprawek celowanych
+  # (przepisywane są tylko diagram i zakładki z uwagami) i ocena poprawionej wersji. Uwagi z ostatniej oceny zostają w review_NN.json.
+  max_review_rounds: 2

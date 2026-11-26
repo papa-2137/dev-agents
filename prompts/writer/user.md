@@ -42,7 +42,7 @@ Podsumowanie projektu od plannera:
 Poprzednia wersja zakładki (JSON):
 {{ previous_tab }}
 
-Problemy znalezione w tej wersji:
+Problemy i uwagi do poprawienia w tej wersji (od kodu albo od recenzenta):
 {{ problems_text }}
 
 Zwróć poprawioną zakładkę w całości.

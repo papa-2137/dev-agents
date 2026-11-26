@@ -6,8 +6,8 @@ agenta reviewer ze schematem ReviewResult i sprawdza odpowiedź kodem: adresat k
 zakładką z treścią, sekcja uwagi sekcją tej zakładki, opis niepusty. Gdy są problemy, woła model jeszcze raz - z poprzednią
 recenzją i listą problemów w prompcie; drugą wersję bierze, chyba że ma więcej problemów niż pierwsza. Uwagi, których nie
 da się przypisać (nieznany adresat, pusty opis), są odrzucane z uwagą w linii postępu; błędną sekcję kod czyści. Flagę
-approved ustawia kod: prawda tylko wtedy, gdy uwag nie ma. reviewer_node() to węzeł grafu: zapisuje review.json
-i dopisuje do stanu review.
+approved ustawia kod: prawda tylko wtedy, gdy uwag nie ma. reviewer_node() to węzeł grafu: zapisuje review_NN.json
+(historia rund) i dopisuje do stanu review, review_round i fixes_pending (są uwagi i limit rund nie jest wyczerpany).
 
 Dlaczego istnieje: braki formalne (brak sekcji, liczba komórek, odwołania do klocków) sprawdza kod w pisarzach i w assemble,
 ale prawdziwość i konkretność może ocenić tylko model, który widzi notatki i treść razem: zdanie niepoparte notatkami,
@@ -15,7 +15,7 @@ sprzeczność, brak kroku lub ścieżki, diagram zbyt ogólny albo przeładowany
 wymysł tam, gdzie notatki mówią „nie wynika z kodu”. Puste pole nie jest uwagą - luka jest lepsza niż wymysł. Uwagi mają
 adresata, żeby pętla recenzji (krok 59) przepisywała tylko diagram albo zakładki, których dotyczą.
 
-Rola: agent grafu (faza F); do grafu z pętlą poprawek dołącza go krok 59 (teraz węzeł nie jest podpięty).
+Rola: agent grafu (faza F); w grafie stoi po assemble, a po nim pętla poprawek celowanych (krok 59, review_loop.py).
 
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.agents.reviewer
@@ -23,11 +23,11 @@ Test ręczny (z katalogu głównego repo):
         zakładek, zasady pisania i diagramu, adresaci, brak ścieżki dysku, brak poprawki), flaga approved ustawiana przez kod,
         uwagi i sugestie zachowane, ponowienie przy nieznanym adresacie z poprzednią recenzją i listą problemów, odrzucenie
         uwag bez adresata po ponowieniu, wybór lepszej z dwóch wersji, czyszczenie błędnej sekcji, pusty opis, sekcja
-        diagramu, odmowa bez notatek i bez treści, węzeł grafu (review.json, linie postępu); na końcu "zgodne z oczekiwaniem: True"
+        diagramu, odmowa bez notatek i bez treści, węzeł grafu (review_NN.json, numer rundy, fixes_pending, linie postępu); na końcu "zgodne z oczekiwaniem: True"
     python -m dev_agents.agents.reviewer <katalog robota>
         dodatkowo woła PRAWDZIWY model: skanuje robota w pamięci, czyta <katalog robota>/dev_agents_doc/guide_content.json,
         notes/*.json i plan.json (najpierw pełny przebieg: python main.py --project <katalog robota>), wypisuje uwagi
-        z przypisaniem do zakładek i sugestie, zapisuje review.json w katalogu wyników robota.
+        z przypisaniem do zakładek i sugestie, zapisuje review_01.json w katalogu wyników robota.
         Wymaga zmiennych środowiskowych z kluczem i adresem modeli (nazwy w config.yaml).
 """
 
@@ -313,25 +313,29 @@ def reviewer_node(
     state: _state.RunState,
     runtime: Runtime[_context.RunContext],
 ) -> dict:
-    """Węzeł reviewer: recenzuje treść ze stanu, zapisuje review.json i zwraca zmienione pole stanu: review.
+    """Węzeł reviewer: recenzuje treść ze stanu, zapisuje review_NN.json i zwraca zmienione pola stanu: review, review_round i fixes_pending.
 
-    Po co: etap po złożeniu treści - kontrola prawdziwości i konkretności. Praca jest owinięta w Stage: start, uwagi
-    kodu o odrzuconych i poprawionych uwagach, każda uwaga recenzenta z adresatem, koniec z czasem, liczbą uwag
-    i sugestii, werdyktem i liczbą wywołań modelu. Uwagi nie przerywają przebiegu - decyzję o poprawkach podejmie
-    pętla recenzji (krok 59).
+    Po co: etap po złożeniu treści - kontrola prawdziwości i konkretności. Numer rundy to poprzedni review_round + 1;
+    fixes_pending to "są uwagi i limits.max_review_rounds nie jest wyczerpany" - krawędź warunkowa grafu widzi tylko stan,
+    więc decyzję o limicie podejmuje węzeł. Praca jest owinięta w Stage: start, uwagi kodu o odrzuconych i poprawionych
+    uwagach, każda uwaga recenzenta z adresatem, koniec z czasem, numerem rundy, liczbą uwag i sugestii, werdyktem i liczbą
+    wywołań modelu. Każda runda zostaje w historii (review_01.json, review_02.json, ...).
     """
     kontekst = runtime.context
+    numer_rundy = state.get("review_round", 0) + 1
     with _progress.Stage(kontekst.report, _AGENT_NAME) as etap:
         recenzja, uwagi_kodu, wywolania = review_guide(state["project_map"], state["plan"], state["notes"], state["content"], kontekst)
         for uwaga_kodu in uwagi_kodu:
             etap.note(uwaga_kodu)
         for uwaga in recenzja.issues:
             etap.note(f"uwaga [{uwaga.target}] {uwaga.section_id}: {uwaga.description}".replace("]  :", "]:"))
-        zapisany_plik = kontekst.store.save_json("review.json", recenzja)
+        zapisany_plik = kontekst.store.save_json(f"review_{numer_rundy:02d}.json", recenzja)
+        poprawki_potrzebne = len(recenzja.issues) > 0 and numer_rundy < kontekst.config.limits.max_review_rounds
         etap.set_result(
-            f"uwag: {len(recenzja.issues)}, sugestii: {len(recenzja.suggestions)}, zatwierdzone: {recenzja.approved}, wywołań modelu: {wywolania}, zapisano {zapisany_plik}"
+            f"runda {numer_rundy}, uwag: {len(recenzja.issues)}, sugestii: {len(recenzja.suggestions)}, zatwierdzone: {recenzja.approved}, "
+            f"wywołań modelu: {wywolania}, zapisano {zapisany_plik}"
         )
-    zmiana_stanu = {"review": recenzja}
+    zmiana_stanu = {"review": recenzja, "review_round": numer_rundy, "fixes_pending": poprawki_potrzebne}
     return zmiana_stanu
 
 
@@ -603,9 +607,21 @@ if __name__ == "__main__":
         kontekst = _context_for(app_config, szablon, model, linie.append, magazyn)
         stan = {"project_map": mapa, "plan": plan, "notes": notatki, "content": tresc}
         zmiana = reviewer_node(stan, types.SimpleNamespace(context=kontekst))
-        zapisana = magazyn.load_json("review.json", _schemas.ReviewResult)
-        wyniki.append(("węzeł: zwraca review i zapisuje review.json", list(zmiana) == ["review"] and zmiana["review"] == zapisana and len(zapisana.issues) == 1 and zapisana.approved is False))
-        wyniki.append(("węzeł: linie postępu start, uwaga z adresatem i koniec z liczbami", len(linie) == 3 and linie[0].endswith("] reviewer: start") and f"uwaga [{zakladka}] {sekcja_zakladki}: Uwaga węzła." in linie[1] and "uwag: 1, sugestii: 1, zatwierdzone: False, wywołań modelu: 1" in linie[2]))
+        zapisana = magazyn.load_json("review_01.json", _schemas.ReviewResult)
+        wyniki.append(("węzeł: zwraca review, numer rundy 1 i fixes_pending, zapisuje review_01.json", sorted(zmiana) == ["fixes_pending", "review", "review_round"] and zmiana["review"] == zapisana and zmiana["review_round"] == 1 and zmiana["fixes_pending"] is True and len(zapisana.issues) == 1 and zapisana.approved is False))
+        wyniki.append(("węzeł: linie postępu start, uwaga z adresatem i koniec z liczbami", len(linie) == 3 and linie[0].endswith("] reviewer: start") and f"uwaga [{zakladka}] {sekcja_zakladki}: Uwaga węzła." in linie[1] and "runda 1, uwag: 1, sugestii: 1, zatwierdzone: False, wywołań modelu: 1" in linie[2]))
+
+        linie = []
+        model = _model([_review([_issue(zakladka, sekcja_zakladki, "Uwaga drugiej rundy.")])], [])
+        kontekst = _context_for(app_config, szablon, model, linie.append, magazyn)
+        druga_runda = reviewer_node({**stan, "review_round": app_config.limits.max_review_rounds - 1}, types.SimpleNamespace(context=kontekst))
+        wyniki.append(("węzeł: ostatnia dozwolona runda - uwagi zostają, fixes_pending False, review_NN.json", druga_runda["review_round"] == app_config.limits.max_review_rounds and druga_runda["fixes_pending"] is False and len(druga_runda["review"].issues) == 1 and os.path.isfile(magazyn.path(f"review_{app_config.limits.max_review_rounds:02d}.json"))))
+
+        linie = []
+        model = _model([_review([])], [])
+        kontekst = _context_for(app_config, szablon, model, linie.append, magazyn)
+        bez_uwag = reviewer_node(stan, types.SimpleNamespace(context=kontekst))
+        wyniki.append(("węzeł: bez uwag - fixes_pending False, approved True", bez_uwag["fixes_pending"] is False and bez_uwag["review"].approved is True))
         return wyniki
 
     def _real_model_run(
@@ -663,7 +679,7 @@ if __name__ == "__main__":
             print("\nSugestie:")
             for sugestia in recenzja.suggestions:
                 print(f"  - {sugestia}")
-        print(f"\nZapisano review.json w {katalog_wynikow}")
+        print(f"\nZapisano review_{zmiana['review_round']:02d}.json w {katalog_wynikow}")
 
     def manual_test():
         """Uruchamia sprawdzenia offline recenzenta i wypisuje werdykt; z argumentem <katalog robota> woła też prawdziwy model.

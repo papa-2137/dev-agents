@@ -318,7 +318,7 @@ Kamienie milowe: **M1** szkielet uruchamia się (krok 5) · **M2** model gotowy 
 
 **Krok 59. Graf: pętla recenzji tylko dla części z uwagami**
 - **Funkcja:** poprawki celowane: przepisywany jest diagram lub tylko zakładki, których dotyczą uwagi.
-- **Robimy:** krawędź warunkowa po recenzencie; `Send` do autora diagramu i/lub pisarzy zakładek z uwagami (dostają poprzednią wersję i uwagi); po zmianie diagramu przepisywane są też zakładki odwołujące się do klocków; `limits.max_review_rounds`; historia `review_NN.json`.
+- **Robimy:** graf assemble -> reviewer -> krawędź warunkowa `dispatch_review` (koniec albo `flow_fix`, albo `Send` do pisarzy zakładek z uwagami); `flow_fix_node` poprawia diagram z uwagami recenzenta, potem `dispatch_rewrites` wysyła `Send` do zakładek z uwagami i zakładek odwołujących się do klocków (ścieżki z `node_id`); pisarz i autor diagramu dostają poprzednią wersję i uwagi (`previous_tab`, `review_issues`) już w pierwszym wywołaniu; nowa wersja zakładki dochodzi na koniec `tabs` (assemble bierze ostatnią); `limits.max_review_rounds: 2` w `config.yaml` (liczba recenzji; decyzję `fixes_pending` liczy reviewer, bo krawędź widzi tylko stan); historia `review_NN.json`; logika wyboru w `review_loop.py`; `main.py` wypisuje podsumowanie recenzji.
 - **Sprawdzamy:** przy limicie 2 widać jedną rundę poprawek, przepisane tylko części z uwagami, końcowy `guide.html`; ręczna weryfikacja kilku stwierdzeń z kodem i ocena diagramów obu robotów przez użytkownika. ✅ **M5**
 - **Uczymy się:** krawędzie warunkowe, cykl w grafie, `Send` z krawędzi warunkowej.
 

@@ -25,7 +25,7 @@ Limity rozmiaru diagramu: najwyżej {{ max_nodes }} klocków i najwyżej {{ max_
 Poprzednia wersja diagramu (JSON):
 {{ previous_flow }}
 
-Problemy znalezione w tej wersji:
+Problemy i uwagi do poprawienia w tej wersji (od kodu albo od recenzenta):
 {{ problems_text }}
 
 Zwróć poprawiony diagram w całości.

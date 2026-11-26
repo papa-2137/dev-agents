@@ -123,6 +123,15 @@ class AnalysisConfig(BaseModel):
     max_concurrency: int  # ilu analityków pracuje naraz w grafie (krok 52); każdy woła model, więc to też limit zapytań naraz
 
 
+class LimitsConfig(BaseModel):
+    """Sekcja `limits`: limity przebiegu.
+
+    Po co: ile razy recenzent ocenia przewodnik, ustawia zespół w configu - każda runda poprawek to dodatkowe wywołania modeli.
+    """
+
+    max_review_rounds: int  # ile razy recenzent ocenia przewodnik (krok 59): 1 = tylko ocena, bez poprawek; 2 = jedna runda poprawek
+
+
 class AppConfig(BaseModel):
     """Cały config.yaml.
 
@@ -134,6 +143,7 @@ class AppConfig(BaseModel):
     scan: ScanConfig
     flow: FlowConfig
     analysis: AnalysisConfig
+    limits: LimitsConfig
 
 
 # --- Sprawdzenia i przetwarzanie ---
@@ -261,6 +271,18 @@ def _check_analysis(
         raise ValueError(komunikat_bledu)
 
 
+def _check_limits(
+    app_config: AppConfig,
+) -> None:
+    """Sprawdza limity przebiegu: limits.max_review_rounds co najmniej 1; przy błędzie rzuca ValueError.
+
+    Po co: 0 rund oznaczałoby przebieg bez recenzji, a pętla poprawek zakłada przynajmniej jedną ocenę.
+    """
+    if app_config.limits.max_review_rounds < 1:
+        komunikat_bledu = f"limits.max_review_rounds musi być co najmniej 1, jest: {app_config.limits.max_review_rounds}"
+        raise ValueError(komunikat_bledu)
+
+
 def _resolve_paths(
     paths: PathsConfig,
     config_dir: str,
@@ -295,6 +317,7 @@ def _build_config(
     _check_role_names(app_config)
     _check_text_roles(app_config)
     _check_analysis(app_config)
+    _check_limits(app_config)
     _resolve_paths(app_config.paths, config_dir)
     _check_framework_knowledge(app_config)
     _check_guide_template(app_config)
@@ -437,5 +460,13 @@ if __name__ == "__main__":
         brak_wspolbieznosci = copy.deepcopy(raw_config)
         del brak_wspolbieznosci["analysis"]["max_concurrency"]
         _try_broken_config("Config bez analysis.max_concurrency", brak_wspolbieznosci, repo_dir)
+
+        zle_rundy = copy.deepcopy(raw_config)
+        zle_rundy["limits"]["max_review_rounds"] = 0
+        _try_broken_config("Limit limits.max_review_rounds równy 0", zle_rundy, repo_dir)
+
+        brak_rund = copy.deepcopy(raw_config)
+        del brak_rund["limits"]["max_review_rounds"]
+        _try_broken_config("Config bez limits.max_review_rounds", brak_rund, repo_dir)
 
     manual_test()

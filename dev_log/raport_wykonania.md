@@ -12,7 +12,7 @@
 | C - Mapa projektu bez modelu (9-29) | ✅ zakończona (M3) |
 | D - Szablon przewodnika i HTML bez modelu (30-39) | ✅ zakończona (M4) |
 | E - Prompty i baza wiedzy (40-42) | ✅ zakończona |
-| F - Graf i agenci (43-59) | 🟡 w toku (43-57 ✅) |
+| F - Graf i agenci (43-59) | 🟡 w toku (43-58 ✅) |
 | G - Ergonomia (60-63) | ⬜ |
 | H - Miasto (64-68) | ⬜ |
 
@@ -39,6 +39,11 @@ Wpisy kroków 55-56 (faza F) w archiwum: `dev_log/raport_wykonania_fazy_F_55-56.
 - Nowy `dev_agents/finalize.py`: `finalize_node` renderuje `state["content"]` przez `render.render_guide` (szablon, mapa projektu, katalog szablonu, progi z configu), zapisuje `guide.html` w magazynie wyników i zwraca `guide_path`. Test offline (5 sprawdzeń).
 - `graph.py`: krawędzie assemble -> finalize -> END; test grafu sprawdza `guide.html` i linie postępu finalize. `state.py`: pole `guide_path`. `main.py`: `_run_graph` zwraca końcowy stan, na końcu wypisuje `przewodnik: <ścieżka>`.
 - Wybory: rekomendowane (tryb pracy fazy F). Test użytkownika: OK. Commit `1f2549a`.
+
+### Krok 58. Agent recenzent (bez grafu) - ✅
+- `schemas.py`: `ReviewIssue` (`target`: `flow` albo id zakładki, `section_id`, `description`) i `ReviewResult` (`approved`, `issues`, `suggestions`). Nowy `agents/reviewer.py`: `review_guide()` (prompt: pełne notatki w kolejności czytania, diagram, treść zakładek pisarzy, wiedza pisarzy i autora diagramu), `check_review()` i `sanitize_review()` (adresat, sekcja i opis uwagi; jedno ponowienie z poprzednią recenzją; uwagi bez adresata odrzucane z uwagą w postępie; `approved` ustawia kod), `reviewer_node()`. Prompty `prompts/reviewer/system.md`, `user.md`. `RunState.review`.
+- Test: offline 23 sprawdzenia na udawanym modelu; z argumentem `<katalog robota>` prawdziwy model na `guide_content.json` z poprzedniego przebiegu.
+- Wybory: rekomendowane (tryb pracy fazy F). Test użytkownika: OK. Commit `eec6a24`.
 
 ---
 
@@ -108,3 +113,4 @@ Wpisy kroków 55-56 (faza F) w archiwum: `dev_log/raport_wykonania_fazy_F_55-56.
 | 2026-11-26 | Krok 55: (1) schemat odpowiedzi pisarza budowany dynamicznie z sekcji zakładki (`tab_response_model`) zamiast odchudzania `GuideBlock`/`GuideTab`; (2) pole szablonu `writer_adds` dla sekcji scanner/code z dopiskami pisarza; (3) kod sprawdza wynik i ponawia raz; błędne odwołania do klocków czyszczone po ponowieniu; (4) pliki robota w prompcie tylko dla zakładki z metryczką, fakty kodu tylko dla ryzykownych miejsc; (5) pełne notatki do wszystkich pisarzy (koszt tokenów do omówienia na koniec fazy F) | (1) zakładki mają 4-32 pola i mieszczą się w limicie bramki bez zmiany renderera i schematu treści; (2) jawny znacznik w szablonie zamiast zgadywania z treści polecenia; (3) zwykły kod pilnuje tego, co da się sprawdzić, a problem nie jest ukrywany; (4) mniej tokenów w pozostałych zakładkach; (5) prostota, zasada „prosty kod, nawet kosztem tokenów”; wybór: rekomendowane (tryb pracy fazy F) |
 | 2026-11-26 | Krok 56: (1) lista zakładek do napisania liczona przez osobny węzeł `plan_tabs` (kod) i zapisana w stanie jako `tab_ids`, bo krawędź warunkowa widzi tylko stan; (2) `assemble.py` jako zwykły moduł z węzłem, bez bloków skanera w treści; (3) braki w treści (problemy zakładek i diagramu) są uwagami, `guide_content.json` powstaje zawsze; (4) raport: wpisy kroków 55-56 w `raport_wykonania_fazy_F_55-56.md` | (1) szablon jest w kontekście, a nie w stanie; (2) renderer i tak wypełnia sekcje scanner/code z mapy; (3) zasada: nic nie znika po cichu, ale przebieg nie ginie przez jeden słaby fragment (recenzent kroków 58-59 dostanie problemy); (4) limit rozmiaru raportu; wybór: rekomendowane (tryb pracy fazy F) |
 | 2026-11-26 | Krok 57: (1) `finalize` jako osobny moduł z węzłem (jak `assemble`); (2) `_run_graph` zwraca końcowy stan, a `main.py` czyta z niego wyniki; (3) `guide_path` w stanie | (1) jedna rola na moduł, test bez grafu; (2) jedno źródło wyników przebiegu zamiast osobnych odczytów; (3) ścieżka wyniku dostępna dla kolejnych kroków (recenzja, ergonomia); wybór: rekomendowane (tryb pracy fazy F) |
+| 2026-11-27 | Krok 58: (1) schemat recenzji z adresatem i sekcją przy każdej uwadze (plan: uwaga z identyfikatorem zakładki lub `flow`); (2) kod ustawia `approved` i odrzuca uwagi bez adresata po jednym ponowieniu; (3) wiedza recenzenta to pliki plannera dla pisarzy i autora diagramu (bez osobnej listy w `Plan`); (4) węzeł niepodpięty do grafu (to krok 59) | (1) poprawki celowane (krok 59) potrzebują adresata, a sekcja zawęża poprawkę; (2) flaga nie może rozjechać się z listą, a uwaga bez adresata nie ma kogo poprawić - i nie znika po cichu; (3) zmiana schematu `Plan` zmieniałaby planner i jego limit pól; (4) mały krok z własnym testem; wybór: rekomendowane (tryb pracy fazy F) |

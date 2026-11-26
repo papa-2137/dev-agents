@@ -5,7 +5,8 @@ plików, notatki analityków w kolejności czytania - tylko pola przebiegu, wied
 framework), woła model agenta flow_writer ze schematem FlowGraph (jedna odpowiedź) i sprawdza diagram kodem
 (flow.validate_flow). Gdy są problemy albo ostrzeżenie o rozmiarze, woła model jeszcze raz - z poprzednią wersją
 i listą problemów w prompcie. Drugą wersję bierze, chyba że ma więcej problemów niż pierwsza. flow_writer_node()
-to węzeł grafu: zapisuje flow.json i dopisuje do stanu flow.
+to węzeł grafu: zapisuje flow.json i dopisuje do stanu flow. flow_fix_node() (krok 59) poprawia gotowy diagram według uwag
+recenzenta: write_flow() dostaje poprzedni diagram i uwagi już w pierwszym wywołaniu.
 
 Dlaczego istnieje: diagram jest kręgosłupem przewodnika - jedyny agent, który widzi cały proces naraz (analitycy
 widzą po jednej jednostce). Model zwraca tylko graf klocków i strzałek; poprawność gwarantuje kod: nie ukrywamy
@@ -41,6 +42,7 @@ import dev_agents.guide_content as _content
 import dev_agents.llm as _llm
 import dev_agents.progress as _progress
 import dev_agents.prompts as _prompts
+import dev_agents.review_loop as _review_loop
 import dev_agents.schemas as _schemas
 import dev_agents.state as _state
 
@@ -184,6 +186,8 @@ def write_flow(
     plan: _schemas.Plan,
     notes: list[_schemas.ModuleNote],
     context: _context.RunContext,
+    previous_flow: _content.FlowGraph | None = None,
+    review_issues: list[str] | None = None,
 ) -> tuple[_content.FlowGraph, list[str], list[str], int]:
     """Układa diagram z notatek: zwraca (diagram, problemy, ostrzeżenia, liczba wywołań modelu - 1 albo 2).
 
@@ -193,8 +197,12 @@ def write_flow(
     chyba że ma więcej problemów niż pierwsza - wtedy zostaje pierwsza. Zwrócone problemy i ostrzeżenia dotyczą
     zwróconej wersji; niepuste problemy znaczą, że diagram jest niespójny (decyduje o tym wołający).
 
+    Poprawka po recenzji (krok 59): gdy podano previous_flow i review_issues, już pierwsze wywołanie dostaje <poprawka> z poprzednim
+    diagramem i uwagami recenzenta; ewentualne ponowienie z powodu problemów kodu niesie i problemy, i uwagi recenzenta.
+
     Uwaga: brak notatek to ValueError - nie ma z czego układać diagramu.
     """
+    uwagi_recenzenta = review_issues or []
     if not notes:
         komunikat_bledu = "Brak notatek analityków - nie ma z czego ułożyć diagramu"
         raise ValueError(komunikat_bledu)
@@ -202,12 +210,12 @@ def write_flow(
     pliki_wiedzy = _common.collect_knowledge_files(context.config, project_map, plan.flow_knowledge)
     tekst_wiedzy = _common.format_knowledge(context.config, pliki_wiedzy)
     limity = (context.config.flow.max_nodes, context.config.flow.max_decisions)
-    zmienne = build_flow_variables(project_map, plan, uporzadkowane, tekst_wiedzy, limity, None, [])
+    zmienne = build_flow_variables(project_map, plan, uporzadkowane, tekst_wiedzy, limity, previous_flow, uwagi_recenzenta)
     diagram = _ask_model(context, zmienne)
     problemy, ostrzezenia = _check_flow(diagram, context)
     wywolania = 1
     if problemy or ostrzezenia:
-        zmienne_poprawki = build_flow_variables(project_map, plan, uporzadkowane, tekst_wiedzy, limity, diagram, problemy + ostrzezenia)
+        zmienne_poprawki = build_flow_variables(project_map, plan, uporzadkowane, tekst_wiedzy, limity, diagram, problemy + ostrzezenia + uwagi_recenzenta)
         druga_wersja = _ask_model(context, zmienne_poprawki)
         wywolania = 2
         problemy_2, ostrzezenia_2 = _check_flow(druga_wersja, context)
@@ -235,6 +243,36 @@ def flow_writer_node(
     kontekst = runtime.context
     with _progress.Stage(kontekst.report, _AGENT_NAME) as etap:
         diagram, problemy, ostrzezenia, wywolania = write_flow(state["project_map"], state["plan"], state["notes"], kontekst)
+        for problem in problemy:
+            etap.note(f"problem: {problem}")
+        for ostrzezenie in ostrzezenia:
+            etap.note(f"ostrzeżenie: {ostrzezenie}")
+        zapisany_plik = kontekst.store.save_json("flow.json", diagram)
+        etap.set_result(f"klocków: {len(diagram.nodes)}, strzałek: {len(diagram.edges)}, wywołań modelu: {wywolania}, zapisano {zapisany_plik}")
+    zmiana_stanu = {"flow": diagram}
+    return zmiana_stanu
+
+
+def flow_fix_node(
+    state: _state.RunState,
+    runtime: Runtime[_context.RunContext],
+) -> dict:
+    """Węzeł flow_fix: poprawia diagram ze stanu według uwag recenzenta do diagramu, zapisuje flow.json i zwraca zmienione pole stanu: flow.
+
+    Po co: pętla recenzji (krok 59) - diagram z uwagami jest przepisywany z poprzednią wersją i uwagami w prompcie (reszta
+    jak w flow_writer_node: notatki, wiedza, sprawdzenie kodem, jedno ponowienie). Etap "flow_fix" zgłasza liczbę uwag, problemy
+    i ostrzeżenia diagramu oraz wynik; nowy diagram nadpisuje flow.json. Uwagi bierze ze stanu (review), a nie z ładunku.
+
+    Uwaga: wołany tylko wtedy, gdy recenzja ma uwagi do diagramu - bez uwag to ValueError (węzeł nie zgaduje, co poprawiać).
+    """
+    kontekst = runtime.context
+    uwagi = _review_loop.issue_lines(state["review"], _review_loop.FLOW_TARGET)
+    if not uwagi:
+        komunikat_bledu = "Recenzja nie ma uwag do diagramu - nie ma czego poprawiać"
+        raise ValueError(komunikat_bledu)
+    with _progress.Stage(kontekst.report, "flow_fix") as etap:
+        etap.note(f"poprawka po recenzji: uwag {len(uwagi)}")
+        diagram, problemy, ostrzezenia, wywolania = write_flow(state["project_map"], state["plan"], state["notes"], kontekst, state["flow"], uwagi)
         for problem in problemy:
             etap.note(f"problem: {problem}")
         for ostrzezenie in ostrzezenia:
@@ -467,6 +505,35 @@ if __name__ == "__main__":
         kontekst = _context_for(app_config, model, linie.append, magazyn)
         flow_writer_node(stan, types.SimpleNamespace(context=kontekst))
         wyniki.append(("węzeł: problemy diagramu jako uwagi, przebieg się nie przerywa", len(linie) >= 3 and "] flow_writer: problem: " in linie[1]))
+
+        prompty = []
+        model = _model([_diagram(4)], prompty)
+        kontekst = _context_for(app_config, model, [].append, magazyn)
+        diagram, problemy, ostrzezenia, wywolania = write_flow(mapa, plan, notatki, kontekst, _diagram(3), ["recenzent: UWAGA_RECENZENTA"])
+        wyniki.append(("poprawka po recenzji: jedno wywołanie, w prompcie poprzedni diagram i uwaga recenzenta", model.calls == 1 and wywolania == 1 and diagram == _diagram(4) and "<poprawka>" in prompty[0] and '"n2"' in prompty[0] and "recenzent: UWAGA_RECENZENTA" in prompty[0]))
+
+        prompty = []
+        model = _model([_diagram(3, starts=2), _diagram(3)], prompty)
+        kontekst = _context_for(app_config, model, [].append, magazyn)
+        diagram, problemy, ostrzezenia, wywolania = write_flow(mapa, plan, notatki, kontekst, _diagram(3), ["recenzent: UWAGA_RECENZENTA"])
+        wyniki.append(("poprawka po recenzji i problem kodu: ponowienie niesie i problem kodu, i uwagę recenzenta", wywolania == 2 and "recenzent: UWAGA_RECENZENTA" in prompty[1] and "start" in prompty[1] and problemy == []))
+
+        linie = []
+        model = _model([_diagram(4)], [])
+        kontekst = _context_for(app_config, model, linie.append, magazyn)
+        recenzja = _schemas.ReviewResult(approved=False, issues=[_schemas.ReviewIssue(target="flow", section_id="", description="Brak klocka.")], suggestions=[])
+        stan_poprawki = {"project_map": mapa, "plan": plan, "notes": notatki, "flow": _diagram(3), "review": recenzja}
+        zmiana = flow_fix_node(stan_poprawki, types.SimpleNamespace(context=kontekst))
+        zapisany = magazyn.load_json("flow.json", _content.FlowGraph)
+        wyniki.append(("flow_fix: zwraca nowy flow, nadpisuje flow.json", list(zmiana) == ["flow"] and zmiana["flow"] == _diagram(4) and zapisany == _diagram(4)))
+        wyniki.append(("flow_fix: linie start, liczba uwag i koniec", len(linie) == 3 and linie[0].endswith("] flow_fix: start") and "poprawka po recenzji: uwag 1" in linie[1] and "klocków: 6" in linie[2]))
+
+        blad = ""
+        try:
+            flow_fix_node({**stan_poprawki, "review": recenzja.model_copy(update={"issues": []})}, types.SimpleNamespace(context=kontekst))
+        except ValueError as wyjatek:
+            blad = str(wyjatek)
+        wyniki.append(("flow_fix: bez uwag do diagramu ValueError", "nie ma czego poprawiać" in blad))
         return wyniki
 
     def _flow_for_two_starts() -> _content.FlowGraph:

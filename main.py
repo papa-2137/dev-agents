@@ -161,7 +161,7 @@ def _run_graph(
     app_config: _config.AppConfig,
     store: _output.RunStore,
 ) -> dict:
-    """Buduje kontekst, uruchamia graf agentów na projekcie i zwraca stan końcowy grafu (RunState: mapa projektu, plan, notatki, diagram, zakładki, treść, ścieżka guide.html).
+    """Buduje kontekst, uruchamia graf agentów na projekcie i zwraca stan końcowy grafu (RunState: mapa projektu, plan, notatki, diagram, zakładki, treść, recenzja, ścieżka guide.html).
 
     Po co: jedyne miejsce w main.py, które zna graf; kolejne węzły nie zmieniają tej funkcji, bo dochodzą do grafu.
     Węzły zgłaszają postęp liniami na ekran (progress.print_line podane w kontekście), a po grafie wypisana
@@ -246,6 +246,8 @@ def main() -> None:
         diagram = stan_koncowy.get("flow")
         tresc = stan_koncowy.get("content")
         sciezka_przewodnika = stan_koncowy.get("guide_path")
+        recenzja = stan_koncowy.get("review")
+        liczba_rund = stan_koncowy.get("review_round", 0)
     zapisany_plik = magazyn.save_json("project_map.json", project_map)
     _print_scan_summary(project_map, zapisany_plik)
     if plan is not None:
@@ -255,6 +257,8 @@ def main() -> None:
             print(f"  diagram przepływu: klocków {len(diagram.nodes)}, strzałek {len(diagram.edges)} (dev_agents_doc/flow.json)")
         if tresc is not None:
             print(f"  treść przewodnika: zakładek {len(tresc.tabs)} (dev_agents_doc/tabs/, dev_agents_doc/guide_content.json)")
+        if recenzja is not None:
+            print(f"  recenzja: rund {liczba_rund}, uwag w ostatniej {len(recenzja.issues)}, zatwierdzone: {recenzja.approved} (dev_agents_doc/review_NN.json)")
         if sciezka_przewodnika:
             print(f"  przewodnik: {sciezka_przewodnika}")
     if args.render_only:
