@@ -135,13 +135,14 @@ Wymagania produktu W1-W8 (plan, sekcja 1): ⬜ makieta `dev_log/guide_mockup.htm
 - Odstępstwo od planu (wybór użytkownika B): rejestr w osobnym module zamiast w `__init__.py` (tabela decyzji).
 - Test użytkownika: rejestr z 4 technologiami (3 puste), `detect_technology` → `python` dla robota i dla projektu UiPath z plikiem `.py` (UiPath pusty), `None` dla samych danych, `get_technology` i `NotImplementedError` pustej klasy - OK. Commit `a3e551b`.
 
-### Uproszczenie analizy deterministycznej (po kroku 17) - 🟡 czeka na test
+### Uproszczenie analizy deterministycznej (po kroku 17) - ✅
 - Powód (użytkownik): `python.py` (1111 linii kodu) i funkcje z wieloma warunkami byłyby trudne w utrzymaniu; ciężar analizy kodu przechodzi na agentów, „nawet kosztem przyszłych tokenów”. Wybrany wariant pośredni: kod podaje tylko proste, pewne fakty, łatwe do napisania dla każdej technologii.
 - Kontrakt `technologies/base.py`: metody wymagane `detect`, `is_source`, `find_entrypoints` (`NotImplementedError`); opcjonalne `units` (jednostki z zakresami linii) i `references` (pliki projektu i pakiety) z odpowiedzią „brak danych”. Zasada: każda metoda ok. 40 linii prostego kodu, bez drzewa warunków. Usunięte: `outline`, `imports`, `control_outline`, `metrics`.
 - `schemas.py`: zamiast `FunctionMetrics` - `SourceUnit` (`name`, `start_line`, `end_line`) i `References` (`files`, `packages`).
 - `technologies/python.py`: z 1111 do 271 linii kodu (test 143): `_parse_python` (odczyt + `ast` z wyciszonym `SyntaxWarning`, błąd składni → `None`), `units` (funkcje i metody), `references` (pliki projektu jako ścieżki, pakiety bez biblioteki standardowej - bez listy modułów usuniętych w 3.12-3.13), `detect`, `is_source`, `find_entrypoints`. Usunięte: szkielet pliku, szkielet sterowania, miary złożoności, podział importów na trzy grupy.
 - Puste klasy UiPath, Robot Framework, NICE i test rejestru dostosowane do nowego kontraktu (opis w docstringu modułu, jak prosto zrealizować każdą metodę).
 - Plan: kroki 15, 25, 26 wycofane (numeracja bez zmian); 12-14, 16, 17, 19-24, 28, 29, 31, 35, 47, 49-51, 55, 56 przepisane - nowy `masking.py` (krok 20, maskowanie liniowe zamiast parserów konfiguracji), pliki zależności bez metody technologii (rola `dependency`), konfiguracja i pliki uruchamiające jako zamaskowany tekst dla agentów (krok 24), metryczka i komentarze do „Ryzykownych miejsc” od agentów, długie pliki dzielone po granicach jednostek; `plan.md` (podział pracy kod - agenci, rozszerzalność, style robotów, struktura, sekcje configu `scan` i `analysis`); `AGENTS.md` reguła 7 i `zasady_pracy.md`.
+- Test użytkownika: OK. Commit `ea5323d`. Nazwy `CodeUnit` (jednostka kodu do analizy - plik) i `SourceUnit` (funkcja/metoda w pliku) zostają bez zmian.
 
 ---
 

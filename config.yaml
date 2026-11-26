@@ -36,3 +36,8 @@ llm:
 paths:
   prompts: prompts
   knowledge_base: knowledge_base
+
+scan:
+  # Pliki i katalogi pomijane przy skanowaniu analizowanego projektu (wzorce nazw, np. *.pyc).
+  # Zawsze pomijane, niezależnie od tej listy: dev_agents_doc/ (wyniki towaru) i katalogi z pyvenv.cfg (venv).
+  ignore: [".git", "__pycache__", ".pytest_cache", ".idea", ".vscode", "node_modules", "venv", ".venv", "*.pyc", "Thumbs.db", "desktop.ini", "~$*"]

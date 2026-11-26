@@ -19,7 +19,7 @@ Rola: moduł używany przez punkt wejścia programu i przez warstwy, które potr
 Test ręczny (z katalogu głównego repo):
     python -m dev_agents.config
 Najpierw wypisuje wczytany config jako JSON (ścieżki w `paths` mają być bezwzględne), potem komunikaty
-błędów dla trzech celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
+błędów dla czterech celowo zepsutych kopii configu w pamięci (plik config.yaml nie jest zmieniany).
 """
 
 import os
@@ -70,6 +70,18 @@ class PathsConfig(BaseModel):
     knowledge_base: str
 
 
+class ScanConfig(BaseModel):
+    """Sekcja `scan`: ustawienia skanowania analizowanego projektu.
+
+    Po co: to, co skaner pomija, zespół może zmienić w configu, bez zmian w kodzie.
+
+    Uwaga: dev_agents_doc/ i katalogi środowisk wirtualnych (z pyvenv.cfg) skaner pomija zawsze,
+    niezależnie od listy ignore.
+    """
+
+    ignore: list[str]  # wzorce nazw plików i katalogów, np. ".git", "*.pyc"
+
+
 class AppConfig(BaseModel):
     """Cały config.yaml.
 
@@ -78,6 +90,7 @@ class AppConfig(BaseModel):
 
     llm: LLMConfig
     paths: PathsConfig
+    scan: ScanConfig
 
 
 # --- Sprawdzenia i przetwarzanie ---
@@ -212,7 +225,7 @@ if __name__ == "__main__":
             _print_error(title, blad)
 
     def manual_test():
-        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla trzech zepsutych kopii.
+        """Wczytuje config.yaml z katalogu repo i wypisuje go, potem pokazuje błędy dla czterech zepsutych kopii.
 
         Po co: szybkie sprawdzenie, czy config się wczytuje, ścieżki są bezwzględne, a błędy w configu
         dają czytelne komunikaty.
@@ -236,5 +249,9 @@ if __name__ == "__main__":
         brak_metody = copy.deepcopy(raw_config)
         del brak_metody["llm"]["profiles"]["medium"]["structured_output_method"]
         _try_broken_config("Profil bez structured_output_method", brak_metody, repo_dir)
+
+        brak_scan = copy.deepcopy(raw_config)
+        del brak_scan["scan"]
+        _try_broken_config("Config bez sekcji scan", brak_scan, repo_dir)
 
     manual_test()
