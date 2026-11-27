@@ -1,0 +1,1160 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Dev-Agents dla dewelopera</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;800&display=swap" rel="stylesheet">
+<style>
+/* VOICE work, minimal technical drawing: white paper, black hairlines, red only for loops and warnings
+   IDEA a set of engineering sheets for one codebase: map, flow, recipes, field guide (same system as the doc-agents documentation)
+   PICTURE structure tree with hover cards; overview graph with two parallel fans and a review loop, plus step-by-step flow (reads / node / writes); numbered recipe roads
+   COLOUR white, ink #111, grey #6f6f6f, hairline #d6d6d6, signal red #e4002b
+   TYPE Archivo 800 headings, Archivo text, monospace for code names
+   LAYOUT laptop: sticky sidebar with tabs, content up to 1120px; phone: tabs as a top bar, diagrams stack vertically */
+:root{color-scheme:light;--bg:#fff;--ink:#111;--mute:#6f6f6f;--hair:#d6d6d6;--red:#e4002b;--mono:Consolas,"Cascadia Mono","Courier New",monospace}
+*{box-sizing:border-box;min-width:0}
+html{scroll-padding-top:24px}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 Archivo,Arial,sans-serif;display:grid;grid-template-columns:260px minmax(0,1fr);min-height:100vh;overflow-x:clip}
+aside{position:sticky;top:0;height:100vh;overflow-y:auto;border-right:1px solid var(--hair);padding:28px 20px}
+aside .brand{font-weight:800;font-size:22px;letter-spacing:-.02em;line-height:1.1}
+aside .sub{font-size:14px;color:var(--mute);margin:4px 0 24px}
+nav a{display:flex;align-items:center;gap:10px;min-height:44px;padding:6px 10px;color:var(--ink);text-decoration:none;border-radius:3px;font-weight:600;font-size:15px}
+nav a i{flex:none;width:12px;height:12px;border:1.5px solid var(--ink);border-radius:50%}
+nav a:hover{background:#f3f3f3}
+nav a[aria-current=page]{background:var(--ink);color:var(--bg)}
+nav a[aria-current=page] i{border-color:var(--bg);background:var(--bg)}
+nav .subnav{margin:2px 0 8px 32px;border-left:1.5px solid var(--hair)}
+nav .subnav a{min-height:34px;font-weight:400;font-size:14px;padding:4px 12px;color:var(--mute)}
+nav .subnav a:hover{color:var(--ink)}
+aside .meta{margin-top:28px;font-size:13px;color:var(--mute)}
+main{padding:clamp(24px,4vw,56px) max(4vw,16px) 80px}
+.tab{max-width:1120px}
+h1,h2,h3{font-weight:800;line-height:1.08;letter-spacing:-.02em;margin:0;text-wrap:balance}
+h1{font-size:clamp(32px,4vw,48px);max-width:22ch}
+h2{font-size:clamp(24px,2.6vw,32px);margin:56px 0 14px;max-width:30ch}
+h3{font-size:18px;margin:0 0 6px;letter-spacing:-.01em}
+p{margin:0 0 12px;max-width:72ch}
+.lead{font-size:clamp(17px,1.6vw,20px);color:var(--mute);margin:12px 0 28px;max-width:62ch}
+.note{font-size:14px;color:var(--mute)}
+code,.mono{font-family:var(--mono);font-size:.92em;overflow-wrap:anywhere}
+a{color:var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:8px 22px;font-size:14px;color:var(--mute);margin:14px 0}
+.legend span{display:inline-flex;align-items:center;gap:8px}
+.mk{flex:none;display:inline-block;width:12px;height:12px;border:1.5px solid var(--ink);border-radius:2px;background:var(--bg)}
+.mk.ai{background:var(--ink)}
+.mk.cfg{transform:rotate(45deg);width:10px;height:10px;border-radius:0}
+.mk.gen{border-style:dashed;border-color:var(--mute)}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:20px}
+.box{border:1.5px solid var(--ink);padding:18px 20px}
+.box p:last-child{margin:0}
+table{border-collapse:collapse;width:100%;font-size:15px}
+th{text-align:left;font-size:14px;color:var(--mute);font-weight:600;padding:8px 10px;border-bottom:1.5px solid var(--ink);vertical-align:bottom}
+td{padding:10px;border-bottom:1px solid var(--hair);vertical-align:top}
+td:first-child,th:first-child{padding-left:0}
+.scroll{overflow-x:auto}
+.yes{font-weight:600}
+.warn{color:var(--red);font-weight:600}
+/* code blocks */
+.cb{position:relative;margin:10px 0 14px}
+pre{margin:0;border:1.5px solid var(--ink);padding:14px 16px;font:13.5px/1.5 var(--mono);overflow-x:auto;background:var(--bg)}
+.cp{position:absolute;top:6px;right:6px;font:600 13px Archivo,Arial,sans-serif;min-height:32px;padding:0 10px;border:1.5px solid var(--ink);background:var(--bg);border-radius:3px;cursor:pointer}
+.cp:hover{background:var(--ink);color:var(--bg)}
+.cp:focus-visible,.it:focus-visible,nav a:focus-visible{outline:3px solid var(--red);outline-offset:2px}
+/* overview io */
+.io{display:grid;grid-template-columns:minmax(0,1fr) 56px minmax(0,1.3fr) 56px minmax(0,1fr);align-items:center;margin:8px 0 8px}
+.io .ar{border-top:1.5px solid var(--ink);position:relative}
+.io .ar::after{content:"";position:absolute;right:-1px;top:-6px;border:5px solid transparent;border-left:8px solid var(--ink)}
+.io .core{background:var(--ink);color:var(--bg);padding:20px;border-radius:3px}
+.io .core b{font-size:20px;display:block}
+.io .core span{font-size:14px;opacity:.85}
+.gl{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:0 24px;font-size:15px}
+.gl dt{font-weight:600;padding:9px 0;border-bottom:1px solid var(--hair)}
+.gl dd{margin:0;padding:9px 0;border-bottom:1px solid var(--hair)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,230px),1fr));gap:14px}
+.cards a{display:block;border:1.5px solid var(--ink);padding:16px 18px;text-decoration:none;min-height:44px}
+.cards a:hover{background:var(--ink);color:var(--bg)}
+.cards a b{display:block;font-size:17px;margin-bottom:4px}
+.cards a span{font-size:14px}
+/* structure */
+.map{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:20px;align-items:start}
+.grp{border:1.5px solid var(--ink);padding:14px 16px 10px}
+.grp.gen{border-style:dashed;border-color:var(--mute)}
+.tr{list-style:none;margin:6px 0 0 6px;padding:0 0 0 0;border-left:1.5px solid var(--ink)}
+.tr li{position:relative;padding:3px 0 3px 18px}
+.tr li::before{content:"";position:absolute;left:0;top:19px;width:12px;border-top:1.5px solid var(--ink)}
+.tr .tr{margin-left:10px}
+.tr>li:last-child::after{content:"";position:absolute;left:-2px;top:20px;bottom:0;border-left:3px solid var(--bg)}
+.it{display:inline-flex;align-items:center;gap:8px;font:14px/1.3 var(--mono);color:var(--ink);background:var(--bg);border:1.5px solid transparent;border-radius:3px;padding:6px 8px;cursor:help;text-align:left;min-height:32px}
+.it:hover,.it.on{border-color:var(--ink)}
+.it.dir{font-weight:700}
+.it small{font:13px Archivo,Arial,sans-serif;color:var(--mute)}
+#tip{position:fixed;z-index:20;max-width:min(380px,calc(100vw - 24px));background:var(--bg);border:1.5px solid var(--ink);padding:14px 16px;font-size:14px;line-height:1.45;pointer-events:none}
+#tip b{display:block;font:700 15px var(--mono);margin-bottom:8px;overflow-wrap:anywhere}
+#tip p{margin:0 0 8px}
+#tip p:last-child{margin:0}
+#tip p span{display:block;font-size:13px;color:var(--mute)}
+#tip ul{margin:0 0 8px;padding-left:18px}
+#tip li{margin:2px 0}
+#tip .tk{font-size:13px;color:var(--mute);margin-top:-4px}
+#tip .th{font-size:13px;color:var(--mute)}
+#tip code{font-size:13px}
+g[data-go]:focus{outline:none}
+g[data-go]:focus-visible rect,g[data-go]:focus-visible circle{stroke:var(--red);stroke-width:3}
+#tip.pin{pointer-events:auto;outline:3px solid var(--red);outline-offset:-1px}
+/* overview graph */
+.fig{position:relative;height:290px;margin:10px 0}
+.fig>svg{position:absolute;inset:0;width:100%;height:100%}
+svg text{font-family:Archivo,Arial,sans-serif;dominant-baseline:central;text-anchor:middle}
+.nai{fill:var(--ink);stroke:var(--ink);stroke-width:1.5}
+.ncode{fill:var(--bg);stroke:var(--ink);stroke-width:1.5}
+.tai{fill:var(--bg);font-weight:600}
+.tcode{fill:var(--ink);font-weight:600}
+.edge{fill:none;stroke:var(--ink);stroke-width:1.5}
+.lp{fill:none;stroke:var(--red);stroke-width:1.5;stroke-dasharray:5 4}
+.lbl{fill:var(--mute);font-size:13px;paint-order:stroke;stroke:var(--bg);stroke-width:4px}
+.lblr{fill:var(--red);font-size:13px;font-weight:600;paint-order:stroke;stroke:var(--bg);stroke-width:4px}
+.tok{fill:var(--red)}
+g[data-go]{cursor:pointer}
+g[data-go]:hover rect{stroke-width:3}
+/* flow */
+.fhead{display:grid;grid-template-columns:minmax(0,1fr) 40px minmax(0,1.7fr) 40px minmax(0,1fr);font-size:13px;color:var(--mute);border-bottom:1.5px solid var(--ink);padding-bottom:6px;margin-top:28px;position:sticky;top:0;background:var(--bg);z-index:5}
+.fhead span:nth-child(2){grid-column:3}
+.fhead span:nth-child(3){grid-column:5}
+.row{display:grid;grid-template-columns:minmax(0,1fr) 40px minmax(0,1.7fr) 40px minmax(0,1fr);align-items:center;padding-top:6px}
+.ins,.outs{display:flex;flex-direction:column;gap:6px}
+.ar{height:0;border-top:1.5px solid var(--ink);position:relative;margin:0 4px}
+.ar::after{content:"";position:absolute;right:-2px;top:-6px;border:5px solid transparent;border-left:8px solid var(--ink)}
+.ar.none{border:0}.ar.none::after{display:none}
+.c{font:13px/1.35 var(--mono);border:1.5px solid var(--ink);padding:5px 9px;border-radius:2px;background:var(--bg);overflow-wrap:anywhere}
+.c small{display:block;font:12.5px/1.3 Archivo,Arial,sans-serif;color:var(--mute);margin-top:2px}
+.c.f{background:linear-gradient(225deg,var(--ink) 0 6px,var(--bg) 6px)}
+.c.env{border-style:dashed}
+.c.llm{background:var(--ink);color:var(--bg)}
+.c.llm small{color:#cfcfcf}
+.c.st{border-radius:16px;border-color:var(--mute)}
+.c.con{border-color:var(--mute);color:var(--mute)}
+.node{border:1.5px solid var(--ink);padding:14px 16px 12px;background:var(--bg)}
+.node.ai{border-width:3px}
+.nh{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+.num{flex:none;display:inline-grid;place-items:center;width:28px;height:28px;border:1.5px solid var(--ink);border-radius:50%;font:700 13px Archivo,Arial,sans-serif;align-self:center}
+.node.ai .num{background:var(--ink);color:var(--bg)}
+.nh b{font-size:17px}
+.nh code{font-size:13px;color:var(--mute)}
+.node p{font-size:15px;margin:0 0 6px}
+.calls{margin:6px 0 0;padding-left:20px;font:13px/1.5 var(--mono)}
+.calls li{margin:2px 0}
+.calls li span{font-family:Archivo,Arial,sans-serif;color:var(--mute)}
+.tagr{display:inline-block;font:600 12.5px Archivo,Arial,sans-serif;color:var(--red);border:1.5px solid var(--red);border-radius:2px;padding:0 6px}
+.down{display:grid;grid-template-columns:minmax(0,1fr) 40px minmax(0,1.7fr) 40px minmax(0,1fr)}
+.v{grid-column:3;position:relative;min-height:46px;padding:8px 0 8px calc(50% + 14px);font:13px/1.35 var(--mono);color:var(--mute)}
+.v::before{content:"";position:absolute;left:50%;top:0;bottom:8px;border-left:1.5px solid var(--ink)}
+.v::after{content:"";position:absolute;left:calc(50% - 5px);bottom:0;border:5px solid transparent;border-top:8px solid var(--ink);border-bottom:0}
+.v.loop{color:var(--red)}
+.v.loop::before{border-left:1.5px dashed var(--red)}
+.v.loop::after{border-top-color:var(--red)}
+.grouphead{margin:18px 0 0;font-size:14px;font-weight:600;border-top:1px solid var(--hair);padding-top:10px}
+.dec{grid-column:3;border:1.5px solid var(--red);padding:12px 16px}
+.dec b{color:var(--red)}
+/* recipes */
+.files{display:flex;flex-wrap:wrap;gap:8px;margin:8px 0 18px}
+.files .c.new{border-color:var(--red)}
+.road{list-style:none;margin:10px 0 0;padding:0;counter-reset:s}
+.road>li{position:relative;padding:0 0 22px 52px;counter-increment:s}
+.road>li::before{content:counter(s);position:absolute;left:0;top:-2px;width:34px;height:34px;border:1.5px solid var(--ink);border-radius:50%;display:grid;place-items:center;font-weight:800;font-size:14px;background:var(--bg)}
+.road>li::after{content:"";position:absolute;left:17px;top:32px;bottom:0;border-left:1.5px solid var(--ink)}
+.road>li:last-child::after{display:none}
+.road>li>b{display:block;font-size:16px;margin-bottom:4px}
+.recipe{border-top:1.5px solid var(--ink);margin-top:56px;padding-top:4px}
+.recipe h2{margin-top:18px}
+.when{font-size:15px;color:var(--mute);margin-bottom:6px}
+.layers{display:grid;gap:0}
+.ly{display:grid;grid-template-columns:200px minmax(0,1fr);gap:16px;align-items:center;padding:10px 0;border-bottom:1px solid var(--hair)}
+.ly>b{font-size:15px}
+.ly div{display:flex;flex-wrap:wrap;gap:6px}
+.ul{margin:0 0 12px;padding-left:20px}
+.ul li{margin:4px 0}
+@media(max-width:860px){
+ body{display:block}
+ aside{position:sticky;top:0;z-index:10;height:auto;background:var(--bg);border-right:0;border-bottom:1px solid var(--hair);padding:8px 12px}
+ aside .brand,aside .sub,aside .meta,nav .subnav{display:none}
+ nav{display:flex;gap:6px;overflow-x:auto}
+ nav a{flex:none;white-space:nowrap}
+ html{scroll-padding-top:72px}
+ .fhead{display:none}
+ .row,.down{grid-template-columns:minmax(0,1fr)}
+ .ins::before{content:"czyta";font-size:13px;color:var(--mute)}
+ .outs::before{content:"zapisuje / zwraca";font-size:13px;color:var(--mute)}
+ .ar{width:0;height:18px;border-top:0;border-left:1.5px solid var(--ink);margin:4px auto}
+ .ar::after{right:auto;left:-6px;top:auto;bottom:-2px;border:5px solid transparent;border-top:8px solid var(--ink);border-bottom:0}
+ .ar.none{display:none}
+ .v,.dec{grid-column:1}
+ .ins:empty,.outs:empty{display:none}
+ .io{grid-template-columns:minmax(0,1fr)}
+ .io .ar{width:0;height:24px;border-top:0;border-left:1.5px solid var(--ink);justify-self:center}
+ .io .ar::after{right:auto;left:-6px;top:auto;bottom:-1px;border:5px solid transparent;border-top:8px solid var(--ink)}
+ .ly{grid-template-columns:minmax(0,1fr);gap:6px}
+}
+@media(max-width:600px){
+ table{font-size:13px}
+ th,td{padding:6px 4px}
+ .stack thead{display:none}
+ .stack tr{display:grid;padding:10px 0;border-bottom:1px solid var(--hair)}
+ .stack td{border:0;padding:2px 0}
+ .stack td::before{content:attr(data-l);display:block;font-size:12.5px;color:var(--mute)}
+ .gl{grid-template-columns:minmax(0,1fr)}
+ .gl dt{border:0;padding-bottom:0}
+}
+</style>
+</head>
+<body>
+<aside>
+ <div class="brand">Dev-Agents</div>
+ <div class="sub">Dokumentacja dla dewelopera</div>
+ <nav id="nav">
+  <a href="#przeglad"><i></i>Przegląd</a>
+  <a href="#struktura"><i></i>Struktura projektu</a>
+  <a href="#przeplyw"><i></i>Przepływ działania</a>
+  <a href="#rozszerzenia"><i></i>Rozszerzenia</a>
+  <div class="subnav">
+   <a href="#ext-technologia">Nowa technologia</a>
+   <a href="#ext-framework">Nowy framework</a>
+   <a href="#ext-szablon">Zakładki i sekcje przewodnika</a>
+   <a href="#ext-typ">Nowy typ sekcji</a>
+   <a href="#ext-wiedza">Wiedza i prompty</a>
+   <a href="#ext-model">Model i dostawca</a>
+   <a href="#ext-limity">Progi i limity</a>
+   <a href="#ext-agent">Nowy agent w grafie</a>
+  </div>
+  <a href="#przewodnik"><i></i>Przewodnik dewelopera</a>
+ </nav>
+ <div class="meta">Stan kodu: 27.11.2026, kroki 1-59 planu (fazy A-F). Repozytorium: <code>development/dev-agents</code>.</div>
+</aside>
+
+<main>
+<div id="tip" hidden></div>
+
+<!-- ====================== PRZEGLĄD ====================== -->
+<section class="tab" id="przeglad">
+ <h1>Dev-Agents: zespół agentów, który pisze przewodnik dla dewelopera robota RPA</h1>
+ <p class="lead">Narzędzie dostaje folder istniejącego robota (dziś w Pythonie), skanuje go bez AI, a agenci czytają kod i piszą treść. Kod składa z niej jeden samowystarczalny plik HTML: opis robota, metryczkę konfiguracji, diagram przepływu, ścieżki procesu, strukturę, przepisy zmian i listę ryzykownych miejsc.</p>
+
+ <div class="io">
+  <div class="box"><h3>Wejście</h3><p class="note">folder projektu robota<br><code>--project &lt;ścieżka&gt;</code></p></div>
+  <div class="ar"></div>
+  <div class="core"><b>Graf LangGraph</b><span>skan bez AI, planner, analitycy równolegle, autor diagramu, pisarze zakładek równolegle, recenzent z pętlą poprawek celowanych</span></div>
+  <div class="ar"></div>
+  <div class="box"><h3>Wyjście</h3><p class="note"><code>dev_agents_doc/guide.html</code><br>w katalogu robota, plus wyniki pośrednie każdego etapu</p></div>
+ </div>
+
+ <h2>Uruchomienie w 4 krokach</h2>
+ <ol class="road">
+  <li><b>Środowisko Python 3.14</b>Z katalogu repo, w PowerShell:
+   <div class="cb"><pre>py -V:3.14 -m venv venv
+.\venv\Scripts\Activate.ps1
+pip install -r requirements.txt</pre></div></li>
+  <li><b>Zmienne środowiskowe użytkownika</b>Klucz i adres endpointu modelu nie są w repo. <code>config.yaml</code> zna tylko ich nazwy (na Kwadracie <code>LLM_API_KEY</code> i <code>LLM_BASE_URL</code>, na mieście <code>BAZOOKA_KEY</code> i <code>BAZOOKA_URL</code>: wystarczy zamienić komentarze w parach linii). Po ustawieniu otwórz nowe okno terminala.
+   <div class="cb"><pre>[Environment]::SetEnvironmentVariable("LLM_API_KEY", "&lt;klucz&gt;", "User")
+[Environment]::SetEnvironmentVariable("LLM_BASE_URL", "&lt;adres endpointu zgodnego z OpenAI&gt;", "User")</pre></div></li>
+  <li><b>Sprawdzenie modelu</b>Diagnostyka profilu: połączenie, metody structured output, rekomendowana wartość <code>structured_output_method</code>. Drugi skrypt mierzy, jak duży schemat odpowiedzi przyjmuje bramka.
+   <div class="cb"><pre>python -m scripts.probe_llm --profile small
+python -m scripts.probe_llm --profile medium
+python -m scripts.probe_schema --profile small</pre></div></li>
+  <li><b>Przebieg</b>Od minut do kilkudziesięciu minut, zależnie od wielkości robota. Na ekranie pojawia się linia postępu dla każdego etapu.
+   <div class="cb"><pre>python main.py --project ..\..\tests\02_robot_bez_frameworku</pre></div>
+   <p class="note">Wynik: <code>&lt;robot&gt;\dev_agents_doc\guide.html</code>, do otwarcia w przeglądarce, także bez internetu. Katalog <code>dev_agents_doc\</code> jest czyszczony przy każdym starcie, ale tylko gdy leży w nim znacznik <code>.dev_agents_output</code>, który narzędzie samo tam zakłada.</p></li>
+ </ol>
+
+ <h2>Podgląd wyglądu bez modelu i bez kluczy</h2>
+ <p>Tryb <code>--render-only</code> pomija graf i modele: skanuje projekt i składa przewodnik, w którym sekcje liczone z kodu są prawdziwe, a sekcje agentów to zaślepki w nawiasach kwadratowych. Pokazuje, jak będzie wyglądał przewodnik i ile miejsca zajmie, zanim ktokolwiek zapłaci za tokeny.</p>
+ <div class="cb"><pre>python main.py --project ..\..\tests\02_robot_bez_frameworku --render-only</pre></div>
+
+ <h2>Pojęcia, które warto znać przed lekturą kodu</h2>
+ <dl class="gl">
+  <dt>Węzeł</dt><dd>Zwykła funkcja <code>(state, runtime) -&gt; dict</code> zarejestrowana w grafie. Zwraca tylko te pola stanu, które zmienia.</dd>
+  <dt>Stan (<code>RunState</code>)</dt><dd>Dane przebiegu przekazywane między węzłami: mapa projektu, plan, notatki, diagram, zakładki, treść, recenzja. Słownik typowany (<code>TypedDict</code>), chudy: ścieżki i metadane, bez kodu źródłowego.</dd>
+  <dt>Kontekst (<code>RunContext</code>)</dt><dd>Zależności niezmienne w trakcie przebiegu, tworzone raz: config, magazyn wyników, modele agentów, spis bazy wiedzy, szablon przewodnika, funkcja raportująca postęp. Węzeł dostaje go przez <code>runtime.context</code>.</dd>
+  <dt><code>Send</code></dt><dd>Mechanizm LangGraph do równoległego uruchomienia jednego węzła wiele razy z różnymi danymi. Tu: jeden analityk na jednostkę kodu i jeden pisarz na zakładkę (także przy poprawkach po recenzji).</dd>
+  <dt>Reducer</dt><dd>Reguła łączenia wyników równoległych węzłów. Pola <code>notes</code> i <code>tabs</code> mają <code>operator.add</code>, więc wyniki są doklejane. Przy poprawkach nowa wersja zakładki trafia na koniec listy, a <code>assemble</code> bierze ostatnią.</dd>
+  <dt>Structured output</dt><dd>Model odpowiada obiektem zgodnym ze schematem Pydantic (np. <code>Plan</code>), a nie wolnym tekstem. Wywołanie zawsze przez <code>llm.invoke_structured()</code>. Bramka na Kwadracie przyjmuje tylko metodę <code>json_schema</code> i ma limit rozmiaru schematu (stąd 40 pól na odpowiedź).</dd>
+  <dt>Jednostka kodu</dt><dd>Zadanie dla jednego analityka: jeden niepusty plik źródłowy robota, spoza frameworku. Dłuższa niż <code>analysis.chunk_lines</code> jest analizowana po kawałkach.</dd>
+  <dt>Notatka (<code>ModuleNote</code>)</dt><dd>Wynik analityka: przebieg, czynności z liniami i danymi, ustawienia, wymagania, ryzyka, awarie, słowniczek. Jedyne źródło wiedzy o kodzie dla autora diagramu, pisarzy i recenzenta.</dd>
+  <dt>Diagram (<code>FlowGraph</code>)</dt><dd>Graf klocków i strzałek całego procesu robota od autora diagramu. Poprawność i układ liczy kod (<code>flow.py</code>), model zwraca tylko graf.</dd>
+  <dt>Zakładka (<code>GuideTab</code>)</dt><dd>Treść jednej zakładki przewodnika od pisarza: bloki sekcji z szablonu, każdy z polem właściwym dla typu sekcji.</dd>
+  <dt>Fakty z kodu</dt><dd>Drzewo plików, zależności do skopiowania, graf zależności, kolejność czytania i część tabeli ryzykownych miejsc liczy kod (<code>guide_facts.py</code>), nie model. Pisarz dopisuje tylko to, czego kod nie wie.</dd>
+  <dt>Technologia</dt><dd>Wtyczka obsługi języka lub platformy analizowanego robota (dziś Python). Rdzeń nie zna żadnego języka, pyta tylko kontrakt <code>Technology</code>.</dd>
+  <dt>Framework</dt><dd>Biblioteka robota rozpoznawana po ścieżkach albo importowanych pakietach (<code>scan.frameworks</code>) z własnym plikiem wiedzy. Dziś: Roboforge.</dd>
+  <dt>Baza wiedzy</dt><dd>Pliki Markdown z wiedzą zespołu (zasady pisania, zasady diagramu, technologia, frameworki). Planner wybiera z nich pliki dla analityków, autora diagramu i pisarzy.</dd>
+  <dt>Szablon przewodnika</dt><dd><code>guide_template.yaml</code>: zakładki, sekcje, ich typy, źródła i polecenia dla pisarzy. Zmiana struktury przewodnika bez zmiany kodu.</dd>
+  <dt>Magazyn wyników (<code>RunStore</code>)</dt><dd>Jedyna droga zapisu w cudzym projekcie: katalog <code>dev_agents_doc/</code> ze znacznikiem własności.</dd>
+ </dl>
+
+ <h2>Czym różni się od doc-agents</h2>
+ <div class="scroll">
+ <table class="stack">
+  <thead><tr><th></th><th>doc-agents</th><th>dev-agents</th></tr></thead>
+  <tbody>
+   <tr><td data-l="">Wynik</td><td data-l="doc-agents">jeden plik <code>final.md</code></td><td data-l="dev-agents">samowystarczalny <code>guide.html</code> z zakładkami, diagramem i wykresem zależności</td></tr>
+   <tr><td data-l="">Miejsce wyników</td><td data-l="doc-agents"><code>output/</code> w repo narzędzia</td><td data-l="dev-agents"><code>dev_agents_doc/</code> w katalogu analizowanego robota</td></tr>
+   <tr><td data-l="">Struktura wyniku</td><td data-l="doc-agents">szablony pól i rozdziałów (YAML) oraz układ w Jinja2</td><td data-l="dev-agents">zakładki i sekcje z typami w <code>guide_template.yaml</code>, wygląd w <code>guide.css</code>, <code>guide.js</code>, <code>guide.html.j2</code></td></tr>
+   <tr><td data-l="">Zespół agentów</td><td data-l="doc-agents">planista, analitycy, redaktor, recenzent</td><td data-l="dev-agents">planner, analitycy, autor diagramu, pisarze zakładek, recenzent</td></tr>
+   <tr><td data-l="">Diagram przepływu</td><td data-l="doc-agents">brak</td><td data-l="dev-agents">wymagany: klocki i strzałki od agenta, spójność i układ liczy kod</td></tr>
+   <tr><td data-l="">Poprawki po recenzji</td><td data-l="doc-agents">redaktor poprawia cały dokument</td><td data-l="dev-agents">celowane: przepisywany jest diagram albo tylko zakładki z uwagami</td></tr>
+   <tr><td data-l="">Sekrety wpisane wprost</td><td data-l="doc-agents">nie są podawane</td><td data-l="dev-agents">trafiają do agentów dosłownie i są wskazywane jako ryzykowne miejsce (błąd dewelopera ma wyjść w przewodniku)</td></tr>
+  </tbody>
+ </table>
+ </div>
+
+ <h2>Jak czytać tę dokumentację</h2>
+ <div class="cards">
+  <a href="#struktura"><b>Struktura projektu</b><span>Mapa katalogów i plików. Najedź na element, aby zobaczyć, czym jest i po co istnieje.</span></a>
+  <a href="#przeplyw"><b>Przepływ działania</b><span>Od <code>python main.py</code> do <code>guide.html</code>: każdy węzeł, funkcje w kolejności, czytane i zapisywane pliki, pętla recenzji.</span></a>
+  <a href="#rozszerzenia"><b>Rozszerzenia</b><span>Przepisy: nowa technologia, framework, sekcje przewodnika, typ sekcji, wiedza, model, limity, nowy agent.</span></a>
+  <a href="#przewodnik"><b>Przewodnik dewelopera</b><span>Zasady architektury, kolejność lektury, testy ręczne, diagnoza błędów, znane ograniczenia.</span></a>
+ </div>
+</section>
+
+<!-- ====================== STRUKTURA ====================== -->
+<section class="tab" id="struktura" hidden>
+ <h1>Struktura projektu</h1>
+ <p class="lead">Najedź myszką na element (albo dotknij go na telefonie), aby zobaczyć, czym jest i jaką ma rolę. Kliknięcie przypina opis.</p>
+ <div class="legend">
+  <span><i class="mk ai"></i>woła model AI</span>
+  <span><i class="mk"></i>kod deterministyczny</span>
+  <span><i class="mk cfg"></i>treść i konfiguracja: zmiana bez programowania</span>
+  <span><i class="mk gen"></i>generowane, poza gitem</span>
+ </div>
+
+ <div class="map">
+  <div class="grp">
+   <button class="it dir" data-w="Katalog główny repozytorium narzędzia. Wszystkie polecenia uruchamiamy stąd." data-r="Moduły uruchamia się przez python -m z tego katalogu, dzięki czemu importy dev_agents.* działają bez instalowania pakietu.">dev-agents/</button>
+   <ul class="tr">
+    <li><button class="it" data-w="Punkt wejścia programu: _parse_args(), main(), _run_graph(), funkcje wypisujące podsumowanie." data-r="Czyta --project, --config i --render-only, wczytuje config, robi szybki skan (nierozpoznana technologia kończy program, zanim powstanie dev_agents_doc/), zakłada magazyn wyników, buduje kontekst i uruchamia graf, na końcu zapisuje project_map.json i wypisuje podsumowanie ze stanu końcowego. Nie ma logiki etapów: to spis treści przebiegu."><i class="mk"></i>main.py</button></li>
+    <li><button class="it" data-w="Jedyny plik konfiguracji, podzielony na sekcje: llm, paths, scan, flow, analysis, limits." data-r="Profile modeli (small, medium) i przypisanie agentów do profili, ścieżki promptów, bazy wiedzy i szablonu przewodnika, reguły skanu (ignore, secret_patterns, role_patterns, text_roles, frameworks), progi diagramu, analizy i limit rund recenzji. Trzyma tylko NAZWY zmiennych z kluczem i adresem, nigdy wartości. Wartości miejskie leżą w komentarzach pod wartościami Kwadratu."><i class="mk cfg"></i>config.yaml</button></li>
+    <li><button class="it" data-w="Lista bezpośrednich zależności: pyyaml, pydantic, langchain-core, langchain-openai, jinja2, langgraph." data-r="Dopisywana ręcznie, bez pip freeze. Nowa biblioteka trafia tu w kroku, który jej potrzebuje."><i class="mk cfg"></i>requirements.txt</button></li>
+    <li><button class="it" data-w="Zasady pracy dla modeli AI i ludzi piszących kod w tym repo." data-r="Sposób pracy (krok = test = commit), reguły kodu (os.path zamiast pathlib, tylko llm.py importuje langchain_openai, tylko technologies/python.py importuje ast, import modułów projektu z aliasem z podłogą), styl (docstring CO / Po co, sekcje, manual_test, parametry w osobnych liniach), katalog wyników w cudzym projekcie, lista rzeczy, których nie proponować. Przeczytaj przed pierwszą zmianą."><i class="mk cfg"></i>AGENTS.md</button></li>
+    <li><button class="it" data-w="Krótki opis repozytorium." data-r="Miejsce na link do tej dokumentacji i instrukcję uruchomienia."><i class="mk cfg"></i>README.md</button></li>
+    <li><button class="it" data-w="Lista plików pomijanych przez git." data-r="Wyklucza m.in. venv/, pliki sekretów (*.pfx, *.pem, .env* itd.), __pycache__/ i guide_test.html, więc środowisko i podgląd z testu renderera nie trafiają do repo."><i class="mk cfg"></i>.gitignore</button></li>
+    <li><button class="it" data-w="Przewodnik testowy zapisywany przez python -m dev_agents.render i testy niektórych agentów." data-r="Nadpisywany przy każdym uruchomieniu, w .gitignore. Otwórz go w przeglądarce, aby obejrzeć wygląd po zmianie szablonu, CSS albo JS."><i class="mk gen"></i>guide_test.html</button></li>
+    <li><button class="it dir" data-w="Narzędzia diagnostyczne uruchamiane ręcznie." data-r="Nie są częścią przebiegu grafu.">scripts/</button>
+     <ul class="tr">
+      <li><button class="it" data-w="Diagnostyka profilu modelu: proste wywołanie, system + user, metody structured output, schemat zagnieżdżony, zużycie tokenów." data-r="Uruchamiana po każdej zmianie modelu, endpointu albo parametrów profilu, w szczególności po przejściu na miasto. Rekomenduje wartość structured_output_method do wpisania w config.yaml."><i class="mk ai"></i>probe_llm.py</button></li>
+      <li><button class="it" data-w="Pomiar, jaki schemat odpowiedzi przyjmuje bramka modelu: rosnące schematy sztuczne i prawdziwe (Plan, ModuleNote i jej części)." data-r="Bramka odrzuca część schematów komunikatem o zbyt dużej gramatyce. Skrypt wskazuje, od którego pola schemat przestaje przechodzić. Uruchamiany dla profilu agenta z dużym schematem (analityk: small, pisarz: medium). Stąd limit 40 pól (MAX_MODEL_SCHEMA_PROPERTIES)."><i class="mk ai"></i>probe_schema.py</button></li>
+     </ul></li>
+    <li><button class="it dir" data-w="Środowisko wirtualne Python 3.14 (nazwa bez kropki)." data-r="Poza gitem. Skaner pomija każde venv w analizowanych projektach, rozpoznając je po pliku pyvenv.cfg, a nie po nazwie."><i class="mk gen"></i>venv/</button></li>
+    <li><button class="it dir" data-w="Dziennik prac i plany." data-r="plan.md (wymagania i ustalenia), plan_kroki.md (68 kroków), raport_wykonania.md z archiwami zamkniętych faz, zasady_pracy.md (kopia AGENTS.md do wglądu), wiadomosc_startowa.md i guide_mockup.html (makieta przewodnika zaakceptowana 26.11.2026, wzorzec dla szablonu i renderera).">dev_log/</button></li>
+    <li><button class="it dir" data-w="Ta dokumentacja dla dewelopera." data-r="Strona HTML otwierana w przeglądarce, utrzymywana razem z kodem. Nie jest generowana przez towar: to ręcznie utrzymywany opis narzędzia, a nie przewodnik po robocie.">docs/</button></li>
+   </ul>
+  </div>
+
+  <div class="grp">
+   <button class="it dir" data-w="Rdzeń narzędzia, część 1: konfiguracja, stan, kontekst, graf, skaner, dostęp do modeli, prompty, baza wiedzy, zapis wyników." data-r="Nie zna żadnego konkretnego języka ani frameworku: wiedza o technologii jest w technologies/, a o układzie przewodnika w knowledge_base/templates/.">dev_agents/ <small>przebieg</small></button>
+   <ul class="tr">
+    <li><button class="it" data-w="Modele Pydantic configu (LLMProfile, LLMConfig, PathsConfig, FrameworkConfig, ScanConfig, FlowConfig, AnalysisConfig, LimitsConfig, AppConfig) i load_config()." data-r="Jedyne wejście do konfiguracji: wczytuje YAML i sprawdza zwykłym kodem profile agentów, metody structured output, role plików, istnienie plików wiedzy frameworków i szablonu oraz progi (analysis, limits). Ścieżki zamienia na bezwzględne względem położenia configu. Błąd wychodzi przy starcie, z nazwą klucza."><i class="mk"></i>config.py</button></li>
+    <li><button class="it" data-w="RunContext (dataclass): config, store, models (agent → model), knowledge_index, template, report. Funkcja build_context()." data-r="Zależności przebiegu tworzone raz i wstrzykiwane do każdego węzła przez runtime.context. Modele powstają od razu dla wszystkich agentów z llm.agents (bez wysyłania zapytań), więc brak zmiennej z kluczem wychodzi przy starcie, z jej nazwą."><i class="mk"></i>context.py</button></li>
+    <li><button class="it" data-w="RunState (TypedDict, total=False)." data-r="Dane przebiegu: project_path, project_map, plan, task, notes (reducer), flow, tab_ids, tab_id, tabs (reducer), content, guide_path, review, review_round, fixes_pending, previous_tab, review_issues. Pola task, tab_id, previous_tab i review_issues wpisuje graf w ładunku Send, nie węzły."><i class="mk"></i>state.py</button></li>
+    <li><button class="it" data-w="Klasy Pydantic danych między etapami: fakty o projekcie (SourceUnit, References, SourceFile, FileEntry, CodeUnit, TextFile, ProjectMap), plan (AnalysisTask, Plan), notatka (ModuleNote i klasy NoteAction, NoteSetting, NoteRisk, NoteFailure, NoteRequirement, NoteTerm; NoteFlow i NoteDetails jako dwie części odpowiedzi) i recenzja (ReviewIssue, ReviewResult)." data-r="Umowa między etapami i format plików JSON w dev_agents_doc/. Schematy odpowiedzi modelu mają Field(description=...): model widzi tylko schemat JSON, więc opis pola jest częścią promptu. Są płaskie, bez wariantów anyOf, bo bramka przyjmuje tylko json_schema."><i class="mk"></i>schemas.py</button></li>
+    <li><button class="it" data-w="Graf LangGraph: węzły scan i plan_tabs, krawędzie warunkowe dispatch_analysts, dispatch_writers, dispatch_review, dispatch_rewrites, run_config(), build_graph()." data-r="Jedyne miejsce, gdzie widać kolejność etapów i pętlę recenzji. Docstring modułu opisuje cały graf. run_config() przekazuje analysis.max_concurrency jako limit równoległości dla analityków i pisarzy."><i class="mk"></i>graph.py</button></li>
+    <li><button class="it" data-w="Skaner: list_files(), build_file_entries(), detect_frameworks(), build_project_map()." data-r="Pierwszy etap, bez AI: lista plików z rolami (sekrety pierwsze), technologia, punkty wejścia, jednostki i odwołania plików źródłowych, frameworki, pliki tekstowe przepisane dosłownie, graf zależności i kolejność czytania. Zawsze pomija dev_agents_doc/ i katalogi z pyvenv.cfg."><i class="mk"></i>scanner.py</button></li>
+    <li><button class="it" data-w="read_text_safe(): odczyt cudzego pliku jako tekstu niezależnie od kodowania." data-r="BOM (UTF-8, UTF-16), potem ścisły UTF-8, potem cp1250 (polski Windows), na końcu UTF-8 ze znakiem zastępczym. Zwykłe open(encoding=utf-8) psułoby polskie znaki w plikach .bat, .ini i requirements.txt z PowerShella 5.1."><i class="mk"></i>files.py</button></li>
+    <li><button class="it" data-w="build_dependencies(): krawędzie grafu zależności i kolejność czytania kodu." data-r="Z odwołań plików (SourceFile.references) liczy pary plik → plik, z którego korzysta (tylko pliki robota), oraz kolejność czytania od punktów wejścia w głąb. Nie zna technologii: dostaje ścieżki. Kolejność uruchamiania (np. z run.bat) ustalają agenci."><i class="mk"></i>dependencies.py</button></li>
+    <li><button class="it" data-w="Fabryka modeli i wspólne wywołanie: create_chat_model(), get_model_for_agent(), get_structured_output_method(), invoke_structured()." data-r="Jedyny moduł importujący langchain_openai. invoke_structured() ponawia odpowiedź niezgodną ze schematem (2 próby), zamienia ciche None na czytelny błąd z finish_reason i tokenami, a przy ucięciu na max_tokens pokazuje końcówkę odpowiedzi (widać zapętlenie)."><i class="mk ai"></i>llm.py</button></li>
+    <li><button class="it" data-w="render_prompt(prompts_dir, agent, variables) zwracające parę (system, user)." data-r="system.md idzie bez zmian, user.md to szablon Jinja2 ze StrictUndefined: brak zmiennej kończy się błędem z nazwą agenta i zmiennej. Dane z cudzego kodu trafiają tylko do user, w tagach."><i class="mk"></i>prompts.py</button></li>
+    <li><button class="it" data-w="Baza wiedzy: KBEntry, parse_index(), load_index(), read_kb_file()." data-r="Czyta spis index.md dla plannera (spis ścisły: literówka w wpisie to błąd przy starcie) i treść wybranych plików, z blokadą ścieżek spoza knowledge_base/knowledge/ (także przez dowiązanie), bo nazwy plików podaje model."><i class="mk"></i>knowledge.py</button></li>
+    <li><button class="it" data-w="RunStore (path, save_text, save_json, load_json) i create_run_store()." data-r="Jedyna droga zapisu w cudzym projekcie. Zakłada dev_agents_doc/ ze znacznikiem .dev_agents_output, czyści tylko katalog ze znacznikiem, niepusty katalog bez znacznika kończy się błędem, brak prawa zapisu wychodzi od razu przy starcie."><i class="mk"></i>output.py</button></li>
+    <li><button class="it" data-w="Stage (menedżer kontekstu), format_line(), format_seconds(), print_line()." data-r="Linie postępu „[godzina] etap: co się dzieje”. Stage owija pracę węzła: start, koniec z czasem i wynikiem albo BŁĄD z typem wyjątku; w trakcie pracy węzeł dopisuje linie przez note(). Linie płyną przez RunContext.report, więc w teście można je zebrać do listy."><i class="mk"></i>progress.py</button></li>
+    <li><button class="it" data-w="Węzeł assemble: build_content(), check_content(), assemble_node()." data-r="Po pisarzach składa GuideContent: diagram i zakładki w kolejności szablonu (przy poprawkach ostatnia wersja każdej zakładki), sprawdza kompletność zwykłym kodem i zapisuje guide_content.json zawsze. Braki są uwagami, nie przerywają przebiegu, i trafiają do recenzenta."><i class="mk"></i>assemble.py</button></li>
+    <li><button class="it" data-w="Węzeł finalize: renderuje treść do guide.html." data-r="Woła render.render_guide z szablonem, progami z configu i godziną generowania, zapisuje guide.html i dopisuje do stanu guide_path. Nie woła modelu, więc ten sam plik odtworzysz z guide_content.json bez kosztu."><i class="mk"></i>finalize.py</button></li>
+    <li><button class="it" data-w="Logika pętli recenzji: issue_lines(), has_flow_issues(), tabs_referencing_flow(), tabs_to_rewrite(), flow_changed_line()." data-r="Wybiera, co przepisać po recenzji: uwagi do diagramu, zakładki z uwagami i zakładki, których ścieżki odwołują się do klocków poprawionego diagramu. Zwykły kod bez modelu, używany przez graph.py i flow_fix_node."><i class="mk"></i>review_loop.py</button></li>
+    <li><button class="it" data-w="FakeStructuredModel: udawany model do testów ręcznych." data-r="Zwraca zadane odpowiedzi w zadanej kolejności i zlicza wywołania. Dzięki temu testy agentów i grafu są powtarzalne, darmowe i działają bez sieci i bez kluczy."><i class="mk"></i>fakes.py</button></li>
+   </ul>
+  </div>
+
+  <div class="grp">
+   <button class="it dir" data-w="Rdzeń narzędzia, część 2: treść przewodnika, szablon, fakty z kodu i render do HTML." data-r="Bez modelu. Cały ten zestaw działa też w trybie --render-only. Zasada: pewne fakty (linie, długości, hasła, zależności) pochodzą z kodu, a nie z odpowiedzi modelu.">dev_agents/ <small>przewodnik HTML</small></button>
+   <ul class="tr">
+    <li><button class="it" data-w="Klasy treści przewodnika: DataRef, FlowNode, FlowEdge, FlowGraph, Step, GlossaryTerm, IoItem, PathStep, ProcessPath, RecipeFile, Recipe, ConfigItem, GuideBlock, GuideTab, GuideContent." data-r="Format odpowiedzi autora diagramu i pisarzy oraz wejście renderera. GuideBlock to jeden schemat z polami dla wszystkich typów sekcji (renderer wybiera pole po typie z szablonu), ale do modelu idą tylko pola potrzebne zakładce (writer.tab_response_model)."><i class="mk"></i>guide_content.py</button></li>
+    <li><button class="it" data-w="load_template() i sections_for_technology(): wczytanie guide_template.yaml do klas TemplateSection, TemplateTab, GuideTemplate." data-r="Sprawdza szablon zwykłym kodem przy starcie: typ i źródło sekcji z zamkniętej listy, unikalne id, kolumny tabel, znane technologie w filtrze. Z jednego szablonu korzystają renderer, pisarze i recenzent."><i class="mk"></i>guide_template.py</button></li>
+    <li><button class="it" data-w="validate_flow(), layout_flow(), flow_view_data()." data-r="Sprawdza spójność diagramu (start i koniec, osiągalność klocków, decyzje z podpisanymi wyjściami, cykle ze strzałką loop) i zwraca problemy oraz ostrzeżenia o rozmiarze (flow.max_nodes, flow.max_decisions). Układ liczy kod, więc ten sam diagram wygląda tak samo przy każdym przebiegu."><i class="mk"></i>flow.py</button></li>
+    <li><button class="it" data-w="build_tree(), dependency_text(), risky_rows(), dependency_graph_data(), reading_items(), password_mark()." data-r="Dane pięciu bloków liczonych z mapy projektu: drzewo plików z opisami po najechaniu, treść plików zależności, tabela ryzykownych miejsc (długie jednostki i hasła wpisane wprost), graf zależności modułów i kolejność czytania. Pisarz może dopisać wiersze, komentarze i zdania (writer_adds)."><i class="mk"></i>guide_facts.py</button></li>
+    <li><button class="it" data-w="build_index() i mark_terms(): oznaczanie terminów słowniczka w tekście." data-r="Termin w tekście dostaje dymek z definicją. Dopasowanie dokładne, całe słowa, bez względu na wielkość liter. Wyszukiwanie na tekście surowym i escapowanie kawałkami nie pozwala wstrzyknąć HTML z tekstu agenta."><i class="mk"></i>glossary.py</button></li>
+    <li><button class="it" data-w="render_guide(): treść + szablon + mapa projektu → samowystarczalny HTML." data-r="Dla każdej sekcji wybiera stan (treść, „nie wynika z kodu”, pominięcie), wypełnia szablon Jinja2 z escapowaniem zawsze włączonym i wstawia do strony CSS i JS. Diagram niespójny nie jest rysowany: sekcja pokazuje listę problemów. Typy sekcji: text, list, steps, code, table, glossary, io, cards, config, tree, flow, dependency_graph, paths, recipes."><i class="mk"></i>render.py</button></li>
+    <li><button class="it" data-w="build_placeholder_content() i placeholder_flow(): treść z zaślepkami dla trybu --render-only." data-r="Sekcje agentów to zaślepki w nawiasach kwadratowych w kształcie typu sekcji, diagram przykładowy jest ogólny. Zaślepka mówi „agent jeszcze nie pracował”, a nie „kod nic nie zawiera”."><i class="mk"></i>guide_placeholders.py</button></li>
+   </ul>
+  </div>
+
+  <div class="grp">
+   <button class="it dir" data-w="Agenci: każdy w osobnym pliku, zawsze para czysta funkcja + cienki węzeł grafu (poza chunks.py i common.py: same funkcje pomocnicze)." data-r="Logikę (create_plan, analyze_unit, write_flow, write_tab, review_guide) da się wywołać bez grafu, co ułatwia testy ręczne. Każdy plik ma test na udawanym modelu, a z argumentem <katalog robota> także na prawdziwym.">dev_agents/agents/</button>
+   <ul class="tr">
+    <li><button class="it" data-w="create_plan(), complete_plan(), build_planner_variables(), planner_node()." data-r="Na podstawie mapy projektu i spisu bazy wiedzy prosi model o Plan: podsumowanie, zadanie ze wskazówką dla każdej jednostki i pliki wiedzy osobno dla analityków, autora diagramu i pisarzy. Potem kod poprawia plan: nieznane i powtórzone jednostki usuwa, pominięte dopisuje, pliki spoza spisu usuwa. Każda poprawka to uwaga w linii postępu. Zapisuje plan.json."><i class="mk ai"></i>planner.py</button></li>
+    <li><button class="it" data-w="analyze_unit(), analyze_chunk(), merge_note(), fix_note(), build_analyst_variables(), analyst_node()." data-r="Analizuje jedną jednostkę: kod z numerami linii, fakty o plikach, pliki tekstowe robota dosłownie, wskazówka plannera, wiedza. Dwa wywołania modelu na kawałek (NoteFlow, potem NoteDetails), bo cała notatka przekracza limit schematu bramki. Poprawia nazwę jednostki i numery linii spoza pliku. Zapisuje notes/<jednostka>.json. Uruchamiany równolegle."><i class="mk ai"></i>analyst.py</button></li>
+    <li><button class="it" data-w="split_ranges(), plan_chunks(), build_previous_summary(), merge_chunk_notes()." data-r="Długie jednostki po kawałkach, bez modelu. Cięcie po granicy funkcji lub klasy, a bez granicy w środku z zakładem kilku linii. Każdy kawałek dostaje podsumowanie poprzednich złożone z ich notatek; notatki kawałków składają się w jedną."><i class="mk"></i>chunks.py</button></li>
+    <li><button class="it" data-w="collect_knowledge_files(), format_knowledge(), number_lines(), cut_lines(), count_lines()." data-r="Wspólne funkcje agentów: zbiera pliki wiedzy (wybór plannera plus plik technologii i frameworków dołączane przez kod), numeruje linie kodu i przycina tekst."><i class="mk"></i>common.py</button></li>
+    <li><button class="it" data-w="write_flow(), flow_writer_node(), flow_fix_node(), order_notes(), format_notes()." data-r="Z notatek (tylko pola przebiegu, w kolejności czytania) układa diagram całego procesu. Kod sprawdza go (flow.validate_flow); przy problemach albo ostrzeżeniu o rozmiarze model dostaje jedno ponowienie z poprzednią wersją i listą problemów. Zapisuje flow.json. flow_fix_node poprawia gotowy diagram według uwag recenzenta."><i class="mk ai"></i>flow_writer.py</button></li>
+    <li><button class="it" data-w="write_tab(), tab_response_model(), check_tab(), normalize_blocks(), clear_missing_nodes(), writer_node()." data-r="Pisze jedną zakładkę. Schemat odpowiedzi budowany jest osobno dla zakładki z pól jej sekcji (mieści się w limicie bramki). Kod sprawdza wynik: brak wymaganej sekcji, zła liczba komórek wiersza, wpis metryczki bez znaczenia, ścieżka bez głównej albo z nieistniejącym klockiem. Jedno ponowienie, wygrywa wersja z mniejszą liczbą problemów. Zapisuje tabs/<zakładka>.json."><i class="mk ai"></i>writer.py</button></li>
+    <li><button class="it" data-w="review_guide(), sanitize_review(), check_review(), review_targets(), reviewer_node()." data-r="Recenzuje diagram i zakładki pisarzy z pełnymi notatkami. Uwaga ma adresata (flow albo id zakładki), sekcję i opis. Kod odrzuca uwagi bez adresata (z jednym ponowieniem), czyści błędną sekcję i sam ustawia approved (brak uwag). Węzeł liczy numer rundy, zapisuje review_NN.json i ustawia fixes_pending."><i class="mk ai"></i>reviewer.py</button></li>
+   </ul>
+   <button class="it dir" data-w="Wtyczki technologii: kontrakt, rejestr i implementacje." data-r="Cała wiedza o języku lub platformie siedzi tutaj. Nowa technologia = nowy plik + wpis w rejestrze, bez zmian w rdzeniu." style="margin-top:12px">dev_agents/technologies/</button>
+   <ul class="tr">
+    <li><button class="it" data-w="Klasa bazowa Technology: wymagane detect(), is_source(), find_entrypoints(); opcjonalne units(), references(), knowledge_file()." data-r="Kontrakt, z którego korzysta skaner. Kod podaje tylko proste, pewne fakty; każda metoda mieści się w ok. 40 liniach bez drzewa warunków. Rozumienie kodu robią agenci."><i class="mk"></i>base.py</button></li>
+    <li><button class="it" data-w="Rejestr: available_technologies(), detect_technology(), get_technology()." data-r="Kolejność ma znaczenie: UiPath, Robot Framework, NICE, na końcu Python, bo projekt UiPath może zawierać pomocnicze pliki .py. Osobny moduł zamiast __init__.py, żeby python -m na technologii nie ładował jej dwa razy."><i class="mk"></i>registry.py</button></li>
+    <li><button class="it" data-w="PythonTechnology: parsowanie modułem ast (jedyny import ast w projekcie)." data-r="Jednostki (funkcje i metody z zakresami linii), odwołania (pliki projektu i pakiety spoza projektu), punkty wejścia (blok if __name__, main.py, __main__.py) i plik wiedzy technologies/python.md. Kod robota jest tylko czytany i parsowany, nigdy uruchamiany; SyntaxWarning z cudzego kodu jest wyciszony."><i class="mk"></i>python.py</button></li>
+    <li><button class="it" data-w="Puste klasy UiPath, Robot Framework i NICE z opisem kontraktu." data-r="Zostają pustymi klasami z opisem, co z danego projektu trzeba uchwycić. Implementacje powstaną osobno na podstawie kontraktu z base.py. Przepis w zakładce Rozszerzenia."><i class="mk"></i>uipath.py, robotframework.py, nice.py</button></li>
+   </ul>
+  </div>
+
+  <div class="grp">
+   <button class="it dir" data-w="Prompty agentów: osobny katalog na każdego agenta." data-r="Tym stroi się jakość przewodnika, bez zmian w kodzie. system.md to stałe instrukcje, user.md to szablon Jinja2 z danymi opakowanymi w tagi (ochrona przed prompt injection z analizowanego kodu).">prompts/</button>
+   <ul class="tr">
+    <li><button class="it dir" data-w="Prompt plannera." data-r="user.md dostaje: project_name, project_map (JSON bez ścieżki bezwzględnej), kb_index (JSON). Tagi: mapa_projektu, spis_bazy_wiedzy."><i class="mk cfg"></i>planner/ <small>system.md, user.md</small></button></li>
+    <li><button class="it dir" data-w="Prompt analityka: wspólne system.md i user.md oraz dwie części notatki." data-r="user.md dostaje m.in. unit_name, hint, plan_summary, project_context, unit_code, text_files, knowledge, a przy długiej jednostce numer i zakres kawałka oraz podsumowanie poprzednich. part_flow.md i part_details.md opisują, którą część notatki (NoteFlow albo NoteDetails) wypełnia dane wywołanie."><i class="mk cfg"></i>analyst/ <small>system.md, user.md, part_flow.md, part_details.md</small></button></li>
+    <li><button class="it dir" data-w="Prompt autora diagramu." data-r="user.md dostaje: notatki (pola przebiegu), project_context, plan_summary, knowledge (zasady diagramu), max_nodes, max_decisions; przy ponowieniu i w poprawkach po recenzji także previous_flow i problems_text w tagu poprawka."><i class="mk cfg"></i>flow_writer/ <small>system.md, user.md</small></button></li>
+    <li><button class="it dir" data-w="Prompt pisarza zakładki." data-r="user.md dostaje: sekcje zakładki (id, typ, kolumny, polecenie), notatki, gotowy diagram, project_context, knowledge, a zależnie od zakładki pliki robota (metryczka) i fakty kodu (ryzykowne miejsca); w poprawce poprzednią wersję i uwagi recenzenta."><i class="mk cfg"></i>writer/ <small>system.md, user.md</small></button></li>
+    <li><button class="it dir" data-w="Prompt recenzenta." data-r="user.md dostaje: pełne notatki, diagram, treść zakładek pisarzy jako JSON, listę adresatów uwag (targets), wiedzę (zasady pisania i diagramu). system.md mówi, co jest uwagą wymagającą poprawki (issues), a co tylko sugestią (suggestions)."><i class="mk cfg"></i>reviewer/ <small>system.md, user.md</small></button></li>
+   </ul>
+  </div>
+
+  <div class="grp">
+   <button class="it dir" data-w="Wiedza zespołu i szablony przewodnika." data-r="Dwa podkatalogi o różnych rolach: knowledge/ wybiera planner, templates/ kod wczytuje zawsze.">knowledge_base/</button>
+   <ul class="tr">
+    <li><button class="it dir" data-w="Pliki wiedzy w Markdown i ich spis." data-r="Planner widzi tylko spis (index.md) i wybiera pliki osobno dla analityków, autora diagramu i pisarzy. Pliki technologii i wykrytych frameworków dołącza kod, więc nie ma ich w spisie.">knowledge/</button>
+     <ul class="tr">
+      <li><button class="it" data-w="Spis bazy wiedzy: blok na plik (nazwa, „Kiedy użyć:”, „Tagi:”), bloki oddzielone pustą linią." data-r="Jedyne, co planner wie o bazie wiedzy. Plik bez wpisu nigdy nie zostanie wybrany. „Kiedy użyć” pisz tak, żeby model umiał zdecydować."><i class="mk cfg"></i>index.md</button></li>
+      <li><button class="it" data-w="Zasady pisania przewodnika: odbiorca, ton, poziom szczegółów, oznaczanie informacji wywnioskowanych i braków, sekrety, ryzykowne miejsca." data-r="Miara jakości dla pisarzy i recenzenta. Sekrety wpisane wprost podajemy dosłownie i oznaczamy jako ryzyko."><i class="mk cfg"></i>guide_goals.md</button></li>
+      <li><button class="it" data-w="Zasady diagramu: rodzaje klocków, jeden klocek na czynność widoczną dla biznesu, kontakty z systemami, decyzje, pętle, limit rozmiaru." data-r="Dostają je autor diagramu i pisarze ścieżek procesu, nie analitycy."><i class="mk cfg"></i>diagram_rules.md</button></li>
+      <li><button class="it" data-w="Wiedza o technologii Python: konwencje projektów RPA w Pythonie." data-r="Dołączana przez kod zawsze, gdy projekt jest pythonowy (technology.knowledge_file())."><i class="mk cfg"></i>technologies/python.md</button></li>
+      <li><button class="it" data-w="Wiedza o frameworku Roboforge: rozpoznanie, cykl życia, BusinessRuleException, get_config." data-r="Dołączana przez kod, gdy skaner wykryje framework (pole knowledge we wpisie scan.frameworks). Mówi agentom, które metody wywołuje framework, a nie kod robota."><i class="mk cfg"></i>frameworks/roboforge.md</button></li>
+     </ul></li>
+    <li><button class="it dir" data-w="Szablon przewodnika i jego wygląd, wczytywane przy każdym przebiegu." data-r="Kod nie zna konkretnych zakładek ani sekcji: wszystko wynika z tych plików.">templates/</button>
+     <ul class="tr">
+      <li><button class="it" data-w="Zakładki i sekcje przewodnika: id, tytuł, typ, źródło (llm, scanner, code), required, polecenie dla pisarza, kolumny tabel, filtr technologies, writer_adds." data-r="Dziś siedem zakładek: Przegląd i uruchomienie, Przepływ działania, Ścieżki procesu, Struktura projektu, Zmiany i rozszerzenia, Błędy i naprawa, Dla dewelopera. Nowa sekcja albo zmiana polecenia to edycja tego pliku. Nowy TYP sekcji wymaga kodu w rendererze."><i class="mk cfg"></i>guide_template.yaml</button></li>
+      <li><button class="it" data-w="Szablon Jinja2 strony: menu zakładek, sekcje według typu, miejsca na CSS i JS." data-r="Renderer wstawia CSS i JS do środka pliku, więc przewodnik otwiera się bez internetu. Escapowanie zawsze włączone."><i class="mk cfg"></i>guide.html.j2</button></li>
+      <li><button class="it" data-w="Style przewodnika." data-r="Wygląd z makiety zaakceptowanej 26.11.2026: biały papier, czarne linie, czerwień tylko dla pętli i ostrzeżeń. Zmiana wyglądu bez zmian w kodzie."><i class="mk cfg"></i>guide.css</button></li>
+      <li><button class="it" data-w="Skrypt przewodnika: zakładki, dymki, rysowanie diagramu, wierszy „Krok po kroku” i grafu zależności z danych JSON w stronie." data-r="Jeden skrypt z makiety, bez drugiej implementacji w szablonie. Diagram i graf rysują się tylko, gdy w stronie są ich dane."><i class="mk cfg"></i>guide.js</button></li>
+     </ul></li>
+   </ul>
+  </div>
+
+  <div class="grp gen">
+   <button class="it dir" data-w="Wyniki ostatniego przebiegu, w katalogu głównym ANALIZOWANEGO robota (nie w repo narzędzia). Czyszczone przy każdym starcie tylko wtedy, gdy leży w nim znacznik." data-r="Pozwala obejrzeć wynik każdego etapu i powtórzyć pojedynczy etap na zapisanych danych (testy agentów z argumentem <katalog robota>). Skaner zawsze pomija ten katalog, żeby model nie czytał własnej dokumentacji jako kodu robota."><i class="mk gen"></i>&lt;robot&gt;/dev_agents_doc/</button>
+   <ul class="tr">
+    <li><button class="it" data-w="Plik-znacznik własności katalogu." data-r="Narzędzie usuwa zawartość dev_agents_doc/ wyłącznie wtedy, gdy znacznik istnieje. Katalog o tej nazwie bez znacznika i niepusty kończy program błędem, niczego nie kasuje."><i class="mk gen"></i>.dev_agents_output</button></li>
+    <li><button class="it" data-w="Mapa projektu (ProjectMap) jako JSON." data-r="Zapisuje main.py po grafie. Sprawdź tu, czy pliki mają dobre role, czy jednostki kodu są kompletne, jakie frameworki wykryto i jaka jest kolejność czytania."><i class="mk gen"></i>project_map.json</button></li>
+    <li><button class="it" data-w="Plan (Plan) jako JSON." data-r="Zapisuje węzeł planner. Sprawdź wskazówki dla jednostek i wybrane pliki wiedzy."><i class="mk gen"></i>plan.json</button></li>
+    <li><button class="it" data-w="Notatki analityków (ModuleNote), jeden plik na jednostkę." data-r="Jedyne źródło wiedzy o kodzie dla autora diagramu, pisarzy i recenzenta. Błąd w przewodniku zacznij szukać tutaj."><i class="mk gen"></i>notes/*.json</button></li>
+    <li><button class="it" data-w="Diagram przepływu (FlowGraph)." data-r="Zapisuje flow_writer, a po uwagach recenzenta nadpisuje flow_fix. Zawsze ostatnia wersja."><i class="mk gen"></i>flow.json</button></li>
+    <li><button class="it" data-w="Zakładki napisane przez pisarzy (GuideTab), jedna na zakładkę." data-r="Przy poprawkach po recenzji plik jest nadpisywany nową wersją zakładki."><i class="mk gen"></i>tabs/*.json</button></li>
+    <li><button class="it" data-w="Cała treść przewodnika (GuideContent) po ostatnim assemble." data-r="Z tego pliku render da się powtórzyć bez modelu. Zapisywany po każdym assemble, więc po pętli recenzji to wersja z ostatniej rundy poprawek."><i class="mk gen"></i>guide_content.json</button></li>
+    <li><button class="it" data-w="Recenzje: review_01.json, review_02.json, ..." data-r="Historia pętli: widać, co recenzent zgłosił w każdej rundzie. Uwagi z ostatniej oceny zostają w pliku także wtedy, gdy limit rund się wyczerpał."><i class="mk gen"></i>review_NN.json</button></li>
+    <li><button class="it" data-w="Gotowy przewodnik." data-r="Zapisuje węzeł finalize (albo main.py --render-only z zaślepkami). Samowystarczalny HTML z CSS i JS w środku."><i class="mk gen"></i>guide.html</button></li>
+   </ul>
+  </div>
+ </div>
+</section>
+
+<!-- ====================== PRZEPŁYW ====================== -->
+<section class="tab" id="przeplyw" hidden>
+ <h1>Przepływ działania: od <code>python main.py</code> do <code>guide.html</code></h1>
+ <p class="lead">Na górze mapa grafu: najedź na węzeł, aby zobaczyć jego zadanie w skrócie, kliknij, aby przejść do szczegółów. Pod nią każdy krok osobno: co czyta, co się w nim wykonuje (funkcje w kolejności wywołań) i co zapisuje lub zwraca.</p>
+ <div class="fig" id="gfig"><svg id="graph" role="img" aria-label="Graf: scan, planner, analyst równolegle, flow_writer, plan_tabs, writer równolegle, assemble, reviewer z pętlą poprawek do writer, finalize"></svg></div>
+ <div class="legend">
+  <span><i class="mk ai"></i>węzeł z wywołaniem modelu</span><span><i class="mk"></i>węzeł bez AI</span>
+  <span><span class="c f" style="padding:1px 8px">plik</span></span>
+  <span><span class="c env" style="padding:1px 8px">zmienna środ.</span></span>
+  <span><span class="c llm" style="padding:1px 8px">model</span></span>
+  <span><span class="c st" style="padding:1px 8px">pole stanu</span></span>
+ </div>
+
+ <div class="fhead"><span>czyta</span><span>co się dzieje</span><span>zapisuje / zwraca</span></div>
+
+ <div class="row" id="step-start">
+  <div class="ins"><div class="c">argumenty wiersza poleceń<small>--project, --config, --render-only</small></div><div class="c f">config.yaml</div></div>
+  <div class="ar"></div>
+  <div class="node"><div class="nh"><span class="num">S</span><b>Start</b><code>main.py, config.py, scanner.py, output.py</code></div>
+   <p>Sprawdzenie argumentów, wczytanie konfiguracji, szybki skan i założenie magazynu wyników. Literówka w configu, nierozpoznana technologia i brak prawa zapisu zatrzymują program tu, zanim zużyje tokeny i zanim w cudzym katalogu cokolwiek powstanie.</p>
+   <ol class="calls"><li>main() → _parse_args() <span>katalog projektu musi istnieć</span></li><li>load_config(path) <span>YAML na AppConfig, sprawdzenia przy wczytaniu</span></li><li>scanner.build_project_map() <span>szybki skan; pusta technologia = koniec</span></li><li>create_run_store(root) <span>zakłada albo czyści dev_agents_doc/ (znacznik)</span></li></ol></div>
+  <div class="ar"></div>
+  <div class="outs"><div class="c">AppConfig<small>obiekt konfiguracji w pamięci</small></div><div class="c f">&lt;robot&gt;/dev_agents_doc/<small>.dev_agents_output</small></div></div>
+ </div>
+ <div class="down"><div class="v">config, magazyn</div></div>
+
+ <div class="row" id="step-context">
+  <div class="ins"><div class="c env">LLM_API_KEY</div><div class="c env">LLM_BASE_URL</div><div class="c f">knowledge_base/knowledge/index.md</div><div class="c f">knowledge_base/templates/guide_template.yaml</div></div>
+  <div class="ar"></div>
+  <div class="node"><div class="nh"><span class="num">K</span><b>Kontekst uruchomienia</b><code>context.py, llm.py, knowledge.py, guide_template.py</code></div>
+   <p>Zależności wspólne dla wszystkich węzłów, tworzone raz. Samo utworzenie modeli nie wysyła zapytań, ale brak zmiennej z kluczem lub adresem wychodzi tu, z jej nazwą.</p>
+   <ol class="calls"><li>build_context(config, store, print_line)</li><li>get_model_for_agent() → create_chat_model() <span>po jednym dla każdego agenta z llm.agents (ChatOpenAI)</span></li><li>load_index() <span>spis bazy wiedzy, ścisły</span></li><li>load_template() <span>guide_template.yaml na klasy, sprawdzenia</span></li></ol></div>
+  <div class="ar"></div>
+  <div class="outs"><div class="c">RunContext<small>config, store, models, knowledge_index, template, report</small></div></div>
+ </div>
+ <div class="down"><div class="v">RunContext</div></div>
+
+ <div class="row" id="step-graph">
+  <div class="ins"><div class="c">RunContext</div><div class="c">analysis.max_concurrency</div></div>
+  <div class="ar"></div>
+  <div class="node"><div class="nh"><span class="num">G</span><b>Uruchomienie grafu</b><code>main._run_graph, graph.py</code></div>
+   <p>Graf startuje ze stanem zawierającym tylko ścieżkę projektu. Każdy węzeł dopisuje swoje pola. Postęp węzły raportują same, przez funkcję <code>report</code> z kontekstu.</p>
+   <ol class="calls"><li>build_graph() <span>add_node, add_edge, add_conditional_edges, compile()</span></li><li>graf.invoke({"project_path": …}, context=…, config=run_config(config)) <span>max_concurrency z configu</span></li><li>progress.Stage <span>linie „[godzina] etap: start / gotowe w X s - wynik”</span></li></ol></div>
+  <div class="ar"></div>
+  <div class="outs"><div class="c st">project_path</div><div class="c con">konsola: linie postępu</div></div>
+ </div>
+ <div class="down"><div class="v">START → scan</div></div>
+
+ <div class="row" id="step-scan">
+  <div class="ins"><div class="c f">folder robota<small>lista plików i rozmiary; treść tylko plików tekstowych z text_roles</small></div><div class="c">config.scan<small>ignore, secret_patterns, role_patterns, text_roles, frameworks</small></div><div class="c f">technologies/python.py<small>is_source, find_entrypoints, units, references</small></div></div>
+  <div class="ar"></div>
+  <div class="node"><div class="nh"><span class="num">1</span><b>scan</b><code>graph.scan_node → scanner.py</code></div>
+   <p>Mapa projektu bez AI. Sekrety rozpoznawane jako pierwsze: ich treść nie jest nawet otwierana. Pliki zależności, konfiguracji i uruchamiające są przepisywane dosłownie (do limitu rozmiaru), bez maskowania haseł.</p>
+   <ol class="calls"><li>build_project_map(root, config.scan)</li><li>list_files() <span>pomija ignore, dev_agents_doc/ i każde venv (pyvenv.cfg)</span></li><li>detect_technology() <span>rejestr: UiPath, Robot Framework, NICE, Python</span></li><li>build_file_entries() <span>secret → source → role_patterns → other</span></li><li>technology.find_entrypoints(), units(), references()</li><li>detect_frameworks() <span>po ścieżkach i po importowanych pakietach</span></li><li>dependencies.build_dependencies() <span>krawędzie i kolejność czytania</span></li></ol></div>
+  <div class="ar"></div>
+  <div class="outs"><div class="c st">project_map</div><div class="c f">project_map.json<small>zapisze main.py po grafie</small></div></div>
+ </div>
+ <div class="down"><div class="v">ProjectMap</div></div>
+
+ <div class="row" id="step-plan">
+  <div class="ins"><div class="c st">project_map</div><div class="c">knowledge_index<small>z RunContext</small></div><div class="c f">prompts/planner/system.md, user.md</div></div>
+  <div class="ar"></div>
+  <div class="node ai"><div class="nh"><span class="num">2</span><b>planner</b><code>agents/planner.py</code></div>
+   <p>Planner, zanim ktokolwiek przeczyta kod, decyduje, co kto dostanie: wskazówki dla jednostek i pliki wiedzy dla trzech grup agentów. Potem kod poprawia plan: żaden fragment robota nie może zniknąć z przewodnika po cichu.</p>
+   <ol class="calls"><li>planner_node() → create_plan()</li><li>build_planner_variables() <span>mapa (bez ścieżki dysku) i spis jako JSON</span></li><li>render_prompt(prompts, "planner", variables)</li><li>invoke_structured(models["planner"], Plan, metoda)</li><li>complete_plan() <span>usuwa nieznane i powtórzone, dopisuje pominięte jednostki, czyści pliki wiedzy spoza spisu; każda poprawka to uwaga w linii postępu</span></li></ol></div>
+  <div class="ar"></div>
+  <div class="outs"><div class="c llm">model planner<small>profil small, schemat Plan</small></div><div class="c f">plan.json</div><div class="c st">plan</div></div>
+ </div>
+ <div class="down"><div class="v">dispatch_analysts(): Send("analyst", …) × liczba zadań</div></div>
+
+ <div class="row" id="step-analyze">
+  <div class="ins"><div class="c">ładunek Send<small>task, project_map, plan</small></div><div class="c f">pliki jednostki kodu<small>pełny kod z numerami linii; sekret i plik ponad max_file_size_kb odrzucone</small></div><div class="c f">pliki tekstowe robota<small>zależności, konfiguracja, uruchamiające</small></div><div class="c f">wiedza<small>technologia, frameworki, plan.analyst_knowledge</small></div><div class="c f">prompts/analyst/*</div></div>
+  <div class="ar"></div>
+  <div class="node ai"><div class="nh"><span class="num">3</span><b>analyst × N</b><code>agents/analyst.py, chunks.py</code><span class="tagr">równolegle</span></div>
+   <p>Jeden analityk na jednostkę kodu, najwyżej <code>max_concurrency</code> naraz. Jednostka dłuższa niż <code>chunk_lines</code> jest czytana po kawałkach, każdy z podsumowaniem poprzednich. Na każdy kawałek przypadają dwa wywołania modelu, bo cała notatka nie mieści się w limicie schematu bramki.</p>
+   <ol class="calls"><li>analyst_node() → analyze_unit()</li><li>find_unit(), read_unit_files() <span>nazwa z planu musi być w mapie</span></li><li>chunks.plan_chunks() → split_ranges() <span>cięcie po granicach funkcji, bez granicy z zakładem</span></li><li>analyze_chunk() <span>dla każdego kawałka:</span></li><li>build_analyst_variables() → render_prompt("analyst") <span>kod z bezwzględnymi numerami linii</span></li><li>invoke_structured(NoteFlow) <span>przebieg, czynności, wejścia i wyjścia</span></li><li>invoke_structured(NoteDetails) <span>ustawienia, wymagania, ryzyka, awarie, słowniczek</span></li><li>merge_note() → chunks.merge_chunk_notes() → fix_note() <span>nazwa z zadania, numery linii spoza pliku na 0</span></li></ol></div>
+  <div class="ar"></div>
+  <div class="outs"><div class="c llm">model analyst<small>profil small, schematy NoteFlow i NoteDetails</small></div><div class="c f">notes/&lt;jednostka&gt;.json</div><div class="c st">notes += [notatka]<small>reducer operator.add</small></div></div>
+ </div>
+ <div class="down"><div class="v">wszystkie notatki (flow_writer startuje raz, po ostatnim analityku)</div></div>
+
+ <div class="row" id="step-flow">
+  <div class="ins"><div class="c st">notes, plan, project_map</div><div class="c f">wiedza<small>diagram_rules.md, technologia, framework</small></div><div class="c">flow.max_nodes, flow.max_decisions</div><div class="c f">prompts/flow_writer/*</div></div>
+  <div class="ar"></div>
+  <div class="node ai"><div class="nh"><span class="num">4</span><b>flow_writer</b><code>agents/flow_writer.py, flow.py</code></div>
+   <p>Jedyny agent, który widzi cały proces naraz. Model zwraca tylko graf klocków i strzałek, poprawność gwarantuje kod. Diagram, który po ponowieniu nadal ma problemy, jest zwracany z ich listą, a renderer nie rysuje niespójnego diagramu.</p>
+   <ol class="calls"><li>flow_writer_node() → write_flow()</li><li>order_notes(), format_notes() <span>kolejność czytania, tylko pola przebiegu</span></li><li>invoke_structured(models["flow_writer"], FlowGraph)</li><li>flow.validate_flow() <span>problemy i ostrzeżenia o rozmiarze</span></li><li>ponowienie raz <span>z poprzednią wersją i listą problemów; wygrywa wersja z mniejszą liczbą problemów</span></li></ol></div>
+  <div class="ar"></div>
+  <div class="outs"><div class="c llm">model flow_writer<small>profil medium, schemat FlowGraph</small></div><div class="c f">flow.json</div><div class="c st">flow</div></div>
+ </div>
+ <div class="down"><div class="v">flow</div></div>
+
+ <div class="row" id="step-tabs">
+  <div class="ins"><div class="c st">project_map.technology</div><div class="c">szablon przewodnika<small>z RunContext</small></div></div>
+  <div class="ar"></div>
+  <div class="node"><div class="nh"><span class="num">5</span><b>plan_tabs</b><code>graph.plan_tabs_node</code></div>
+   <p>Kod ustala, które zakładki szablonu mają sekcje do napisania przez pisarza (źródło <code>llm</code> albo <code>writer_adds</code>). Osobny węzeł, bo krawędź warunkowa widzi tylko stan, a szablon jest w kontekście.</p>
+   <ol class="calls"><li>sections_for_technology() <span>sekcje dla technologii projektu</span></li><li>writer.writer_sections() <span>zakładka bez sekcji pisarza (Przepływ działania: sam diagram) odpada</span></li></ol></div>
+  <div class="ar"></div>
+  <div class="outs"><div class="c st">tab_ids</div></div>
+ </div>
+ <div class="down"><div class="v">dispatch_writers(): Send("writer", …) × liczba zakładek</div></div>
+
+ <div class="row" id="step-write">
+  <div class="ins"><div class="c">ładunek Send<small>project_map, plan, notes, flow, tab_id</small></div><div class="c f">guide_template.yaml<small>sekcje zakładki</small></div><div class="c f">pliki robota<small>tylko dla zakładki z metryczką</small></div><div class="c">fakty kodu<small>tylko dla tabeli ryzykownych miejsc</small></div><div class="c f">wiedza<small>guide_goals.md, plan.writer_knowledge</small></div><div class="c f">prompts/writer/*</div></div>
+  <div class="ar"></div>
+  <div class="node ai"><div class="nh"><span class="num">6</span><b>writer × M</b><code>agents/writer.py</code><span class="tagr">równolegle</span></div>
+   <p>Jeden pisarz na zakładkę, każdy z kompletem notatek i gotowym diagramem, żeby ścieżki, błędy i przepisy odwoływały się do jego klocków. Schemat odpowiedzi jest budowany osobno dla zakładki, żeby mieścił się w limicie bramki. Sekcje ze źródłem scanner i code wypełnia kod; pisarz tylko dopisuje (writer_adds).</p>
+   <ol class="calls"><li>writer_node() → write_tab()</li><li>writer_sections(), tab_response_model() <span>schemat z pól sekcji zakładki</span></li><li>build_writer_variables() → render_prompt("writer")</li><li>invoke_structured(models["writer"], schemat zakładki)</li><li>normalize_blocks(), check_tab() <span>brak sekcji, liczba komórek, wpis bez znaczenia, ścieżka bez głównej, nieistniejący klocek</span></li><li>ponowienie raz z listą problemów <span>potem clear_missing_nodes()</span></li></ol></div>
+  <div class="ar"></div>
+  <div class="outs"><div class="c llm">model writer<small>profil medium, schemat zależny od zakładki</small></div><div class="c f">tabs/&lt;zakładka&gt;.json</div><div class="c st">tabs += [zakładka]<small>reducer operator.add</small></div></div>
+ </div>
+ <div class="down"><div class="v">wszystkie zakładki (assemble startuje raz, po ostatnim pisarzu)</div></div>
+
+ <div class="row" id="step-assemble">
+  <div class="ins"><div class="c st">flow, tabs</div><div class="c">szablon przewodnika</div></div>
+  <div class="ar"></div>
+  <div class="node"><div class="nh"><span class="num">7</span><b>assemble</b><code>assemble.py</code><span class="tagr">uruchamiany też po poprawkach</span></div>
+   <p>Składa treść w kolejności szablonu. Braki nie przerywają przebiegu: plik powstaje zawsze, a lista problemów trafia na ekran i do recenzenta. Przy poprawkach w <code>tabs</code> są po dwie wersje zakładki, a składanie bierze ostatnią.</p>
+   <ol class="calls"><li>assemble_node() → build_content() <span>zakładka bez pisarza i zakładka nieoddana dostają pusty blok</span></li><li>check_content() <span>diagram (validate_flow), brak zakładki, check_tab</span></li></ol></div>
+  <div class="ar"></div>
+  <div class="outs"><div class="c f">guide_content.json</div><div class="c st">content</div></div>
+ </div>
+ <div class="down"><div class="v">content</div></div>
+
+ <div class="row" id="step-review">
+  <div class="ins"><div class="c st">content, flow, notes, plan</div><div class="c f">wiedza<small>guide_goals.md, diagram_rules.md</small></div><div class="c f">prompts/reviewer/*</div><div class="c">limits.max_review_rounds</div></div>
+  <div class="ar"></div>
+  <div class="node ai"><div class="nh"><span class="num">8</span><b>reviewer</b><code>agents/reviewer.py</code></div>
+   <p>Recenzent dostaje pełne notatki, diagram i treść zakładek. Każda uwaga ma adresata (<code>flow</code> albo id zakładki), sekcję i opis. Czy trzeba poprawek, liczy tu węzeł, bo krawędź warunkowa widzi tylko stan, a limit jest w configu.</p>
+   <ol class="calls"><li>reviewer_node() → review_guide()</li><li>review_targets(), format_tabs() <span>diagram i zakładki pisarzy</span></li><li>invoke_structured(models["reviewer"], ReviewResult)</li><li>sanitize_review() <span>odrzuca uwagi bez adresata (po jednym ponowieniu), czyści błędną sekcję; approved = brak uwag</span></li><li>review_round = poprzednia + 1</li><li>fixes_pending = są uwagi i runda &lt; max_review_rounds</li></ol></div>
+  <div class="ar"></div>
+  <div class="outs"><div class="c llm">model reviewer<small>profil medium, schemat ReviewResult</small></div><div class="c f">review_NN.json</div><div class="c st">review, review_round, fixes_pending</div></div>
+ </div>
+ <div class="down"><div class="v">fixes_pending</div></div>
+
+ <div class="row" id="step-route">
+  <div class="ins"></div><div class="ar none"></div>
+  <div class="dec"><b>dispatch_review()</b> w <code>graph.py</code> czyta <code>fixes_pending</code> i uwagi:
+   <ul class="ul" style="margin-top:6px"><li><b>False</b>: idzie do <a href="#step-finalize">finalize</a>. Dotyczy braku uwag i wyczerpanego limitu rund (uwagi z ostatniej oceny zostają w <code>review_NN.json</code>).</li><li><b>True, są uwagi do diagramu</b>: węzeł <a href="#step-fix">flow_fix</a>, potem <code>dispatch_rewrites()</code>.</li><li><b>True, uwagi tylko do zakładek</b>: od razu <code>Send("writer", …)</code> do zakładek z uwagami, z poprzednią wersją i uwagami w ładunku. Po pisarzach znów <a href="#step-assemble">assemble</a> i reviewer.</li></ul></div>
+  <div class="ar none"></div><div class="outs"></div>
+ </div>
+ <div class="down"><div class="v loop">uwagi: poprawki celowane</div></div>
+
+ <div class="row" id="step-fix">
+  <div class="ins"><div class="c st">flow, review</div><div class="c f">prompts/flow_writer/*</div></div>
+  <div class="ar"></div>
+  <div class="node ai"><div class="nh"><span class="num">9</span><b>flow_fix</b><code>flow_writer.flow_fix_node, review_loop.py</code><span class="tagr">tylko przy uwagach do diagramu</span></div>
+   <p>Przepisuje sam diagram według uwag recenzenta (poprzednia wersja i uwagi już w pierwszym wywołaniu). Poprawiony diagram zmienia id i czynności klocków, więc zakładki, których ścieżki odwołują się do klocków, też trzeba napisać od nowa, nawet bez własnych uwag.</p>
+   <ol class="calls"><li>flow_fix_node() → write_flow(previous_flow, review_issues)</li><li>review_loop.issue_lines(review, "flow")</li><li>dispatch_rewrites() → tabs_to_rewrite(…, flow_changed=True) <span>zakładki z uwagami plus zakładki odwołujące się do klocków (tabs_referencing_flow)</span></li><li>Send("writer", …) <span>albo „assemble”, gdy nic do przepisania</span></li></ol></div>
+  <div class="ar"></div>
+  <div class="outs"><div class="c llm">model flow_writer<small>profil medium</small></div><div class="c f">flow.json<small>nadpisany</small></div><div class="c st">flow</div></div>
+ </div>
+ <div class="down"><div class="v">pętla: writer (przepisane zakładki) → assemble → reviewer; po limicie rund → finalize</div></div>
+
+ <div class="row" id="step-finalize">
+  <div class="ins"><div class="c st">content, project_map</div><div class="c f">guide.html.j2, guide.css, guide.js</div><div class="c">flow, analysis.long_unit_lines</div></div>
+  <div class="ar"></div>
+  <div class="node"><div class="nh"><span class="num">10</span><b>finalize</b><code>finalize.py, render.py</code></div>
+   <p>Renderuje treść do jednego pliku HTML. Fakty z kodu (drzewo, zależności, ryzykowne miejsca, graf zależności) powstają tu z mapy projektu, a nie z odpowiedzi modeli. Render nie woła modelu, więc powtórzysz go z <code>guide_content.json</code> bez kosztu.</p>
+   <ol class="calls"><li>finalize_node() → render.render_guide()</li><li>guide_facts.* <span>build_tree, risky_rows, dependency_graph_data, reading_items</span></li><li>flow.validate_flow(), layout_flow(), flow_view_data() <span>diagram niespójny = lista problemów zamiast rysunku</span></li><li>glossary.mark_terms() <span>dymki terminów</span></li></ol></div>
+  <div class="ar"></div>
+  <div class="outs"><div class="c f">guide.html</div><div class="c st">guide_path</div></div>
+ </div>
+ <div class="down"><div class="v">stan końcowy</div></div>
+
+ <div class="row" id="step-summary">
+  <div class="ins"><div class="c st">stan końcowy</div></div>
+  <div class="ar"></div>
+  <div class="node"><div class="nh"><span class="num">E</span><b>Podsumowanie</b><code>main.py</code></div>
+   <p>Zapis <code>project_map.json</code> i podsumowanie: technologia, pliki, punkty wejścia, plan, liczba notatek, klocki i strzałki diagramu, liczba zakładek, wynik recenzji (rundy, uwagi w ostatniej, zatwierdzone) i ścieżka przewodnika. Przed nim linia „razem: X s”.</p></div>
+  <div class="ar"></div>
+  <div class="outs"><div class="c con">konsola</div></div>
+ </div>
+
+ <h2>Co z czym rozmawia: skrót</h2>
+ <div class="scroll">
+ <table class="stack">
+  <thead><tr><th>Agent</th><th>Prompt</th><th>Schemat odpowiedzi</th><th>Wiedza</th><th>Profil</th></tr></thead>
+  <tbody>
+   <tr><td data-l="Agent">planner</td><td data-l="Prompt"><code>prompts/planner/</code></td><td data-l="Schemat"><code>Plan</code></td><td data-l="Wiedza">tylko spis <code>index.md</code></td><td data-l="Profil">small</td></tr>
+   <tr><td data-l="Agent">analyst (2 wywołania na kawałek)</td><td data-l="Prompt"><code>prompts/analyst/</code></td><td data-l="Schemat"><code>NoteFlow</code>, <code>NoteDetails</code> (składane w <code>ModuleNote</code>)</td><td data-l="Wiedza">technologia, frameworki, <code>plan.analyst_knowledge</code></td><td data-l="Profil">small</td></tr>
+   <tr><td data-l="Agent">flow_writer (także flow_fix)</td><td data-l="Prompt"><code>prompts/flow_writer/</code></td><td data-l="Schemat"><code>FlowGraph</code></td><td data-l="Wiedza">technologia, frameworki, <code>plan.flow_knowledge</code></td><td data-l="Profil">medium</td></tr>
+   <tr><td data-l="Agent">writer (jedno wywołanie na zakładkę)</td><td data-l="Prompt"><code>prompts/writer/</code></td><td data-l="Schemat">budowany z sekcji zakładki, potem <code>GuideTab</code></td><td data-l="Wiedza">technologia, frameworki, <code>plan.writer_knowledge</code></td><td data-l="Profil">medium</td></tr>
+   <tr><td data-l="Agent">reviewer</td><td data-l="Prompt"><code>prompts/reviewer/</code></td><td data-l="Schemat"><code>ReviewResult</code></td><td data-l="Wiedza"><code>plan.writer_knowledge</code> i <code>plan.flow_knowledge</code></td><td data-l="Profil">medium</td></tr>
+  </tbody>
+ </table>
+ </div>
+ <p class="note">Przypisanie agent → profil jest w <code>config.yaml</code>, sekcja <code>llm.agents</code>. Nazwy modeli są w profilach. Zasada kosztowa: kod liczy minimum, rozumienie kodu robią agenci, a prostota kodu jest ważniejsza niż oszczędność tokenów (każdy pisarz dostaje pełne notatki, recenzent także).</p>
+</section>
+
+<!-- ====================== ROZSZERZENIA ====================== -->
+<section class="tab" id="rozszerzenia" hidden>
+ <h1>Rozszerzenia: co zmienić, w którym pliku i w jakiej strukturze</h1>
+ <p class="lead">Najwięcej da się zmienić bez programowania: treść szablonu przewodnika, prompty, bazę wiedzy i config. Nowy format kodu robota (inne pliki niż <code>.py</code>) wymaga nowej <b>technologii</b> w <code>dev_agents/technologies/</code>. Nowy rodzaj bloku w przewodniku wymaga kodu w rendererze.</p>
+ <div class="cards">
+  <a href="#ext-technologia"><b>Nowa technologia</b><span>UiPath, Robot Framework, NICE: wypełnienie pustej klasy</span></a>
+  <a href="#ext-framework"><b>Nowy framework</b><span>Wpis w configu i plik wiedzy, bez kodu</span></a>
+  <a href="#ext-szablon"><b>Zakładki i sekcje przewodnika</b><span>Tylko YAML</span></a>
+  <a href="#ext-typ"><b>Nowy typ sekcji</b><span>Kod w rendererze, schemacie i szablonie strony</span></a>
+  <a href="#ext-wiedza"><b>Wiedza i prompty</b><span>Jak stroić jakość tekstu bez zmian w kodzie</span></a>
+  <a href="#ext-model"><b>Model i dostawca</b><span>Config, probe_llm, probe_schema, miasto</span></a>
+  <a href="#ext-limity"><b>Progi i limity</b><span>Diagram, analiza, pętla recenzji, skan</span></a>
+  <a href="#ext-agent"><b>Nowy agent w grafie</b><span>Siedem miejsc do zmiany</span></a>
+ </div>
+
+ <h2>Kontrakt technologii w jednym miejscu</h2>
+ <p>Każda technologia to podklasa <code>Technology</code> z <code>technologies/base.py</code>. Ścieżki <code>files</code> i <code>path</code> są względne do <code>root</code> i mają separator <code>/</code>, metody niczego nie wypisują, pliki projektu czytamy wyłącznie przez <code>files.read_text_safe()</code>. Plik, którego nie da się odczytać jako kod (np. błąd składni), daje odpowiedź „brak danych”, a nie wyjątek: opisze go agent. Każda metoda mieści się w ok. 40 liniach prostego kodu, bez drzewa warunków, a jeśli się nie da, ta wiedza należy do agenta.</p>
+ <div class="scroll">
+ <table class="stack">
+  <thead><tr><th>Metoda</th><th></th><th>Zwraca</th><th>Kto używa</th></tr></thead>
+  <tbody>
+   <tr><td data-l="Metoda"><code>name</code></td><td data-l="">atrybut</td><td data-l="Zwraca">krótka nazwa, trafia do <code>ProjectMap.technology</code></td><td data-l="Kto">skaner, <code>get_technology()</code></td></tr>
+   <tr><td data-l="Metoda"><code>detect(root, files)</code></td><td data-l="" class="yes">wymagana</td><td data-l="Zwraca"><code>True</code>, gdy projekt jest w tej technologii</td><td data-l="Kto"><code>detect_technology()</code>, w kolejności z rejestru</td></tr>
+   <tr><td data-l="Metoda"><code>is_source(path)</code></td><td data-l="" class="yes">wymagana</td><td data-l="Zwraca"><code>True</code> dla plików kodu (kandydatów do analizy)</td><td data-l="Kto"><code>scanner.build_file_entries()</code></td></tr>
+   <tr><td data-l="Metoda"><code>find_entrypoints(root, files)</code></td><td data-l="" class="yes">wymagana</td><td data-l="Zwraca">ścieżki punktów wejścia, najpewniejszy pierwszy</td><td data-l="Kto">skaner, kolejność czytania, planner</td></tr>
+   <tr><td data-l="Metoda"><code>units(root, path)</code></td><td data-l="">opcjonalna</td><td data-l="Zwraca">lista <code>SourceUnit</code>: nazwa i zakres linii (funkcje, klasy, workflowy)</td><td data-l="Kto">podział długich plików, ryzykowne miejsca, drzewo</td></tr>
+   <tr><td data-l="Metoda"><code>references(root, path)</code></td><td data-l="">opcjonalna</td><td data-l="Zwraca"><code>References</code>: pliki projektu (<code>files</code>) i pakiety spoza projektu (<code>packages</code>)</td><td data-l="Kto">graf zależności, wykrywanie frameworków</td></tr>
+   <tr><td data-l="Metoda"><code>knowledge_file()</code></td><td data-l="">opcjonalna</td><td data-l="Zwraca">plik wiedzy względny do <code>knowledge_base/knowledge/</code>; <code>""</code>, gdy brak</td><td data-l="Kto">agenci dostają go zawsze dla tej technologii</td></tr>
+  </tbody>
+ </table>
+ </div>
+
+ <div class="recipe" id="ext-technologia">
+  <h2>Nowa technologia (UiPath, Robot Framework, NICE)</h2>
+  <p class="when">Kiedy: roboty zespołu nie są w Pythonie. Rejestr zna już trzy puste klasy: <code>uipath.py</code>, <code>robotframework.py</code> i <code>nice.py</code>. Docstring każdej mówi, co z projektu danej technologii trzeba uchwycić (np. UiPath: <code>project.json</code>, pliki <code>.xaml</code>, Config.xlsx).</p>
+  <div class="files"><span class="c">technologies/&lt;nazwa&gt;.py</span><span class="c">technologies/registry.py</span><span class="c new">knowledge/technologies/&lt;nazwa&gt;.md</span><span class="c f">guide_template.yaml</span><span class="c f">config.yaml</span></div>
+  <ol class="road">
+   <li><b>Wypełnij klasę technologii</b>Zacznij od trzech metod wymaganych. <code>detect()</code> musi być pewne (np. obecność <code>project.json</code>), bo rejestr sprawdza technologie szczegółowe przed Pythonem, a projekt UiPath z pomocniczym skryptem <code>.py</code> ma zostać rozpoznany jako UiPath. Potem opcjonalne <code>units()</code> i <code>references()</code>: dają agentom pewne numery linii, a przewodnikowi graf zależności.
+    <div class="cb"><pre>class UiPathTechnology(_base.Technology):
+    name = "uipath"
+
+    def detect(
+        self,
+        root: str,
+        files: list[str],
+    ) -> bool:
+        czy_uipath = "project.json" in files
+        return czy_uipath</pre></div></li>
+   <li><b>Zarejestruj</b>Klasy trzech technologii są już w <code>available_technologies()</code> w <code>registry.py</code>. Dla nowej: import modułu na górze i obiekt na liście, w miejscu zgodnym z kolejnością sprawdzania (najpierw szczegółowe, Python na końcu).</li>
+   <li><b>Napisz plik wiedzy</b><code>knowledge_base/knowledge/technologies/&lt;nazwa&gt;.md</code>: konwencje i pułapki tej technologii oraz to, co agent ma wskazać w przewodniku. <code>knowledge_file()</code> zwraca nazwę względną (<code>technologies/&lt;nazwa&gt;.md</code>). Pliku nie wpisujesz do <code>index.md</code>: kod dołącza go sam.</li>
+   <li><b>Role plików</b>Role innych niż kod (konfiguracja, zależności, uruchamianie) nadają wzorce <code>scan.role_patterns</code> w <code>config.yaml</code>. Dopisz wzorce plików, które mają trafiać do metryczki (<code>config</code>) albo do agentów dosłownie (<code>text_roles</code>).</li>
+   <li><b>Sekcje tylko dla technologii</b>W <code>guide_template.yaml</code> pole <code>technologies: [uipath]</code> ogranicza sekcję do tej technologii (brak pola = wszystkie).</li>
+   <li><b>Testy ręczne</b>
+    <div class="cb"><pre>python -m dev_agents.technologies.base
+python -m dev_agents.technologies.registry
+python -m dev_agents.scanner &lt;katalog projektu&gt;</pre></div>
+    <p class="note">Plik wiedzy musi istnieć: literówka w <code>knowledge_file()</code> to błąd, nie cicho zgubiona wiedza. Szkielet testu własnego modułu technologii wzoruj na <code>python -m dev_agents.technologies.python</code>.</p></li>
+  </ol>
+ </div>
+
+ <div class="recipe" id="ext-framework">
+  <h2>Nowy framework (bez kodu)</h2>
+  <p class="when">Kiedy: roboty działają w już obsługiwanej technologii, ale używają biblioteki z własnym cyklem życia (jak Roboforge). Agenci mają wiedzieć, które metody woła framework, a nie kod robota.</p>
+  <div class="files"><span class="c f">config.yaml: scan.frameworks</span><span class="c new">knowledge/frameworks/&lt;nazwa&gt;.md</span></div>
+  <ol class="road">
+   <li><b>Wpis we <code>scan.frameworks</code></b>Technologia, wzorce ścieżek (framework skopiowany do projektu), nazwy pakietów (framework zainstalowany, także edytowalnie) i plik wiedzy. Skaner rozpoznaje framework po ścieżkach albo po pakietach importowanych w kodzie robota.
+    <div class="cb"><pre>frameworks:
+  roboforge:
+    technology: python
+    paths: ["roboforge_framework/*"]
+    packages: ["roboforge"]
+    knowledge: frameworks/roboforge.md</pre></div></li>
+   <li><b>Plik wiedzy</b>Jak rozpoznać framework, cykl życia (metody wołane przez framework), obsługa błędów biznesowych i technicznych, konfiguracja oraz lista tego, co ma wskazać agent. Zasada: opisujemy tylko to, co jest w kodzie robota, bez zgadywania zachowania frameworku.</li>
+   <li><b>Brak wpisu w <code>index.md</code></b>Pliki wykrytych frameworków dołącza kod. Plik z pola <code>knowledge</code> musi istnieć, inaczej <code>load_config</code> zgłosi błąd przy starcie.</li>
+   <li><b>Test</b>
+    <div class="cb"><pre>python -m dev_agents.config
+python -m dev_agents.scanner &lt;katalog robota&gt;</pre></div>
+    <p class="note">Skopiowane pliki frameworku są w mapie oznaczone jego nazwą, nie są analizowane i są pomijane w drzewie projektu (liczone i opisane nazwą).</p></li>
+  </ol>
+ </div>
+
+ <div class="recipe" id="ext-szablon">
+  <h2>Zakładki i sekcje przewodnika (tylko YAML)</h2>
+  <p class="when">Kiedy: chcesz dodać sekcję, zmienić polecenie dla pisarza, kolumny tabeli albo kolejność. Struktura przewodnika leży w pliku <code>knowledge_base/templates/guide_template.yaml</code> (ścieżka w <code>paths.guide_template</code>), z jego nagłówka wynikają wszystkie pola.</p>
+  <div class="files"><span class="c f">knowledge_base/templates/guide_template.yaml</span></div>
+  <div class="scroll">
+  <table class="stack">
+   <thead><tr><th>Pole sekcji</th><th>Znaczenie</th></tr></thead>
+   <tbody>
+    <tr><td data-l="Pole"><code>id</code>, <code>title</code></td><td data-l="Znaczenie"><code>id</code> unikalny w całym szablonie (odwołują się do niego renderer, pisarze i recenzent); <code>title</code> to nagłówek w przewodniku</td></tr>
+    <tr><td data-l="Pole"><code>type</code></td><td data-l="Znaczenie">sposób wyświetlenia: <code>text</code>, <code>list</code>, <code>steps</code>, <code>code</code>, <code>table</code>, <code>glossary</code>, <code>io</code>, <code>cards</code>, <code>config</code>, <code>tree</code>, <code>dependency_graph</code>, <code>flow</code>, <code>paths</code>, <code>recipes</code></td></tr>
+    <tr><td data-l="Pole"><code>source</code></td><td data-l="Znaczenie"><code>llm</code> (pisze pisarz), <code>scanner</code> (dane z mapy projektu), <code>code</code> (kod składa z mapy i szablonu, agent może dopisać komentarze)</td></tr>
+    <tr><td data-l="Pole"><code>required</code></td><td data-l="Znaczenie"><code>true</code>: sekcja zawsze widoczna, a gdy z kodu nic nie wynika, pokazuje „nie wynika z kodu” (nigdy wymyśloną treść); <code>false</code>: sekcja znika, gdy nie ma treści</td></tr>
+    <tr><td data-l="Pole"><code>instruction</code></td><td data-l="Znaczenie">polecenie dla pisarza albo opis danych (scanner, code)</td></tr>
+    <tr><td data-l="Pole"><code>columns</code></td><td data-l="Znaczenie">kolumny tabeli (wymagane przy <code>type: table</code>); komórkę wywnioskowaną pisarz kończy znacznikiem <code>[wywnioskowane]</code></td></tr>
+    <tr><td data-l="Pole"><code>technologies</code></td><td data-l="Znaczenie">lista technologii, dla których sekcja się pojawia; brak = wszystkie</td></tr>
+    <tr><td data-l="Pole"><code>writer_adds</code></td><td data-l="Znaczenie"><code>true</code>: sekcja scanner/code, do której pisarz dokłada wiersze (<code>tree</code>, <code>table</code>) albo zdania (<code>list</code>)</td></tr>
+   </tbody>
+  </table>
+  </div>
+  <ol class="road">
+   <li><b>Edytuj YAML</b>Błędny typ, źródło, powtórzone <code>id</code> albo brak kolumn tabeli wychodzi przy starcie, z id sekcji. Nowa zakładka z sekcjami <code>llm</code> sama dostanie pisarza (węzeł <code>plan_tabs</code>), a recenzent sam zacznie ją recenzować.</li>
+   <li><b>Sprawdź wygląd bez modelu</b>
+    <div class="cb"><pre>python -m dev_agents.guide_template
+python main.py --project ..\..\tests\02_robot_bez_frameworku --render-only</pre></div></li>
+   <li><b>Pamiętaj o limicie schematu</b>Pisarz zakładki ma schemat z pól jej sekcji; zakładka z wieloma typami sekcji może przekroczyć limit bramki (<code>MAX_MODEL_SCHEMA_PROPERTIES</code>, 40 pól). <code>python -m dev_agents.agents.writer</code> wypisuje liczbę pól każdej zakładki szablonu. Zbyt dużą zakładkę podziel na dwie.</li>
+  </ol>
+ </div>
+
+ <div class="recipe" id="ext-typ">
+  <h2>Nowy typ sekcji</h2>
+  <p class="when">Kiedy: żaden z czternastu typów nie pasuje do treści. Typ wymaga kodu w kilku miejscach. Typ spoza listy rendererów pokazuje w przewodniku widoczny znacznik „dochodzi w kolejnym kroku planu”, więc zapomniany element nie zginie po cichu.</p>
+  <div class="files"><span class="c">guide_template.py</span><span class="c">guide_content.py</span><span class="c">agents/writer.py</span><span class="c">render.py</span><span class="c f">guide.html.j2</span><span class="c f">guide.css, guide.js</span><span class="c">guide_placeholders.py</span></div>
+  <ol class="road">
+   <li><b>Lista typów</b>Dopisz nazwę do <code>SECTION_TYPES</code> w <code>guide_template.py</code> (kolumny i inne reguły sekcji sprawdza <code>load_template</code>).</li>
+   <li><b>Dane</b>Jeśli sekcję pisze model: nowe pole w <code>GuideBlock</code> (<code>guide_content.py</code>) z <code>Field(description=...)</code> i wpis w <code>_FIELDS_BY_TYPE</code> w <code>writer.py</code>. Pola bloku są płaskie, bez wariantów <code>anyOf</code>.</li>
+   <li><b>Widok</b>W <code>render.py</code> gałąź budująca widok sekcji (dane i flaga <code>has_content</code>) oraz dopisanie typu do listy typów gotowych do rysowania.</li>
+   <li><b>Strona</b>Blok HTML w <code>guide.html.j2</code>, style w <code>guide.css</code>, ewentualnie rysowanie w <code>guide.js</code>. Tekst od agentów zawsze przez escapowanie szablonu.</li>
+   <li><b>Zaślepka</b>Sekcja agenta w kształcie nowego typu w <code>guide_placeholders.py</code>, żeby <code>--render-only</code> ją pokazywał.</li>
+   <li><b>Testy</b>
+    <div class="cb"><pre>python -m dev_agents.render
+python -m dev_agents.guide_placeholders
+python -m dev_agents.agents.writer</pre></div></li>
+  </ol>
+ </div>
+
+ <div class="recipe" id="ext-wiedza">
+  <h2>Wiedza i prompty (jakość tekstu bez zmian w kodzie)</h2>
+  <p class="when">Kiedy: przewodnik ma zły ton, za ogólne zdania, złą ścieżkę procesu albo diagram jest za szczegółowy. Najpierw ustal, w którym etapie powstał błąd: notatka (analityk), diagram, zakładka (pisarz).</p>
+  <div class="files"><span class="c f">prompts/&lt;agent&gt;/system.md</span><span class="c f">knowledge/guide_goals.md</span><span class="c f">knowledge/diagram_rules.md</span><span class="c new">nowy plik + wpis w index.md</span></div>
+  <ol class="road">
+   <li><b>Gdzie szukać przyczyny</b>Błąd faktu: zajrzyj do <code>notes/&lt;jednostka&gt;.json</code>. Jest w notatce: popraw prompt analityka albo wiedzę. Nie ma: popraw prompt pisarza albo autora diagramu. Diagram za duży: <code>diagram_rules.md</code>, <code>flow.max_nodes</code>, <code>flow.max_decisions</code>.</li>
+   <li><b>Zmień prompt albo wiedzę</b><code>system.md</code> to stałe instrukcje, <code>user.md</code> to szablon z danymi w tagach. Nie usuwaj tagów z danymi: chronią przed prompt injection z cudzego kodu. Brak zmiennej w <code>user.md</code> daje błąd z nazwą agenta i zmiennej (<code>StrictUndefined</code>).</li>
+   <li><b>Nowy plik wiedzy</b>Utwórz <code>knowledge_base/knowledge/&lt;plik&gt;.md</code> i dopisz blok do <code>index.md</code>: nazwa pliku, <code>Kiedy użyć:</code> (tak, żeby model umiał zdecydować), <code>Tagi:</code>. Blok bez <code>Kiedy użyć:</code> albo ze złą nazwą to błąd przy starcie.</li>
+   <li><b>Powtarzaj tańszym testem</b>Raz pełny przebieg <code>main.py</code>, potem wielokrotnie test pojedynczego agenta na zapisanych wynikach: bez ponownej analizy i bez kosztu wcześniejszych etapów.
+    <div class="cb"><pre>python -m dev_agents.agents.writer &lt;katalog robota&gt; przeglad sciezki
+python -m dev_agents.agents.reviewer &lt;katalog robota&gt;
+python -m dev_agents.agents.flow_writer &lt;katalog robota&gt;</pre></div></li>
+  </ol>
+ </div>
+
+ <div class="recipe" id="ext-model">
+  <h2>Model i dostawca</h2>
+  <p class="when">Kiedy: zmiana modelu agenta, endpointu, parametrów, przejście na miasto. Modele wyłącznie przez protokół zgodny z OpenAI (<code>langchain_openai.ChatOpenAI</code> z <code>base_url</code>).</p>
+  <div class="files"><span class="c f">config.yaml: llm</span><span class="c">scripts/probe_llm.py</span><span class="c">scripts/probe_schema.py</span></div>
+  <ol class="road">
+   <li><b>Zmień profil albo przypisanie</b>W <code>llm.profiles</code>: <code>model</code>, <code>api_key_env</code>, <code>base_url_env</code>, <code>structured_output_method</code> (wymagane w każdym profilu), <code>params</code> (tylko podane trafiają do modelu; część modeli odrzuca np. <code>temperature</code>). W <code>llm.agents</code> każdy agent wskazuje profil: <code>planner</code> i <code>analyst</code> to small, <code>flow_writer</code>, <code>writer</code> i <code>reviewer</code> to medium.</li>
+   <li><b>Przejście na miasto</b>W każdej parze linii zakomentuj wartość Kwadratu i odkomentuj linię pod nią (<code>model</code>, <code>api_key_env</code>, <code>base_url_env</code>, <code>params</code>). Alternatywa leży zawsze w osobnej linii, nigdy w komentarzu za wartością.</li>
+   <li><b>Sprawdź model</b>Po każdej zmianie profilu, a po przejściu na miasto jako pierwszy krok:
+    <div class="cb"><pre>python -m scripts.probe_llm --profile small
+python -m scripts.probe_llm --profile medium
+python -m scripts.probe_schema --profile medium</pre></div>
+    <p class="note"><code>probe_llm</code> sprawdza także schemat zagnieżdżony, bo płaski bywał „OK”, a agenci i tak się wywracali. <code>probe_schema</code> mierzy, jaki rozmiar schematu przyjmuje bramka. Zmierzony limit to 48 pól (na profilu small), kod trzyma 40. Na profilu medium limit nie był jeszcze mierzony.</p></li>
+   <li><b>Nowy dostawca</b>Jedyny obsługiwany <code>provider</code> to <code>openai_compatible</code>, inny daje <code>ValueError</code> zamiast cichego użycia <code>ChatOpenAI</code>. Jeśli dostawca nie mówi protokołem OpenAI, nie dodajemy natywnego SDK bez wyraźnej decyzji: tylko <code>llm.py</code> importuje <code>langchain_openai</code>, a miejscem zmiany jest <code>create_chat_model()</code>.</li>
+  </ol>
+ </div>
+
+ <div class="recipe" id="ext-limity">
+  <h2>Progi i limity</h2>
+  <p class="when">Kiedy: diagram wychodzi za duży, analiza jest za wolna albo przeciąża bramkę, recenzent ma więcej szans na poprawki. Wszystkie progi są w <code>config.yaml</code> i sprawdzane przy wczytaniu.</p>
+  <div class="scroll">
+  <table class="stack">
+   <thead><tr><th>Klucz</th><th>Wartość</th><th>Co zmienia</th></tr></thead>
+   <tbody>
+    <tr><td data-l="Klucz"><code>flow.max_nodes</code></td><td data-l="Wartość">30</td><td data-l="Co zmienia">ostrzeżenie o zbyt dużym diagramie: autor dostaje ponowienie z prośbą o uproszczenie, szczegóły schodzą do „Krok po kroku”</td></tr>
+    <tr><td data-l="Klucz"><code>flow.max_decisions</code></td><td data-l="Wartość">8</td><td data-l="Co zmienia">jak wyżej, dla liczby decyzji</td></tr>
+    <tr><td data-l="Klucz"><code>analysis.long_unit_lines</code></td><td data-l="Wartość">100</td><td data-l="Co zmienia">jednostka dłuższa trafia do tabeli „Ryzykowne miejsca”</td></tr>
+    <tr><td data-l="Klucz"><code>analysis.max_file_size_kb</code></td><td data-l="Wartość">100</td><td data-l="Co zmienia">plik jednostki większy niż limit nie jest czytany (błąd z nazwą pliku)</td></tr>
+    <tr><td data-l="Klucz"><code>analysis.chunk_lines</code></td><td data-l="Wartość">300</td><td data-l="Co zmienia">jednostka dłuższa jest analizowana po kawałkach; każdy kawałek to dwa wywołania modelu</td></tr>
+    <tr><td data-l="Klucz"><code>analysis.chunk_overlap_lines</code></td><td data-l="Wartość">10</td><td data-l="Co zmienia">zakład przy cięciu w środku funkcji</td></tr>
+    <tr><td data-l="Klucz"><code>analysis.max_concurrency</code></td><td data-l="Wartość">4</td><td data-l="Co zmienia">ilu analityków i pisarzy pracuje naraz, czyli limit równoległych zapytań do bramki</td></tr>
+    <tr><td data-l="Klucz"><code>limits.max_review_rounds</code></td><td data-l="Wartość">2</td><td data-l="Co zmienia">ile razy recenzent ocenia przewodnik: 1 = tylko ocena, 2 = ocena, jedna runda poprawek celowanych i ocena poprawionej wersji</td></tr>
+    <tr><td data-l="Klucz"><code>scan.max_text_file_kb</code></td><td data-l="Wartość">100</td><td data-l="Co zmienia">pliki tekstowe (zależności, konfiguracja, uruchamiające) większe niż limit zostają tylko wpisem na liście plików</td></tr>
+   </tbody>
+  </table>
+  </div>
+ </div>
+
+ <div class="recipe" id="ext-agent">
+  <h2>Nowy agent w grafie</h2>
+  <p class="when">Kiedy: nowy etap z modelem, np. agent oceniający ryzyka. Agent to para: czysta funkcja i cienki węzeł. Zmiany w siedmiu miejscach.</p>
+  <div class="files"><span class="c">schemas.py</span><span class="c">state.py</span><span class="c new">agents/&lt;agent&gt;.py</span><span class="c f">prompts/&lt;agent&gt;/</span><span class="c f">config.yaml</span><span class="c">graph.py</span><span class="c">graph.py: test</span></div>
+  <ol class="road">
+   <li><b>Schemat odpowiedzi</b>Klasa Pydantic w <code>schemas.py</code> z <code>Field(description=...)</code> przy każdym polu: płaska, bez <code>anyOf</code>, w limicie pól schematu. Sprawdzenia zwykłym kodem, bez walidatorów.</li>
+   <li><b>Pole stanu</b>W <code>state.py</code> pole na wynik (z reducerem <code>operator.add</code>, jeśli wyniki będą doklejane przez równoległe węzły). Stan jest chudy: ścieżki i metadane.</li>
+   <li><b>Logika i węzeł</b>W <code>agents/&lt;agent&gt;.py</code> funkcja logiki działająca bez grafu (zmienne do promptu, <code>render_prompt</code>, <code>invoke_structured</code>, poprawki kodu) i węzeł <code>(state, runtime)</code> owinięty w <code>progress.Stage</code>, który zapisuje wynik w magazynie i zwraca tylko zmienione pola.</li>
+   <li><b>Prompt</b>Katalog <code>prompts/&lt;agent&gt;/</code> z <code>system.md</code> i <code>user.md</code>. Dane w tagach, wszystkie zmienne z funkcji budującej zmienne.</li>
+   <li><b>Model</b>Wpis <code>&lt;agent&gt;: small|medium</code> w <code>llm.agents</code>. Kontekst tworzy model od razu, więc literówka wychodzi przy starcie.</li>
+   <li><b>Graf</b>W <code>graph.build_graph()</code>: <code>add_node</code>, krawędzie albo krawędź warunkowa (<code>Send</code> dla pracy równoległej, a wtedy <code>run_config</code> ogranicza współbieżność).</li>
+   <li><b>Test</b>Własny test agenta na <code>FakeStructuredModel</code> (<code>python -m dev_agents.agents.&lt;agent&gt;</code>) i podmiana modelu w teście grafu (<code>_set_fake_models</code> w <code>graph.py</code>), żeby <code>python -m dev_agents.graph</code> działał bez sieci.</li>
+  </ol>
+ </div>
+</section>
+
+<!-- ====================== PRZEWODNIK ====================== -->
+<section class="tab" id="przewodnik" hidden>
+ <h1>Przewodnik dewelopera: od ogółu do szczegółów</h1>
+
+ <h2>Całość w pięciu zdaniach</h2>
+ <ol class="ul">
+  <li>Skaner (bez AI) buduje mapę robota: pliki z rolami, technologię, punkty wejścia, jednostki z zakresami linii, powiązania plików i kolejność czytania.</li>
+  <li>Planner rozdziela pracę i wiedzę, analitycy równolegle czytają kod jednostka po jednostce i oddają notatki, a autor diagramu składa z nich graf całego procesu.</li>
+  <li>Pisarze równolegle piszą zakładki przewodnika według szablonu YAML, każdy z notatkami i gotowym diagramem, a kod sprawdza ich wyniki.</li>
+  <li>Recenzent ocenia diagram i zakładki, a graf przepisuje tylko to, co dostało uwagi (do limitu rund w configu).</li>
+  <li>Renderer składa z treści, szablonu i faktów z kodu jeden plik HTML, który otwiera się bez internetu.</li>
+ </ol>
+
+ <h2>Zasady architektury, których pilnujemy</h2>
+ <div class="cols">
+  <div class="box"><h3>Agent = czysta funkcja + cienki węzeł</h3><p>Logika (<code>create_plan</code>, <code>analyze_unit</code>, <code>write_flow</code>, <code>write_tab</code>, <code>review_guide</code>) działa bez grafu. Węzeł wyjmuje dane ze stanu, owija pracę w <code>Stage</code>, zapisuje wynik i zwraca tylko zmienione pola.</p></div>
+  <div class="box"><h3>Stan to dane, kontekst to narzędzia</h3><p><code>RunState</code> niesie wyniki etapów (ścieżki i metadane, bez kodu źródłowego). <code>RunContext</code> niesie config, modele, magazyn i szablon. Modeli nie wkładamy do stanu.</p></div>
+  <div class="box"><h3>Kod liczy minimum, agenci rozumieją</h3><p>Kod podaje proste, pewne fakty: role plików, sekrety, punkty wejścia, linie, odwołania. Struktura, logika i ryzyka to praca agentów. Prostota kodu jest ważniejsza niż oszczędność tokenów.</p></div>
+  <div class="box"><h3>Model pisze treść, kod pisze strukturę</h3><p>Model zwraca structured output. Układ, zakładki i wygląd składa kod z szablonów. Konkretnych pól i rozdziałów nie wpisujemy w kod.</p></div>
+  <div class="box"><h3>Nic nie znika po cichu</h3><p>Kod uzupełnia plan o pominięte jednostki, przy każdej poprawce odpowiedzi modelu zgłasza uwagę, braki i problemy treści trafiają do recenzenta, a niespójny diagram jest pokazany listą problemów zamiast rysunku.</p></div>
+  <div class="box"><h3>Rdzeń nie zna technologii</h3><p>Tylko <code>technologies/python.py</code> importuje <code>ast</code>. Skaner i agenci pytają kontrakt <code>Technology</code>. Tylko <code>llm.py</code> importuje <code>langchain_openai</code>, a każde wywołanie modelu idzie przez <code>invoke_structured()</code>.</p></div>
+  <div class="box"><h3>Bezpieczeństwo cudzych danych</h3><p>Pliki sekretów trafiają do modelu tylko jako metadane. Hasła wpisane wprost w pliku konfiguracyjnym lub kodzie trafiają dosłownie i wychodzą w przewodniku jako ryzyko. Dane w promptach są w tagach. Nazwy plików od modelu przechodzą przez <code>read_kb_file()</code>, a zapis tylko do <code>dev_agents_doc/</code> ze znacznikiem.</p></div>
+  <div class="box"><h3>Wygląd i treść poza kodem</h3><p>Prompty w <code>prompts/</code>, wiedza i szablony w <code>knowledge_base/</code>, reguły skanu, modele i progi w <code>config.yaml</code>. Przewodnik jest samowystarczalny: CSS i JS wstawia renderer, bez internetu i bez zewnętrznych zasobów.</p></div>
+ </div>
+
+ <h2>Warstwy i zależności między modułami</h2>
+ <div class="layers">
+  <div class="ly"><b>Wejście</b><div><span class="c">main.py</span></div></div>
+  <div class="ly"><b>Orkiestracja</b><div><span class="c">graph.py</span><span class="c">state.py</span><span class="c">context.py</span><span class="c">review_loop.py</span><span class="c">progress.py</span></div></div>
+  <div class="ly"><b>Agenci</b><div><span class="c">agents/planner.py</span><span class="c">agents/analyst.py</span><span class="c">agents/flow_writer.py</span><span class="c">agents/writer.py</span><span class="c">agents/reviewer.py</span><span class="c">agents/chunks.py</span><span class="c">agents/common.py</span></div></div>
+  <div class="ly"><b>Składanie wyniku</b><div><span class="c">assemble.py</span><span class="c">finalize.py</span><span class="c">render.py</span><span class="c">guide_facts.py</span><span class="c">flow.py</span><span class="c">glossary.py</span><span class="c">guide_placeholders.py</span></div></div>
+  <div class="ly"><b>Usługi</b><div><span class="c">llm.py</span><span class="c">prompts.py</span><span class="c">knowledge.py</span><span class="c">scanner.py</span><span class="c">dependencies.py</span><span class="c">files.py</span><span class="c">output.py</span></div></div>
+  <div class="ly"><b>Technologie</b><div><span class="c">technologies/registry.py</span><span class="c">base.py</span><span class="c">python.py</span><span class="c">uipath.py</span><span class="c">robotframework.py</span><span class="c">nice.py</span></div></div>
+  <div class="ly"><b>Podstawy</b><div><span class="c">config.py</span><span class="c">schemas.py</span><span class="c">guide_content.py</span><span class="c">guide_template.py</span></div></div>
+  <div class="ly"><b>Treść (bez kodu)</b><div><span class="c f">config.yaml</span><span class="c f">prompts/</span><span class="c f">knowledge_base/</span></div></div>
+ </div>
+ <p class="note" style="margin-top:10px">Importy idą z góry na dół. Moduły własnego projektu importujemy w całości z aliasem z podłogą (<code>import dev_agents.config as _config</code>) i wołamy przez nazwę modułu; pojedynczych nazw z modułów projektu nie importujemy. <code>fakes.py</code> służy tylko testom.</p>
+
+ <h2>Kolejność czytania kodu</h2>
+ <ol class="road">
+  <li><b>AGENTS.md</b>Zasady i reguły kodu, w tym katalog wyników w cudzym projekcie. 10 minut, oszczędza godziny.</li>
+  <li><b>main.py, potem graph.py</b>Spis treści przebiegu i kolejność węzłów. Docstring <code>graph.py</code> opisuje cały graf z pętlą recenzji.</li>
+  <li><b>state.py, schemas.py, guide_content.py</b>Co płynie między etapami. Każde pole ma komentarz albo opis dla modelu.</li>
+  <li><b>context.py i config.py</b>Skąd węzły biorą modele, ścieżki i ustawienia.</li>
+  <li><b>scanner.py, files.py, dependencies.py i technologies/</b>Jak powstaje mapa projektu.</li>
+  <li><b>agents/ w kolejności: planner, analyst (z chunks), flow_writer, writer, reviewer</b>Razem z ich promptami w <code>prompts/</code>: prompt i funkcja budująca zmienne to para.</li>
+  <li><b>assemble.py, review_loop.py, finalize.py</b>Składanie, wybór poprawek i zapis wyniku.</li>
+  <li><b>guide_template.py, guide_facts.py, flow.py, render.py</b>Jak z treści powstaje strona. Dalej <code>knowledge_base/templates/</code>.</li>
+  <li><b>llm.py, prompts.py, knowledge.py, output.py, progress.py</b>Usługi wspólne, czytaj, gdy trafisz na nie w agentach.</li>
+ </ol>
+
+ <h2>Konwencje kodu</h2>
+ <ul class="ul">
+  <li>Każda funkcja, klasa i metoda ma docstring: pierwszy akapit CO robi, drugi zaczyna się od <code>Po co:</code>, opcjonalnie <code>Uwaga:</code>. Nie opisujemy w nim, gdzie funkcja jest wołana. Obszerny docstring modułu mówi, co robi, dlaczego istnieje i jaką ma rolę.</li>
+  <li>Logika zwraca wartości, wypisują tylko osobne funkcje wyświetlające. <code>main()</code> jest spisem treści. Plik podzielony sekcjami <code># --- Nazwa ---</code>.</li>
+  <li>Testy ręczne tylko pod <code>if __name__ == "__main__":</code>, w funkcji <code>manual_test()</code>. Uruchamiamy przez <code>python -m</code> z katalogu repo, a kod testowy nie importuje własnego modułu.</li>
+  <li>Każdy parametr definicji funkcji w osobnej linii, z przecinkiem po ostatnim; wynik przed <code>return</code> w zmiennej o opisowej, często polskiej nazwie.</li>
+  <li>Funkcje i stałe używane tylko wewnątrz modułu mają nazwę z podłogą. Stała modułu tylko wtedy, gdy używa jej więcej niż jedna funkcja.</li>
+  <li>Ścieżki tylko <code>os.path</code>, jako <code>str</code>, bez <code>pathlib</code>. Pliki <code>encoding="utf-8"</code>, cudze przez <code>files.read_text_safe()</code>. W plikach repo zwykły myślnik, bez typograficznych półpauz.</li>
+  <li>Prostota: modele Pydantic to klasy z typami pól, bez walidatorów, <code>Literal</code> i <code>ConfigDict</code>. Wyjątek: <code>Field(description=...)</code> w schematach odpowiedzi modelu.</li>
+  <li>Python 3.14, Windows, PowerShell. Zależności tylko bezpośrednie, dopisywane ręcznie w kroku, który ich potrzebuje.</li>
+ </ul>
+
+ <h2>Testy ręczne</h2>
+ <p>Każdy moduł ma test ręczny pod <code>if __name__ == "__main__":</code>. Test wypisuje wynik i kończy się linią „zgodne z oczekiwaniem: True”, tam gdzie sprawdza oczekiwania. Wszystko z katalogu repo, przez <code>python -m</code>. Testy agentów z argumentem <code>&lt;katalog robota&gt;</code> wołają PRAWDZIWY model i wymagają wyników wcześniejszych etapów w <code>dev_agents_doc/</code> robota; robota 01 używamy tylko do odczytu, a pełny przebieg robimy na robocie 02.</p>
+ <div class="scroll">
+ <table class="stack">
+  <thead><tr><th>Polecenie</th><th>Co sprawdza</th><th>Model</th><th>Zapis</th></tr></thead>
+  <tbody>
+   <tr><td data-l="Polecenie"><code>python -m dev_agents.config</code></td><td data-l="Co sprawdza">wczytanie configu, błędne configi z czytelnym komunikatem</td><td data-l="Model">nie</td><td data-l="Zapis">nie</td></tr>
+   <tr><td data-l="Polecenie"><code>python -m dev_agents.schemas</code>, <code>guide_content</code>, <code>guide_template</code></td><td data-l="Co sprawdza">schematy: odczyt z JSON równy oryginałowi, schemat bez <code>anyOf</code>, limit pól, szablon przewodnika</td><td data-l="Model">nie</td><td data-l="Zapis">nie</td></tr>
+   <tr><td data-l="Polecenie"><code>python -m dev_agents.scanner [projekt]</code></td><td data-l="Co sprawdza">mapa robotów testowych 01 i 02 i katalogu tymczasowego; z argumentem pełna mapa dowolnego projektu</td><td data-l="Model">nie</td><td data-l="Zapis">nie</td></tr>
+   <tr><td data-l="Polecenie"><code>python -m dev_agents.technologies.python [projekt plik]</code>, <code>.registry</code>, <code>.base</code></td><td data-l="Co sprawdza">jednostki, odwołania, punkty wejścia, wybór technologii, kontrakt</td><td data-l="Model">nie</td><td data-l="Zapis">nie</td></tr>
+   <tr><td data-l="Polecenie"><code>python -m dev_agents.files</code>, <code>dependencies</code>, <code>flow</code>, <code>glossary</code>, <code>guide_facts</code></td><td data-l="Co sprawdza">kodowania plików, graf zależności i kolejność czytania, spójność i układ diagramu, dymki słowniczka, fakty z mapy</td><td data-l="Model">nie</td><td data-l="Zapis">nie</td></tr>
+   <tr><td data-l="Polecenie"><code>python -m dev_agents.knowledge</code>, <code>prompts</code>, <code>output</code>, <code>progress</code>, <code>fakes</code></td><td data-l="Co sprawdza">spis i blokada ścieżek, renderowanie promptu i błąd przy brakującej zmiennej, znacznik katalogu wyników, linie postępu, udawany model</td><td data-l="Model">nie</td><td data-l="Zapis">katalogi tymczasowe</td></tr>
+   <tr><td data-l="Polecenie"><code>python -m dev_agents.render [plik|makieta|duzy|robot01]</code></td><td data-l="Co sprawdza">przewodnik z przykładową treścią i liczby kontrolne</td><td data-l="Model">nie</td><td data-l="Zapis"><code>guide_test.html</code> w repo</td></tr>
+   <tr><td data-l="Polecenie"><code>python -m dev_agents.guide_placeholders [robot01|robot02]</code></td><td data-l="Co sprawdza">zaślepki w kształcie każdej sekcji agenta, diagram przykładowy</td><td data-l="Model">nie</td><td data-l="Zapis"><code>guide_test.html</code> w repo</td></tr>
+   <tr><td data-l="Polecenie"><code>python -m dev_agents.llm</code></td><td data-l="Co sprawdza">invoke_structured na udawanym modelu i, w części 3, krótkie wywołanie prawdziwego modelu plannera</td><td data-l="Model" class="yes">tak (część 3)</td><td data-l="Zapis">nie</td></tr>
+   <tr><td data-l="Polecenie"><code>python -m scripts.probe_llm --profile small</code></td><td data-l="Co sprawdza">możliwości modelu i endpointu, metody structured output</td><td data-l="Model" class="yes">tak</td><td data-l="Zapis">nie</td></tr>
+   <tr><td data-l="Polecenie"><code>python -m scripts.probe_schema --profile small [--dry-run]</code></td><td data-l="Co sprawdza">jaki rozmiar schematu przyjmuje bramka (<code>--dry-run</code>: tylko miary schematów)</td><td data-l="Model" class="yes">tak</td><td data-l="Zapis">nie</td></tr>
+   <tr><td data-l="Polecenie"><code>python -m dev_agents.agents.planner</code>, <code>analyst</code>, <code>flow_writer</code>, <code>writer</code>, <code>reviewer</code>, <code>chunks</code>, <code>common</code></td><td data-l="Co sprawdza">każdy agent na udawanym modelu: prompt, poprawki kodu, ponowienia, węzeł</td><td data-l="Model">nie</td><td data-l="Zapis">katalogi tymczasowe</td></tr>
+   <tr><td data-l="Polecenie"><code>python -m dev_agents.agents.planner &lt;robot&gt;</code></td><td data-l="Co sprawdza">plan dla projektu (najpierw <code>main.py --render-only</code>, żeby był <code>project_map.json</code>)</td><td data-l="Model" class="yes">tak</td><td data-l="Zapis"><code>plan.json</code></td></tr>
+   <tr><td data-l="Polecenie"><code>python -m dev_agents.agents.analyst &lt;robot&gt; &lt;jednostka&gt;</code></td><td data-l="Co sprawdza">notatka jednej jednostki po kawałkach, ostrzeżenia o liniach</td><td data-l="Model" class="yes">tak</td><td data-l="Zapis">nic (wypisuje JSON)</td></tr>
+   <tr><td data-l="Polecenie"><code>python -m dev_agents.agents.flow_writer &lt;robot&gt;</code></td><td data-l="Co sprawdza">diagram z zapisanych notatek, problemy i ostrzeżenia</td><td data-l="Model" class="yes">tak</td><td data-l="Zapis"><code>flow.json</code>, <code>guide_test.html</code></td></tr>
+   <tr><td data-l="Polecenie"><code>python -m dev_agents.agents.writer &lt;robot&gt; [zakładki]</code></td><td data-l="Co sprawdza">zakładki z zapisanych notatek i diagramu (domyślnie <code>przeglad</code>, <code>sciezki</code>)</td><td data-l="Model" class="yes">tak</td><td data-l="Zapis"><code>tabs/*.json</code></td></tr>
+   <tr><td data-l="Polecenie"><code>python -m dev_agents.agents.reviewer &lt;robot&gt;</code></td><td data-l="Co sprawdza">recenzja ostatniej treści (<code>guide_content.json</code>), uwagi z adresatami</td><td data-l="Model" class="yes">tak</td><td data-l="Zapis"><code>review_01.json</code></td></tr>
+   <tr><td data-l="Polecenie"><code>python -m dev_agents.review_loop</code>, <code>assemble</code>, <code>finalize</code></td><td data-l="Co sprawdza">wybór poprawek, składanie i kontrola treści, render do <code>guide.html</code></td><td data-l="Model">nie</td><td data-l="Zapis">katalogi tymczasowe</td></tr>
+   <tr><td data-l="Polecenie"><code>python -m dev_agents.graph</code></td><td data-l="Co sprawdza">cały graf na udawanych modelach: mały projekt, roboty 02 i 01 (tylko odczyt), pętla recenzji z poprawkami i przypadek limitu rund</td><td data-l="Model">nie</td><td data-l="Zapis">katalogi tymczasowe</td></tr>
+   <tr><td data-l="Polecenie"><code>python main.py --project &lt;robot&gt; [--render-only]</code></td><td data-l="Co sprawdza">pełny przebieg (albo podgląd z zaślepkami bez modelu)</td><td data-l="Model" class="yes">tak (bez <code>--render-only</code>)</td><td data-l="Zapis" class="warn"><code>dev_agents_doc/</code> robota, czyści poprzedni</td></tr>
+  </tbody>
+ </table>
+ </div>
+ <p class="note">Tryb pracy nad promptem pisarza, autora diagramu albo recenzenta: raz pełny przebieg <code>main.py</code>, potem wielokrotnie test ręczny tego agenta na tych samych zapisanych danych. Bez ponownej analizy i bez kosztu wcześniejszych etapów.</p>
+
+ <h2>Diagnoza błędów</h2>
+ <div class="scroll">
+ <table class="stack">
+  <thead><tr><th>Objaw</th><th>Gdzie</th><th>Co zrobić</th></tr></thead>
+  <tbody>
+   <tr><td data-l="Objaw">„Brak zmiennej środowiskowej '…'”</td><td data-l="Gdzie"><code>llm.py</code> przy <code>build_context()</code></td><td data-l="Co zrobić">Ustaw zmienną użytkownika z nazwą z profilu i otwórz nowe okno terminala. Program kończy się przed grafem.</td></tr>
+   <tr><td data-l="Objaw">Błąd configu przy starcie (profil, metoda, rola, plik wiedzy frameworku, próg)</td><td data-l="Gdzie"><code>config.load_config()</code></td><td data-l="Co zrobić">Komunikat podaje klucz. Popraw <code>config.yaml</code>; <code>python -m dev_agents.config</code> pokazuje wszystkie przypadki.</td></tr>
+   <tr><td data-l="Objaw">„nie rozpoznano technologii projektu … Nic nie zapisano”</td><td data-l="Gdzie"><code>main.py</code>, szybki skan</td><td data-l="Co zrobić">Brak kodu obsługiwanej technologii albo wszystkie pliki źródłowe w <code>scan.ignore</code>. Diagnoza: <code>python -m dev_agents.scanner &lt;projekt&gt;</code>.</td></tr>
+   <tr><td data-l="Objaw">„Katalog … istnieje, nie ma znacznika … i nie jest pusty”</td><td data-l="Gdzie"><code>output.create_run_store()</code></td><td data-l="Co zrobić">W robocie jest cudzy katalog <code>dev_agents_doc/</code>. Narzędzie niczego nie kasuje: zmień jego nazwę albo usuń go ręcznie.</td></tr>
+   <tr><td data-l="Objaw">„Model nie zwrócił odpowiedzi zgodnej ze schematem X”</td><td data-l="Gdzie"><code>llm.invoke_structured()</code></td><td data-l="Co zrobić">Zobacz <code>finish_reason</code> i błąd parsowania w komunikacie. Schemat za duży dla bramki: <code>probe_schema</code>. Pusty obiekt <code>{}</code> przy <code>json_schema</code>: <code>probe_llm</code>.</td></tr>
+   <tr><td data-l="Objaw">„Odpowiedź modelu ucięta na limicie max_tokens”</td><td data-l="Gdzie"><code>llm.py</code></td><td data-l="Co zrobić">Końcówka odpowiedzi: powtarzający się fragment = model się zapętlił; zwykły tekst = zwiększ <code>max_tokens</code> w profilu.</td></tr>
+   <tr><td data-l="Objaw">„Plik … ma … B - więcej niż analysis.max_file_size_kb”</td><td data-l="Gdzie"><code>analyst.read_unit_files()</code></td><td data-l="Co zrobić">Podnieś limit, jeśli plik ma być analizowany. Pliki sekretów nigdy nie są czytane.</td></tr>
+   <tr><td data-l="Objaw">„Nieznana jednostka kodu '…'”</td><td data-l="Gdzie"><code>analyst.find_unit()</code></td><td data-l="Co zrobić">Zadanie wskazuje jednostkę spoza mapy. Plan poprawia <code>complete_plan()</code>, więc zwykle to błąd w teście z własnym planem.</td></tr>
+   <tr><td data-l="Objaw">Uwagi w liniach postępu planera</td><td data-l="Gdzie"><code>planner.complete_plan()</code></td><td data-l="Co zrobić">Model pominął jednostkę, powtórzył ją albo wskazał plik wiedzy spoza spisu. Kod to poprawił; sprawdź <code>plan.json</code> i prompt plannera.</td></tr>
+   <tr><td data-l="Objaw">Diagram pokazany jako lista problemów zamiast rysunku</td><td data-l="Gdzie"><code>flow.validate_flow()</code></td><td data-l="Co zrobić">Autor nie naprawił diagramu po ponowieniu: brak startu lub końca, klocek nieosiągalny, decyzja bez podpisanych wyjść, cykl bez strzałki <code>loop</code>. Zobacz <code>flow.json</code>, <code>diagram_rules.md</code>, prompt autora.</td></tr>
+   <tr><td data-l="Objaw">Ostrzeżenie o rozmiarze diagramu</td><td data-l="Gdzie"><code>flow.max_nodes</code>, <code>flow.max_decisions</code></td><td data-l="Co zrobić">Za dużo klocków lub decyzji: szczegóły techniczne mają zejść do „Krok po kroku”. Zmień prompt albo próg.</td></tr>
+   <tr><td data-l="Objaw">Pisarz: „brak sekcji”, zła liczba komórek, nieistniejący klocek</td><td data-l="Gdzie"><code>writer.check_tab()</code></td><td data-l="Co zrobić">Po jednym ponowieniu problem zostaje w wyniku; odwołania do nieistniejących klocków są wyczyszczone. Zajrzyj do <code>tabs/&lt;zakładka&gt;.json</code> i polecenia sekcji w szablonie.</td></tr>
+   <tr><td data-l="Objaw">„nie wynika z kodu” w sekcji przewodnika</td><td data-l="Gdzie"><code>render.py</code>, <code>guide_content.json</code></td><td data-l="Co zrobić">Sekcja wymagana bez treści. Sprawdź, czy notatki w ogóle zawierają tę informację, a potem polecenie sekcji w <code>guide_template.yaml</code>.</td></tr>
+   <tr><td data-l="Objaw">Uwagi recenzenta po limicie rund</td><td data-l="Gdzie"><code>review_NN.json</code></td><td data-l="Co zrobić">Czy uwagi są nowe w każdej rundzie (recenzent niewyczerpujący), czy pisarz ich nie poprawia. Limit: <code>limits.max_review_rounds</code>.</td></tr>
+   <tr><td data-l="Objaw">Brakuje pliku w mapie projektu</td><td data-l="Gdzie"><code>scanner.list_files()</code></td><td data-l="Co zrobić">Wzorzec w <code>scan.ignore</code> albo plik leży w katalogu z <code>pyvenv.cfg</code>. Katalog <code>dev_agents_doc/</code> jest zawsze pomijany.</td></tr>
+   <tr><td data-l="Objaw">Polskie znaki jako „�” w pliku robota</td><td data-l="Gdzie"><code>files.read_text_safe()</code></td><td data-l="Co zrobić">Plik nie jest ani UTF-8, ani cp1250. Zapisz go w UTF-8 albo sprawdź kodowanie.</td></tr>
+   <tr><td data-l="Objaw">Bramka odrzuca zapytania (limit)</td><td data-l="Gdzie"><code>analysis.max_concurrency</code></td><td data-l="Co zrobić">Zmniejsz liczbę równoczesnych analityków i pisarzy.</td></tr>
+   <tr><td data-l="Objaw">Błąd w treści przewodnika</td><td data-l="Gdzie"><code>notes/*.json</code></td><td data-l="Co zrobić">Najpierw notatka: jeśli tam jest błąd, poprawiaj prompt analityka lub wiedzę; jeśli nie, prompt pisarza albo autora diagramu.</td></tr>
+  </tbody>
+ </table>
+ </div>
+
+ <h2>Gdzie co zmienić</h2>
+ <div class="scroll">
+ <table class="stack">
+  <thead><tr><th>Chcę…</th><th>Plik</th><th>Kod?</th></tr></thead>
+  <tbody>
+   <tr><td data-l="Chcę">poprawić jakość lub styl tekstu</td><td data-l="Plik"><code>prompts/&lt;agent&gt;/system.md</code>, <code>knowledge/guide_goals.md</code></td><td data-l="Kod?">nie</td></tr>
+   <tr><td data-l="Chcę">zmienić zasady rysowania diagramu</td><td data-l="Plik"><code>knowledge/diagram_rules.md</code>, <code>prompts/flow_writer/</code>, <code>config.yaml</code>: <code>flow</code></td><td data-l="Kod?">nie</td></tr>
+   <tr><td data-l="Chcę">dodać lub zmienić sekcję albo zakładkę przewodnika</td><td data-l="Plik"><code>knowledge_base/templates/guide_template.yaml</code></td><td data-l="Kod?">nie</td></tr>
+   <tr><td data-l="Chcę">zmienić wygląd przewodnika</td><td data-l="Plik"><code>knowledge_base/templates/guide.css</code>, <code>guide.html.j2</code>, <code>guide.js</code></td><td data-l="Kod?">nie</td></tr>
+   <tr><td data-l="Chcę">pominąć katalog lub typ pliku przy skanie</td><td data-l="Plik"><code>config.yaml</code>: <code>scan.ignore</code>, <code>scan.role_patterns</code></td><td data-l="Kod?">nie</td></tr>
+   <tr><td data-l="Chcę">wskazać pliki dla agentów dosłownie</td><td data-l="Plik"><code>config.yaml</code>: <code>scan.text_roles</code>, <code>scan.max_text_file_kb</code></td><td data-l="Kod?">nie</td></tr>
+   <tr><td data-l="Chcę">dodać framework</td><td data-l="Plik"><code>config.yaml</code>: <code>scan.frameworks</code>, <code>knowledge/frameworks/&lt;plik&gt;.md</code></td><td data-l="Kod?">nie</td></tr>
+   <tr><td data-l="Chcę">dodać wiedzę dla agentów</td><td data-l="Plik"><code>knowledge/&lt;plik&gt;.md</code>, <code>knowledge/index.md</code></td><td data-l="Kod?">nie</td></tr>
+   <tr><td data-l="Chcę">zmienić model agenta, liczbę rund, równoległość, progi analizy</td><td data-l="Plik"><code>config.yaml</code>: <code>llm</code>, <code>limits</code>, <code>analysis</code></td><td data-l="Kod?">nie</td></tr>
+   <tr><td data-l="Chcę">obsłużyć nowy format kodu robota</td><td data-l="Plik"><code>technologies/&lt;x&gt;.py</code>, <code>technologies/registry.py</code>, <code>knowledge/technologies/&lt;x&gt;.md</code></td><td data-l="Kod?" class="yes">tak</td></tr>
+   <tr><td data-l="Chcę">nowy rodzaj bloku w przewodniku</td><td data-l="Plik"><code>guide_template.py</code>, <code>guide_content.py</code>, <code>agents/writer.py</code>, <code>render.py</code>, <code>guide.html.j2</code></td><td data-l="Kod?" class="yes">tak</td></tr>
+   <tr><td data-l="Chcę">dodać etap przebiegu</td><td data-l="Plik"><code>schemas.py</code>, <code>state.py</code>, <code>agents/</code>, <code>graph.py</code>, <code>prompts/</code>, <code>config.yaml</code></td><td data-l="Kod?" class="yes">tak</td></tr>
+   <tr><td data-l="Chcę">zmienić zasady wyboru poprawek po recenzji</td><td data-l="Plik"><code>review_loop.py</code>, <code>graph.py</code>: <code>dispatch_review</code>, <code>dispatch_rewrites</code></td><td data-l="Kod?" class="yes">tak</td></tr>
+  </tbody>
+ </table>
+ </div>
+
+ <h2>Znane ograniczenia</h2>
+ <ul class="ul">
+  <li>Dziś obsługiwana jest tylko technologia Python. UiPath, Robot Framework i NICE to puste klasy z opisem kontraktu.</li>
+  <li>Importy dynamiczne (<code>importlib.import_module</code>, <code>__import__</code>) nie są wykrywane, więc graf zależności ich nie pokazuje.</li>
+  <li>Kod nie parsuje plików konfiguracyjnych: wartości do metryczki przepisuje agent z dosłownego tekstu, więc ich poprawność wymaga kontroli przez recenzenta.</li>
+  <li>Hasła i inne sekrety wpisane wprost w kodzie lub pliku konfiguracyjnym trafiają dosłownie do modeli (decyzja: błąd dewelopera ma wyjść w przewodniku). Dlatego <code>dev_agents_doc/</code> robota z hasłami wymaga ostrożności, a robota 01 uruchamiamy tylko do odczytu.</li>
+  <li>Każdy pisarz i recenzent dostaje pełne notatki wszystkich analityków, a analityk wysyła kod jednostki do modelu dwa razy (NoteFlow i NoteDetails). To świadomy koszt tokenów za prostotę kodu; wpływ na czas i koszt dużego robota nie był jeszcze zmierzony (krok 61 doda licznik kosztów).</li>
+  <li>Limit schematu odpowiedzi (40 pól) zmierzono na profilu small. Na profilu medium (autor diagramu, pisarze, recenzent) nie był mierzony.</li>
+  <li>Recenzent ocenia cały przewodnik od nowa w każdej rundzie i bywa niewyczerpujący, więc akceptacja może zależeć od przebiegu. Limit rund kończy pętlę, a uwagi z ostatniej oceny zostają w <code>review_NN.json</code>.</li>
+  <li>Nie ma wznawiania przerwanego przebiegu ani dziennika w pliku, a jedna nieudana jednostka analityka przerywa przebieg.</li>
+  <li>Opisy w drzewie projektu to na razie fakty z kodu i wiersze pisarza; opisy z notatek analityków dochodzą w kroku 60.</li>
+  <li>Testy ręczne wskazują roboty testowe w <code>&lt;repo&gt;/../../tests/&lt;robot&gt;</code>; brak robota powoduje pominięcie przypadku z komunikatem (do zmiany, np. argument <code>--tests-dir</code>).</li>
+ </ul>
+</section>
+</main>
+
+<script>
+{
+ const reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+ /* ---------- router ---------- */
+ const tabs=[...document.querySelectorAll('.tab')];
+ const links=[...document.querySelectorAll('#nav > a')];
+ const route=()=>{
+  const id=decodeURIComponent(location.hash.slice(1))||'przeglad';
+  let el=document.getElementById(id),tab=null,target=null;
+  if(el&&el.classList.contains('tab'))tab=el;
+  else if(el){tab=el.closest('.tab');target=el}
+  if(!tab)tab=tabs[0];
+  tabs.forEach(t=>{t.hidden=t!==tab});
+  links.forEach(a=>{if(a.getAttribute('href')==='#'+tab.id)a.setAttribute('aria-current','page');else a.removeAttribute('aria-current')});
+  hideTip(true);
+  if(target)requestAnimationFrame(()=>target.scrollIntoView({block:'start'}));
+  else window.scrollTo(0,0);
+ };
+ /* ---------- tooltip ---------- */
+ const tip=document.getElementById('tip');
+ let pinned=null;
+ const esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;');
+ const place=el=>{
+  tip.hidden=false;
+  const r=el.getBoundingClientRect(),tw=tip.offsetWidth,th=tip.offsetHeight;
+  let x=r.left,y=r.bottom+8;
+  if(x+tw>innerWidth-12)x=innerWidth-tw-12;
+  if(x<12)x=12;
+  if(y+th>innerHeight-12)y=r.top-th-8;
+  if(y<12)y=12;
+  tip.style.left=x+'px';tip.style.top=y+'px';
+ };
+ const showTip=el=>{
+  const name=el.cloneNode(true);name.querySelectorAll('i').forEach(i=>i.remove());
+  tip.innerHTML='<b>'+esc(name.textContent.trim())+'</b><p><span>Czym jest</span>'+esc(el.dataset.w)+'</p><p><span>Rola w projekcie</span>'+esc(el.dataset.r)+'</p>';
+  place(el);
+ };
+ /* karty węzłów grafu: tytuł, rodzaj, zdanie wstępu, punkty, wynik */
+ const nodeInfo={
+  'step-scan':{t:'scan',k:'bez AI, scanner.py',l:'Deterministycznie buduje mapę projektu, bez modelu:',p:['listę plików (pomija scan.ignore, dev_agents_doc/ i każde venv)','rolę każdego pliku: secret, source, dependency, config, launcher, docs, data, binary, other','technologię, punkty wejścia, jednostki i odwołania plików źródłowych','frameworki (po ścieżkach i po importowanych pakietach)','pliki zależności, konfiguracji i uruchamiające dosłownie','graf zależności i kolejność czytania'],w:'project_map (w stanie)'},
+  'step-plan':{t:'planner',k:'agent AI, profil small',l:'Dzieli pracę, zanim ktokolwiek przeczyta kod. Ustala:',p:['podsumowanie robota','zadanie ze wskazówką dla każdej jednostki kodu','pliki wiedzy dla analityków, autora diagramu i pisarzy','potem kod poprawia plan: pominięte jednostki dopisuje, nieznane usuwa'],w:'plan.json'},
+  'step-analyze':{t:'analyst × N',k:'agent AI, profil small',l:'Jeden analityk na jednostkę kodu, równolegle. Każdy:',p:['czyta kod z numerami linii (długą jednostkę po kawałkach)','widzi fakty o plikach, pliki tekstowe robota, wskazówkę plannera i wiedzę','dwa wywołania modelu: przebieg (NoteFlow), potem szczegóły (NoteDetails)','kod składa notatkę i poprawia nazwę oraz numery linii'],w:'notes/<jednostka>.json'},
+  'step-flow':{t:'flow_writer',k:'agent AI, profil medium',l:'Układa z notatek diagram całego procesu:',p:['klocki i strzałki, jeden klocek na czynność widoczną dla biznesu','kod sprawdza spójność (validate_flow) i rozmiar','przy problemach jedno ponowienie z poprzednią wersją i listą problemów'],w:'flow.json'},
+  'step-tabs':{t:'plan_tabs',k:'bez AI, graph.py',l:'Wylicza, które zakładki szablonu pisze pisarz:',p:['bierze sekcje dla technologii projektu','pomija zakładki bez sekcji pisarza (np. sam diagram)'],w:'tab_ids (w stanie)'},
+  'step-write':{t:'writer × M',k:'agent AI, profil medium',l:'Jeden pisarz na zakładkę, równolegle:',p:['dostaje notatki, gotowy diagram i sekcje zakładki z szablonu','schemat odpowiedzi budowany z pól sekcji (limit bramki)','kod sprawdza wynik: sekcje, komórki, wpisy metryczki, ścieżki i klocki','jedno ponowienie z listą problemów'],w:'tabs/<zakładka>.json'},
+  'step-assemble':{t:'assemble',k:'bez AI, assemble.py',l:'Składa treść przewodnika w kolejności szablonu:',p:['diagram i ostatnia wersja każdej zakładki','kontrola kompletności zwykłym kodem','braki są uwagami i nie przerywają przebiegu'],w:'guide_content.json'},
+  'step-review':{t:'reviewer',k:'agent AI, profil medium',l:'Ocenia diagram i zakładki względem notatek:',p:['uwaga ma adresata (flow albo zakładka), sekcję i opis','kod odrzuca uwagi bez adresata i sam ustawia approved','ustala, czy są poprawki i czy limit rund pozwala na nie','pętla: flow_fix i/lub writer dla części z uwagami, potem assemble i reviewer'],w:'review_NN.json'},
+  'step-finalize':{t:'finalize',k:'bez AI, finalize.py, render.py',l:'Renderuje przewodnik do jednego pliku HTML:',p:['fakty z kodu: drzewo, zależności, ryzykowne miejsca, graf zależności','diagram rysowany w przeglądarce z danych JSON','CSS i JS w środku pliku, działa bez internetu'],w:'guide.html'}
+ };
+ const showNode=g=>{
+  const d=nodeInfo[g.dataset.go];if(!d)return;
+  tip.innerHTML='<b>'+esc(d.t)+'</b><p class="tk">'+esc(d.k)+'</p><p>'+esc(d.l)+'</p><ul>'+d.p.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul><p><span>Wynik</span><code>'+esc(d.w)+'</code></p><p class="th">Kliknij, aby przejść do szczegółów.</p>';
+  place(g);
+ };
+ function hideTip(force){if(pinned&&!force)return;if(pinned)pinned.classList.remove('on');pinned=null;tip.classList.remove('pin');tip.hidden=true}
+ const items=document.querySelectorAll('.it[data-w]');
+ items.forEach(el=>{
+  el.addEventListener('mouseenter',()=>{if(!pinned)showTip(el)});
+  el.addEventListener('mouseleave',()=>{if(!pinned)hideTip()});
+  el.addEventListener('focus',()=>{if(!pinned)showTip(el)});
+  el.addEventListener('blur',()=>{if(!pinned)hideTip()});
+  el.addEventListener('click',ev=>{
+   ev.stopPropagation();
+   if(pinned===el){hideTip(true);return}
+   if(pinned)pinned.classList.remove('on');
+   pinned=el;el.classList.add('on');showTip(el);tip.classList.add('pin');
+  });
+ });
+ document.addEventListener('click',ev=>{if(pinned&&!tip.contains(ev.target))hideTip(true)});
+ document.addEventListener('keydown',ev=>{if(ev.key==='Escape')hideTip(true)});
+ window.addEventListener('scroll',()=>{if(pinned)showTip(pinned);else hideTip()},{passive:true});
+ /* ---------- copy buttons ---------- */
+ document.querySelectorAll('.cb').forEach(box=>{
+  const b=document.createElement('button');b.className='cp';b.type='button';b.textContent='Kopiuj';
+  b.addEventListener('click',async()=>{
+   try{await navigator.clipboard.writeText(box.querySelector('pre').textContent);b.textContent='Skopiowano'}
+   catch(e){b.textContent='Zaznacz i skopiuj'}
+   setTimeout(()=>{b.textContent='Kopiuj'},1600);
+  });
+  box.appendChild(b);
+ });
+ /* ---------- overview graph ---------- */
+ const svg=document.getElementById('graph'),gfig=document.getElementById('gfig');
+ const defs='<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#111"/></marker><marker id="ahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0L10,5L0,10z" fill="#e4002b"/></marker></defs>';
+ const box=(x,y,w,h,t,ai,go,fs)=>`<g data-go="${go}" tabindex="0" role="button" aria-label="${t}: szczegóły"><rect x="${x-w/2}" y="${y-h/2}" width="${w}" height="${h}" rx="3" class="${ai?'nai':'ncode'}"/><text x="${x}" y="${y}" class="${ai?'tai':'tcode'}" font-size="${fs||15}">${t}</text></g>`;
+ const tok=p=>reduce?'':`<circle r="5" class="tok"><animateMotion dur="7s" repeatCount="indefinite" path="${p}"/></circle>`;
+ const N=3;
+ const cols=[
+  {t:'scan',ai:0,go:'step-scan'},
+  {t:'planner',ai:1,go:'step-plan'},
+  {t:'analyst',ai:1,go:'step-analyze',fan:'analyst N'},
+  {t:'flow_writer',ai:1,go:'step-flow'},
+  {t:'plan_tabs',ai:0,go:'step-tabs'},
+  {t:'writer',ai:1,go:'step-write',fan:'writer M'},
+  {t:'assemble',ai:0,go:'step-assemble'},
+  {t:'reviewer',ai:1,go:'step-review'},
+  {t:'finalize',ai:0,go:'step-finalize'}
+ ];
+ const LAST=cols.length-1,WR=5,RV=7;
+ const draw=()=>{
+  const W=svg.clientWidth;if(!W)return;
+  const hz=W>=880,want=hz?310:700;
+  if(gfig.clientHeight!==want){gfig.style.height=want+'px';return}
+  const H=svg.clientHeight;let e='',n='';
+  if(hz){
+   const w=Math.max(76,Math.min(98,W/9-14)),h=42,ah=22,gp=8,fs=12.5;
+   const pad=w/2+2,X=i=>pad+i*(W-2*pad)/LAST,cy=H*.6;
+   const tot=N*ah+(N-1)*gp,ay=k=>cy-tot/2+ah/2+k*(ah+gp);
+   for(let i=0;i<LAST;i++){
+    const a=cols[i],b=cols[i+1],xa=X(i),xb=X(i+1),m=(xa+w/2+xb-w/2)/2;
+    if(!a.fan&&!b.fan){e+=`<path class="edge" marker-end="url(#ah)" d="M${xa+w/2},${cy}H${xb-w/2}"/>`}
+    else if(b.fan){for(let k=0;k<N;k++){const y=ay(k);e+=`<path class="edge" marker-end="url(#ah)" d="M${xa+w/2},${cy}C${m},${cy} ${m},${y} ${xb-w/2},${y}"/>`}}
+    else{for(let k=0;k<N;k++){const y=ay(k);e+=`<path class="edge" marker-end="url(#ah)" d="M${xa+w/2},${y}C${m},${y} ${m},${cy} ${xb-w/2},${cy}"/>`}}
+   }
+   cols.forEach((c,i)=>{
+    if(c.fan){
+     for(let k=0;k<N;k++)n+=box(X(i),ay(k),w,ah,k===N-1?c.fan:c.t,c.ai,c.go,fs-.5);
+     e+=`<text class="lbl" x="${X(i)}" y="${ay(N-1)+ah/2+16}">Send: po jednym</text>`;
+    }else n+=box(X(i),cy,w,h,c.t,c.ai,c.go,fs);
+   });
+   e+=`<text class="lbl" x="${(X(RV)+X(LAST))/2}" y="${cy+h/2+18}">bez uwag / limit</text>`;
+   const y1=cy-h/2,y2=cy-tot/2,k=62;
+   e+=`<path class="lp" marker-end="url(#ahr)" d="M${X(RV)},${y1}C${X(RV)},${y1-k} ${X(WR)},${y2-k} ${X(WR)},${y2}"/>`;
+   e+=`<text class="lblr" x="${(X(RV)+X(WR))/2}" y="${y2-k*.75-14}">uwagi: flow_fix i/lub writer</text>`;
+   svg.innerHTML=defs+e+tok(`M${X(0)},${cy}H${X(LAST)}`)+n;
+  }else{
+   const w=Math.min(190,W*.46),h=34,cx=W*.5,Y=i=>28+i*(H-56)/LAST;
+   const step=Math.min(34,(w+30)/N),ax=k=>cx+(k-(N-1)/2)*step,r=9;
+   for(let i=0;i<LAST;i++){
+    const a=cols[i],b=cols[i+1],ya=Y(i),yb=Y(i+1);
+    if(!a.fan&&!b.fan){e+=`<path class="edge" marker-end="url(#ah)" d="M${cx},${ya+h/2}V${yb-h/2}"/>`}
+    else if(b.fan){const m=(ya+h/2+yb-r)/2;for(let k=0;k<N;k++){e+=`<path class="edge" marker-end="url(#ah)" d="M${cx},${ya+h/2}C${cx},${m} ${ax(k)},${m} ${ax(k)},${yb-r}"/>`}}
+    else{const m=(ya+r+yb-h/2)/2;for(let k=0;k<N;k++){e+=`<path class="edge" marker-end="url(#ah)" d="M${ax(k)},${ya+r}C${ax(k)},${m} ${cx},${m} ${cx},${yb-h/2}"/>`}}
+   }
+   cols.forEach((c,i)=>{
+    if(c.fan){
+     for(let k=0;k<N;k++)n+=`<g data-go="${c.go}" tabindex="0" role="button" aria-label="${c.t}: szczegóły"><circle class="nai" cx="${ax(k)}" cy="${Y(i)}" r="${r}"/></g>`;
+     n+=`<text class="tcode" x="${ax(0)-r-10}" y="${Y(i)}" font-size="14" style="text-anchor:end">${c.fan}</text>`;
+    }else n+=box(cx,Y(i),w,h,c.t,c.ai,c.go,14);
+   });
+   const x1=cx+w/2,kk=48,yr=Y(RV),yw=Y(WR),xe=ax(N-1)+r+2;
+   e+=`<path class="lp" marker-end="url(#ahr)" d="M${x1},${yr}C${x1+kk},${yr} ${x1+kk},${yw} ${xe},${yw}"/>`;
+   e+=`<text class="lblr" transform="translate(${x1+kk*.75+14},${(yr+yw)/2}) rotate(90)">poprawki</text>`;
+   svg.innerHTML=defs+e+tok(`M${cx},${Y(0)}V${Y(LAST)}`)+n;
+  }
+ };
+ const goTo=g=>{hideTip(true);const t=document.getElementById(g.dataset.go);if(t)t.scrollIntoView({behavior:reduce?'auto':'smooth',block:'start'})};
+ svg.addEventListener('click',ev=>{const g=ev.target.closest('[data-go]');if(g){ev.stopPropagation();goTo(g)}});
+ svg.addEventListener('mouseover',ev=>{const g=ev.target.closest('[data-go]');if(g&&!pinned)showNode(g)});
+ svg.addEventListener('mouseout',ev=>{const g=ev.target.closest('[data-go]');if(g&&!g.contains(ev.relatedTarget)&&!pinned)hideTip()});
+ svg.addEventListener('focusin',ev=>{const g=ev.target.closest('[data-go]');if(g&&!pinned)showNode(g)});
+ svg.addEventListener('focusout',()=>{if(!pinned)hideTip()});
+ svg.addEventListener('keydown',ev=>{const g=ev.target.closest('[data-go]');if(g&&(ev.key==='Enter'||ev.key===' ')){ev.preventDefault();goTo(g)}});
+ const gro=new ResizeObserver(draw);gro.observe(svg);
+ window.addEventListener('hashchange',route);
+ route();
+}
+</script>
+</body>
+</html>
